@@ -30,7 +30,6 @@
 //! Covariances are assembled as `H_{T+h} = D_{T+h} R_{T+h} D_{T+h}` with
 //! `D_{T+h}` from the per-series analytic univariate variance forecasts —
 //! the further standard approximation `E[D R D] ~= E[D] E[R] E[D]`.
-
 //!
 //! # Size budget
 //!

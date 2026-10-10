@@ -47,11 +47,24 @@ pub const DCC_TEST_MAX_XTX_CELLS: usize = 1 << 26;
 /// `breusch_godfrey_test` work budget).
 pub const DCC_TEST_WORK_BUDGET: u128 = 1 << 34;
 
+/// The largest lag length the data alone admit: the pooled regression
+/// stacks `(nobs - lags) * k(k-1)/2` outer-product rows on `lags + 1`
+/// coefficients and needs one residual degree of freedom (a zero residual
+/// variance has no Wald statistic), `(nobs - lags) * P >= lags + 2` with
+/// `P = k(k-1)/2`, i.e. `lags <= (nobs * P - 2) / (P + 1)`.
+fn dcc_test_data_max_lags(nobs: usize, k: usize) -> usize {
+    let n_pairs = (k as u128) * (k.saturating_sub(1) as u128) / 2;
+    let max = (nobs as u128 * n_pairs).saturating_sub(2) / (n_pairs + 1);
+    usize::try_from(max).unwrap_or(usize::MAX)
+}
+
 /// The largest lag length [`constant_correlation_test`] admits for `nobs`
-/// time observations of `k` series: `nobs - 2` (one response row and one
-/// residual degree of freedom), or less when the normal equations would
-/// pass [`DCC_TEST_MAX_XTX_CELLS`] or the accumulation the (monotone) work
-/// bound [`DCC_TEST_WORK_BUDGET`]. `0` when no lag fits.
+/// time observations of `k` series: the most the data identify (the
+/// `(nobs - lags) * k(k-1)/2` stacked rows must exceed the `lags + 1`
+/// coefficients by one residual degree of freedom), or less when the
+/// normal equations would pass [`DCC_TEST_MAX_XTX_CELLS`] or the
+/// accumulation the (monotone) work bound [`DCC_TEST_WORK_BUDGET`]. `0`
+/// when no lag fits.
 pub fn dcc_test_max_lags(nobs: usize, k: usize) -> usize {
     let n_pairs = (k as u128) * (k.saturating_sub(1) as u128) / 2;
     let fits = |lags: usize| -> bool {
@@ -59,7 +72,7 @@ pub fn dcc_test_max_lags(nobs: usize, k: usize) -> usize {
         m * m <= DCC_TEST_MAX_XTX_CELLS as u128
             && (nobs as u128) * n_pairs.max(1) * m * m <= DCC_TEST_WORK_BUDGET
     };
-    let data_max = nobs.saturating_sub(2);
+    let data_max = dcc_test_data_max_lags(nobs, k);
     if data_max == 0 || !fits(1) {
         return 0;
     }
@@ -110,7 +123,9 @@ pub struct DccTestResult {
 /// * every [`MgarchError`] from the univariate stage;
 /// * [`MgarchError::InvalidParameter`] if `lags == 0`;
 /// * [`MgarchError::LagsTooLong`] (naming `lags` and the largest lag length
-///   that fits) if `T <= lags + 1`, or if the pooled regression would pass
+///   that fits) if the `(T - lags) * k(k-1)/2` stacked rows leave no
+///   residual degree of freedom for the `lags + 1` coefficients, or if the
+///   pooled regression would pass
 ///   [`DCC_TEST_MAX_XTX_CELLS`] or [`DCC_TEST_WORK_BUDGET`] (see
 ///   [`dcc_test_max_lags`]) — checked before the regression is built;
 /// * [`MgarchError::Linalg`] if `R` is not positive-definite (its symmetric
@@ -137,10 +152,10 @@ pub fn constant_correlation_test(
             lags,
             nobs: t_obs,
             max_lags,
-            why: if max_lags == t_obs.saturating_sub(2) {
-                "the pooled regression of each outer product on a constant and lags of \
-                 itself needs T >= lags + 2 time observations (at least one response row \
-                 and one residual degree of freedom)"
+            why: if max_lags == dcc_test_data_max_lags(t_obs, k) {
+                "the pooled regression stacks (T - lags) * k(k-1)/2 outer-product rows on \
+                 lags + 1 coefficients (a constant and the lags) and needs at least one \
+                 residual degree of freedom, (T - lags) * k(k-1)/2 >= lags + 2"
             } else {
                 "the pooled regression's (lags + 1) x (lags + 1) normal equations, \
                  accumulated over every stacked row, would pass the 2^26-entry (512 MiB) \
