@@ -49,6 +49,47 @@ fn vec1(a: &PyReadonlyArray1<'_, f64>) -> Vec<f64> {
     }
 }
 
+/// A `tsecon_diag` refusal with the lag order renamed to the Python keyword
+/// the caller passed: the core names its orders by their Rust-side names
+/// (`maxlag` for an ADF search cap, `lags` for a fixed DF-GLS lag), and
+/// `rename` maps each to the keyword (`max_lags`, ...). A fixed-lag
+/// `InvalidLags` (whose message prints the core's shared `nlags = ...`) is
+/// rebuilt naming `fixed`, when given.
+fn diag_lag_err(
+    e: tsecon_diag::DiagError,
+    rename: impl Fn(&'static str) -> &'static str,
+    fixed: Option<&str>,
+) -> PyErr {
+    PyValueError::new_err(diag_lag_msg(e, rename, fixed))
+}
+
+/// The message of [`diag_lag_err`], for callers that wrap it.
+fn diag_lag_msg(
+    mut e: tsecon_diag::DiagError,
+    rename: impl Fn(&'static str) -> &'static str,
+    fixed: Option<&str>,
+) -> String {
+    use tsecon_diag::DiagError;
+    if let DiagError::LagOrderTooLong { param, .. } = &mut e {
+        *param = rename(param);
+    }
+    match (e, fixed) {
+        (
+            DiagError::InvalidLags {
+                what,
+                nlags,
+                n,
+                requirement,
+            },
+            Some(keyword),
+        ) => format!(
+            "{what}: {keyword} = {nlags} is invalid for a series of length {n}: \
+             requires {requirement}"
+        ),
+        (e, _) => e.to_string(),
+    }
+}
+
 /// Autocorrelation function with Bartlett standard errors.
 ///
 /// Matches statsmodels `acf` conventions exactly (validated at 1e-12).
@@ -142,6 +183,11 @@ fn jarque_bera<'py>(
 }
 
 /// Engle's ARCH-LM test (statsmodels `het_arch` convention).
+///
+/// `nlags` must leave `n >= 2*nlags + 2`; an order past that, or one whose
+/// `(n - nlags) x nlags` auxiliary design exceeds 2^26 entries (512 MiB) or
+/// whose normal equations exceed 2^35 multiply-adds, is refused before any
+/// lag column is built, naming `nlags` and the largest order that fits.
 ///
 /// Returned keys: `df`, `nobs`, `p_value`, `statistic`.
 ///
@@ -332,6 +378,15 @@ fn adf_regression(s: &str) -> PyResult<tsecon_diag::AdfRegression> {
 /// "bic", "t-stat", or None to use `maxlag` as a fixed lag.
 /// Matches statsmodels `adfuller` (validated at 1e-8).
 ///
+/// A `maxlag` past the statsmodels bound n//2 - ntrend - 1 (one less for
+/// regression "n" on an even n, which must keep a residual degree of
+/// freedom) is refused naming `maxlag` and the largest that fits, as is one
+/// whose lag design exceeds 2^26 entries (512 MiB) or whose lag search
+/// exceeds 2^35 multiply-adds (under a minute) — checked before any lag
+/// column is built. Orders up to the default cap ceil(12*(n/100)^(1/4)) are
+/// exempt from the work budget, so a default call is refused only when its
+/// design would not fit in memory (above about 610,000 observations).
+///
 /// Returned keys: `crit`, `nobs`, `p_value`, `statistic`, `used_lag`.
 #[pyfunction]
 #[pyo3(signature = (y, regression = "c", autolag = Some("aic"), maxlag = None),
@@ -516,6 +571,12 @@ fn phillips_perron<'py>(
 /// OLS-detrended series (Perron-Qu 2007) searching 0..=`max_lags`
 /// (default: Schwert's ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1).
 /// When `lags` is given, `method`/`max_lags` are ignored (arch behavior).
+/// A `lags` or `max_lags` that leaves too few observations (`n >= 2*lags +
+/// 3`, and `n >= 3 + ntrend + lags` for a fixed lag), or whose lag design or
+/// search exceeds the size budgets of `adf` (2^26 entries, 2^35
+/// multiply-adds; orders up to the default cap are exempt from the work
+/// budget), is refused before any lag column is built, naming the keyword
+/// and the largest value that fits.
 ///
 /// Returns dict keys: `statistic`, `p_value`, `used_lag`, `nobs`
 /// (= n - 1 - used_lag), `crit` ({"1%","5%","10%"}), `trend`. Statistic
@@ -557,7 +618,8 @@ fn dfgls<'py>(
             }
         },
     };
-    let r = tsecon_diag::dfgls(&vec1(&y), trend, selection).map_err(to_py)?;
+    let r = tsecon_diag::dfgls(&vec1(&y), trend, selection)
+        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }, None))?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("p_value", r.p_value)?;
@@ -592,7 +654,9 @@ fn dfgls<'py>(
 /// large negative MA root is suspected (over-differenced series) — MAIC
 /// is the standard remedy for the size distortion there. Caveat
 /// (Perron-Qu 2007): on data far from the null MAIC drives the lag to its
-/// maximum and power collapses; cap `max_lags` or fix `lags` there.
+/// maximum and power collapses; cap `max_lags` or fix `lags` there. A
+/// `lags` or `max_lags` too long for the sample or past the size budgets of
+/// `dfgls` is refused the same way, naming the keyword.
 #[pyfunction]
 #[pyo3(signature = (y, trend = "c", lags = None, max_lags = None))]
 fn ng_perron<'py>(
@@ -634,7 +698,8 @@ fn ng_perron<'py>(
             }
         }
     };
-    let r = tsecon_diag::ng_perron(&vec1(&y), trend_spec, selection).map_err(to_py)?;
+    let r = tsecon_diag::ng_perron(&vec1(&y), trend_spec, selection)
+        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }, None))?;
     let d = PyDict::new(py);
     d.set_item("mza", r.mza)?;
     d.set_item("mzt", r.mzt)?;
@@ -741,6 +806,9 @@ fn phillips_ouliaris<'py>(
 /// search. P-values/critical values interpolate the simulated null table
 /// (statsmodels, 100k MC reps) — read at most two decimals into them.
 /// Matches statsmodels `zivot_andrews` (statistic 1e-10, break/lag exact).
+/// A `max_lags` past the base ADF's bound n//2 - 3, or past its size budgets
+/// (see `adf`), is refused naming `max_lags`; a fixed `lags` past
+/// int(n*trim) - 1 is refused naming `lags`.
 ///
 /// Returns dict keys: `stat`, `pvalue`, `crit` {"1%","5%","10%"},
 /// `break_index`, `lags` (the shared augmentation lag), `nobs`, `trim`,
@@ -796,7 +864,16 @@ fn zivot_andrews<'py>(
             )))
         }
     };
-    let r = tsecon_diag::zivot_andrews(&vec1(&y), reg, trim, sel).map_err(to_py)?;
+    // The automatic search's cap is `max_lags` here (the base ADF calls it
+    // maxlag); the fixed lag, explicit or the truncated-Schwert default, is
+    // `lags`.
+    let r = tsecon_diag::zivot_andrews(&vec1(&y), reg, trim, sel).map_err(|e| {
+        diag_lag_err(
+            e,
+            |p| if p == "maxlag" { "max_lags" } else { p },
+            Some("lags"),
+        )
+    })?;
     let d = PyDict::new(py);
     d.set_item("stat", r.statistic)?;
     d.set_item("pvalue", r.p_value)?;
@@ -2434,8 +2511,16 @@ fn bn_decomposition<'py>(
 /// smallest odd integer > period; degrees are 0 or 1; jumps >= 1 evaluate
 /// each LOESS every jump-th point with linear interpolation in between;
 /// `inner_iter`/`outer_iter` default to 2/15 when `robust` else 5/0.
-/// Requires n >= 2*period (R's stl() bound). Matches statsmodels 0.14.6
+/// Requires n >= 2*period (R's stl() bound; a longer period is refused
+/// naming `period` and the largest that fits). Matches statsmodels 0.14.6
 /// elementwise at 1e-8 (observed ~1e-12).
+///
+/// `inner_iter` and `outer_iter` are fixed loop counts that never stop
+/// early, so they are budgeted: a request of more than 32 inner passes
+/// (`inner_iter * (outer_iter + 1)`, the robust default's count) whose LOESS
+/// work exceeds 2^32 evaluation units (about half a minute) is refused
+/// before any smoothing, naming the count and its largest admissible value.
+/// The default counts are never refused.
 ///
 /// Returns dict keys: `seasonal`, `trend`, `resid` (`y = seasonal + trend
 /// + resid`), `weights` (bisquare robustness weights, all 1 when
@@ -2513,7 +2598,8 @@ fn stl<'py>(
 /// `strength_seasonal = max(0, 1 - var(resid)/var(seasonal + resid))` and
 /// the analogous trend measure, with sample variances (ddof = 1, R's
 /// `var`) — the numbers behind `nsdiffs` and the tsfeatures/feasts
-/// feature set. Near 1: the component dominates; near 0: absent.
+/// feature set. Near 1: the component dominates; near 0: absent. A period
+/// longer than n/2 is refused naming `period` and the largest that fits.
 ///
 /// Returns dict keys: `seasonal_strength`, `trend_strength`, `period`.
 #[pyfunction]
@@ -2561,6 +2647,10 @@ fn positive_int_seq(name: &str, v: &[i64], example: &str) -> PyResult<Vec<usize>
 /// `lmbda` (Box-Cox) option is deliberately not implemented — transform
 /// `y` first if you need it. Unlike statsmodels, duplicate periods and
 /// `iterate=0` are refused with an error instead of misbehaving silently.
+/// `iterate`, `inner_iter` and `outer_iter` share the STL work budget
+/// (2^32 LOESS units over all rounds and periods, refused before any
+/// smoothing and naming the count; the default counts — at most 32 inner
+/// passes per fit over at most two rounds — are never refused).
 ///
 /// Returns dict keys: `seasonal` (a dict `{"seasonal_<period>": array}`,
 /// ascending periods; the components sum with trend and resid back to
@@ -6245,6 +6335,8 @@ fn lp_did<'py>(
 
 /// Clark-West test for nested-model equal predictive accuracy (Clark-West
 /// 2007). One-sided; the null is that the small (nested) model is as good.
+/// `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+/// below the number of observations (refused by name otherwise).
 ///
 /// Returned keys: `cw_stat`, `mean_adj_diff`, `p_value`.
 ///
@@ -6276,6 +6368,8 @@ fn cw_test<'py>(
 
 /// Giacomini-White unconditional test of equal predictive ability
 /// (Giacomini-White 2006), chi-squared(1) on a loss differential.
+/// `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+/// below the number of observations (refused by name otherwise).
 ///
 /// Returned keys: `df`, `gw_stat`, `p_value`.
 ///
@@ -10688,7 +10782,10 @@ fn panel_pmg<'py>(
 /// common length). `test` is "ips" (default), "llc", or "fisher". `lags` is
 /// None (per-unit auto AIC), an int (fixed common lag), or "aic"/"bic"/
 /// "t-stat". `regression` is "c" (default), "ct", or "n" ("n" is invalid for
-/// "ips"). `lrv_kernel`/`lrv_bandwidth` configure the LLC long-run variance.
+/// "ips"). `lrv_kernel`/`lrv_bandwidth` configure the LLC long-run variance
+/// (`lrv_bandwidth` a finite value >= 0; None uses round(3.21 T^(1/3))). A
+/// per-unit lag order too long for a unit, or past the size budgets of
+/// `adf`, is refused naming `lags` (fixed) or `max_lags` (the search cap).
 /// Conventions match plm::purtest (validated to plm, and for "fisher" to statsmodels).
 /// Keys: `statistic`, `p_value`, `per_unit_tstat`/`per_unit_pvalue`/
 /// `per_unit_lags`/`per_unit_nobs`, `n_units`, `regression`, `test`, plus the
@@ -10764,11 +10861,35 @@ fn panel_unit_root<'py>(
         }
     };
 
+    if let Some(bw) = lrv_bandwidth {
+        if !(bw.is_finite() && bw >= 0.0) {
+            return Err(PyValueError::new_err(format!(
+                "lrv_bandwidth = {bw} is invalid: requires a finite value >= 0 (the \
+                 lag-truncation parameter of the Levin-Lin-Chu long-run variance for \
+                 the Bartlett, Parzen and truncated kernels, Andrews' real-valued S_T \
+                 for quadratic spectral); None uses the Levin-Lin-Chu rule \
+                 round(3.21 T^(1/3))"
+            )));
+        }
+    }
     let opts = PanelRootOpts {
         lrv_kernel: hac_kernel(lrv_kernel)?,
         lrv_bandwidth,
     };
-    let r = run(&units, test_enum, reg, sel, &opts).map_err(to_py)?;
+    // The per-unit ADF names its lag order `maxlag`; here it is `lags` when
+    // fixed and `max_lags` when it caps the automatic search.
+    let lag_keyword = if matches!(sel, L::Fixed(_)) {
+        "lags"
+    } else {
+        "max_lags"
+    };
+    let r = run(&units, test_enum, reg, sel, &opts).map_err(|e| match e {
+        tsecon_panelroot::PanelRootError::Adf { unit, source } => {
+            let inner = diag_lag_msg(source, |_| lag_keyword, None);
+            PyValueError::new_err(format!("per-unit ADF failed for unit {unit}: {inner}"))
+        }
+        other => to_py(other),
+    })?;
 
     let d = PyDict::new(py);
     d.set_item("test", test)?;
@@ -11331,6 +11452,12 @@ fn heteroskedasticity_test<'py>(
 /// Ramsey RESET functional-form test: F-test of powers of the fitted values
 /// (`yhat^2 .. yhat^max_power`) added to the OLS of `y` on `x` (`T x k`).
 ///
+/// The augmented regression has `k + max_power - 1` regressors, so
+/// `max_power` must leave `T > k + max_power - 1` and the augmented design
+/// within the Breusch-Godfrey auxiliary-regression budgets (2^26 entries,
+/// 2^34 multiply-adds); a larger one is refused before any power column is
+/// built, naming `max_power` and the largest that fits.
+///
 /// Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
 #[pyfunction]
 #[pyo3(signature = (y, x, max_power = 3))]
@@ -11514,8 +11641,13 @@ fn acm_term_premium<'py>(
 /// `n_predetermined` backward-looking variables then the forward-looking
 /// ones. Returns the decision rule `g` (jump = g·predetermined), the law of
 /// motion `p`/`q` (predetermined_{t+1} = p·predetermined + q·z), the
-/// `eigenvalue_moduli`, and the Blanchard-Kahn `verdict` (unique /
-/// indeterminate / no stable solution).
+/// `eigenvalue_moduli`, and the Blanchard-Kahn `verdict` string, which on
+/// return always reads "unique stable solution (...)". An indeterminate
+/// model (fewer unstable eigenvalues than jump variables) or one with no
+/// stable solution (more) raises ValueError instead, naming the regime and
+/// both counts.
+///
+/// Returned keys: `eigenvalue_moduli`, `g`, `p`, `q`, `verdict`.
 #[pyfunction]
 fn dsge_solve<'py>(
     py: Python<'py>,
