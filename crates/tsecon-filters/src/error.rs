@@ -95,12 +95,19 @@ pub enum FiltersError {
         inner_iter: usize,
         /// The resolved number of outer (robustness) passes.
         outer_iter: usize,
-        /// The MSTL refinement rounds actually run (`None` for STL).
+        /// The MSTL refinement rounds actually run (`None` for STL, and for
+        /// an MSTL with a single period, which runs one round whatever
+        /// `iterate` says).
         iterate: Option<usize>,
         /// The LOESS evaluation units the request asks for.
         work: u128,
-        /// The largest admissible value of `param`, the others held fixed.
-        max: usize,
+        /// The largest admissible value of `param`, the others held fixed,
+        /// or `None` when no value of any single count fits with the others
+        /// held fixed (they must be reduced together).
+        max: Option<usize>,
+        /// The largest admissible number of inner passes over all rounds
+        /// (`iterate x inner_iter x (outer_iter + 1)`) within the budget.
+        max_passes: usize,
     },
     /// The series is degenerate for the requested filter in a way the
     /// message itself states fully — e.g. constant *first differences*
@@ -190,6 +197,7 @@ impl fmt::Display for FiltersError {
                 iterate,
                 work,
                 max,
+                max_passes,
             } => {
                 write!(
                     f,
@@ -204,9 +212,25 @@ impl fmt::Display for FiltersError {
                     " ask for about {:.2e} LOESS evaluation units at this series length and \
                      these windows, past the budget of 2^32 units (about half a minute, \
                      checked before any smoothing). These are fixed loop counts that never \
-                     stop early; pass {param} <= {max}",
+                     stop early; ",
                     *work as f64
-                )
+                )?;
+                match max {
+                    Some(m) => write!(f, "pass {param} <= {m}"),
+                    None => {
+                        let passes = if iterate.is_some() {
+                            "iterate * inner_iter * (outer_iter + 1)"
+                        } else {
+                            "inner_iter * (outer_iter + 1)"
+                        };
+                        write!(
+                            f,
+                            "no single count fits with the others held fixed, so reduce \
+                             them together to {passes} <= {max_passes}, or to the default \
+                             region of at most 32 inner passes per fit over at most two rounds"
+                        )
+                    }
+                }
             }
             FiltersError::Degenerate { what } => write!(f, "{what}"),
         }

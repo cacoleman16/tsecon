@@ -45,11 +45,11 @@ fn iteration_refusal(e: FiltersError) -> (&'static str, usize, usize, u128, Stri
         FiltersError::IterationBudget {
             param,
             value,
-            max,
+            max: Some(max),
             work,
             ..
         } => (param, value, max, work, text),
-        other => panic!("expected IterationBudget, got {other:?}"),
+        other => panic!("expected an IterationBudget naming a maximum, got {other:?}"),
     }
 }
 
@@ -174,4 +174,100 @@ fn mstl_names_iterate_inner_or_outer() {
     };
     let r = mstl(&y, &[7], &p).expect("one round");
     assert_eq!(r.iterate, 1);
+}
+
+/// At the boundary every count can overshoot its largest admissible value
+/// by exactly one step; the refusal names the count the caller raised (the
+/// larger one), not a small companion count such as the default
+/// `inner_iter = 2` (it used to answer `outer_iter = max + 1` with
+/// "pass inner_iter <= 1").
+#[test]
+fn a_boundary_overshoot_names_the_raised_count() {
+    let y = monthly(96);
+    let units = pass_units(96, 12, 7, 13, 23);
+    let max_outer = (STL_WORK_BUDGET / (2 * units) - 1) as usize;
+    let params = StlParams {
+        inner_iter: Some(2),
+        outer_iter: Some(max_outer + 1),
+        ..Default::default()
+    };
+    let (param, value, max, ..) = iteration_refusal(stl(&y, 12, &params).unwrap_err());
+    assert_eq!(
+        (param, value, max),
+        ("outer_iter", max_outer + 1, max_outer)
+    );
+    let ok = StlParams {
+        outer_iter: Some(max_outer),
+        ..params
+    };
+    assert!(stl(&y, 12, &ok).is_ok());
+
+    // MSTL: one round past the largest admissible iterate names iterate,
+    // not the default inner_iter = 5.
+    let y = two_seasonal(240);
+    let p = MstlParams {
+        iterate: 1 << 31,
+        ..MstlParams::default()
+    };
+    let (_, _, max_iterate, ..) = iteration_refusal(mstl(&y, &[7, 30], &p).unwrap_err());
+    let p = MstlParams {
+        iterate: max_iterate + 1,
+        ..MstlParams::default()
+    };
+    let (param, value, max, ..) = iteration_refusal(mstl(&y, &[7, 30], &p).unwrap_err());
+    assert_eq!(
+        (param, value, max),
+        ("iterate", max_iterate + 1, max_iterate)
+    );
+}
+
+/// When no single count fits with the others held fixed, the refusal says
+/// to reduce them together and quotes the admissible pass count — it used
+/// to read "pass inner_iter <= 0", a value `inner_iter` cannot take.
+#[test]
+fn counts_that_only_fit_together_are_refused_with_the_pass_budget() {
+    let y = monthly(96);
+    let units = pass_units(96, 12, 7, 13, 23);
+    let params = StlParams {
+        inner_iter: Some(1 << 20),
+        outer_iter: Some(1 << 20),
+        ..Default::default()
+    };
+    let e = stl(&y, 12, &params).unwrap_err();
+    let text = e.to_string();
+    let FiltersError::IterationBudget {
+        max: None,
+        max_passes,
+        ..
+    } = e
+    else {
+        panic!("expected a joint refusal, got {e:?}");
+    };
+    assert_eq!(max_passes as u128, STL_WORK_BUDGET / units);
+    assert!(
+        text.ends_with(&format!(
+            "no single count fits with the others held fixed, so reduce them together to \
+             inner_iter * (outer_iter + 1) <= {max_passes}, or to the default region of at \
+             most 32 inner passes per fit over at most two rounds"
+        )),
+        "{text}"
+    );
+    assert!(!text.contains("<= 0"), "{text}");
+    // MSTL with several periods counts the rounds too.
+    let p = MstlParams {
+        iterate: 1 << 20,
+        stl: StlParams {
+            inner_iter: Some(1 << 20),
+            outer_iter: Some(1 << 20),
+            ..Default::default()
+        },
+        ..MstlParams::default()
+    };
+    let text = mstl(&two_seasonal(240), &[7, 30], &p)
+        .unwrap_err()
+        .to_string();
+    assert!(
+        text.contains("reduce them together to iterate * inner_iter * (outer_iter + 1) <= "),
+        "{text}"
+    );
 }

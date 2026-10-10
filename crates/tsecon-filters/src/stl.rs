@@ -761,9 +761,10 @@ pub(crate) fn check_iteration_budget(
     if free(passes, r) || work <= STL_WORK_BUDGET {
         return Ok(());
     }
-    let budget_units = STL_WORK_BUDGET / per_round; // admissible r x passes
-                                                    // Largest admissible value of each count with the others held fixed:
-                                                    // inside the free region or within the budget, whichever is larger.
+    // The admissible rounds x passes within the budget.
+    let budget_units = STL_WORK_BUDGET / per_round;
+    // Largest admissible value of each count with the others held fixed:
+    // inside the free region or within the budget, whichever is larger.
     let max_inner = {
         let o1 = outer.saturating_add(1);
         let free_max = if r <= 2 { STL_FREE_PASSES / o1 } else { 0 };
@@ -791,22 +792,42 @@ pub(crate) fn check_iteration_budget(
     if let Some(m) = max_outer {
         candidates.push(("outer_iter", outer, m));
     }
-    if mstl && cfgs.len() > 1 && max_iterate >= 1 {
+    // `iterate` is a remedy only with several periods: with one, MSTL runs a
+    // single round whatever it says.
+    let several = mstl && cfgs.len() > 1;
+    if several && max_iterate >= 1 {
         candidates.push(("iterate", r, max_iterate));
     }
     // The widest overshoot: value / (max + 1), compared by cross-multiplying.
+    // At the boundary every count can overshoot by exactly one step (a tie);
+    // the larger count — the one the caller raised — is named then.
     let pick = candidates
         .iter()
         .filter(|&&(_, v, m)| v > m)
         .copied()
         .reduce(|a, b| {
-            if b.1.saturating_mul(a.2 + 1) > a.1.saturating_mul(b.2 + 1) {
+            let (lhs, rhs) = (b.1.saturating_mul(a.2 + 1), a.1.saturating_mul(b.2 + 1));
+            if lhs > rhs || (lhs == rhs && b.1 > a.1) {
                 b
             } else {
                 a
             }
         });
-    let (param, value, max) = pick.unwrap_or(("inner_iter", inner, max_inner));
+    // No single count fits with the others held fixed: name the largest.
+    let (param, value, max) = match pick {
+        Some((param, value, max)) => (param, value, Some(max)),
+        None => {
+            let mut counts = vec![("inner_iter", inner), ("outer_iter", outer)];
+            if several {
+                counts.push(("iterate", r));
+            }
+            let (param, value) = counts
+                .into_iter()
+                .reduce(|a, b| if b.1 > a.1 { b } else { a })
+                .unwrap_or(("inner_iter", inner));
+            (param, value, None)
+        }
+    };
     let to_usize = |v: u128| usize::try_from(v).unwrap_or(usize::MAX);
     Err(FiltersError::IterationBudget {
         filter,
@@ -814,9 +835,10 @@ pub(crate) fn check_iteration_budget(
         value: to_usize(value),
         inner_iter: to_usize(inner),
         outer_iter: to_usize(outer),
-        iterate: mstl.then_some(rounds),
+        iterate: several.then_some(rounds),
         work,
-        max: to_usize(max),
+        max: max.map(to_usize),
+        max_passes: to_usize(budget_units),
     })
 }
 
@@ -1048,7 +1070,7 @@ mod budget_tests {
                 r,
                 Err(FiltersError::IterationBudget {
                     param: "inner_iter",
-                    max: 32,
+                    max: Some(32),
                     ..
                 })
             ),
