@@ -81,6 +81,6 @@ pub use hamilton::{
 pub use hp::{hp_filter, hp_filter_one_sided, ravn_uhlig_lambda, Frequency};
 pub use mstl::{mstl, mstl_seasonal_strengths, MstlParams, MstlResult};
 pub use stl::{
-    seasonal_strength, stl, strength_from_components, StlConfig, StlParams, StlResult,
-    StrengthResult,
+    seasonal_strength, stl, stl_pass_work, strength_from_components, StlConfig, StlParams,
+    StlResult, StrengthResult, STL_FREE_PASSES, STL_WORK_BUDGET,
 };

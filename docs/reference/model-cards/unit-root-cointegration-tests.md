@@ -93,7 +93,11 @@ so compare the statistic only against the `crit` values reported here. Quote
 alternative is trend-stationary (the test then *diverges toward* non-rejection
 on trending data — see the trend-stationary fixture case, p ≈ 0.99 under `"c"`
 vs p ≈ 0 under `"ct"`); heavy negative MA errors (size distortion; AIC tends
-to pick too few lags there).
+to pick too few lags there). A `lags` or `max_lags` the series cannot carry
+(`n >= 2·lags + 3`, and `n >= 3 + ntrend + lags` for a fixed lag) or past
+the lag budget shared with `adf` (2^26 design entries, 2^35 multiply-adds;
+see the diagnostics card) is refused before any lag column is built, naming
+the keyword and the largest value that fits.
 
 **Validated against.** `arch.unitroot.DFGLS` (arch 8.0.0, an independent
 implementation) for the statistic, the AIC/BIC/t-stat selected lag, `nobs`,
@@ -197,7 +201,8 @@ treating the asymptotic critical values as finite-sample exact in very short
 samples (the table is asymptotic-only — the measured size at $T=250$ runs
 0.027–0.045 at the 5% values, slightly conservative, matching the paper's
 Table 2); comparing MZt to ADF critical values (its distribution matches
-DF-GLS, not ADF, and the other three have their own tables).
+DF-GLS, not ADF, and the other three have their own tables). Lag orders are
+sized and refused as for `dfgls`, naming `lags` or `max_lags`.
 
 **Validated against.** **No runnable independent implementation exists** —
 statsmodels 0.14.6 and arch 8.0.0 do not ship the M tests (a canary test
@@ -462,7 +467,15 @@ the clamps (1e-05, 0.999) as "off the table", not as exact probabilities.
 **Failure modes.** Rejecting because of a break under the *null* (broken random
 walk — the Lee-Strazicich critique); reading `break_index` as a dated,
 confidence-bounded break (use `bai_perron`); a `trim` too small for the lag
-order (the break dummy needs a pre-break regime — the error explains); treating
+order (the break dummy needs a pre-break regime, `lags <= int(n·trim) − 1` —
+the error explains, naming `lags` when the lag is fixed and `max_lags` when the
+search chose it); a `max_lags` past the base ADF's bound `n//2 − 3` or its lag
+budget (refused naming `max_lags`); a lag whose break-date scan — a
+`(n − 1 − lags) × (k + lags)` design refit at each of the `n − 2·int(n·trim)`
+candidate breaks — exceeds the lag budget shared with `adf` (2^26 design
+entries, 2^35 multiply-adds; lags up to the default cap are exempt from the
+work budget), refused before the design is built, naming `lags` or the
+`max_lags` that admitted it (see the diagnostics card); treating
 the `"t"` model's dating convention as identical to `"ct"`'s (the reference
 starts the `"t"` ramp one observation earlier; tsecon replicates it exactly and
 documents it in the module).

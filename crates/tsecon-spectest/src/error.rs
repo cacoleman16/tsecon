@@ -80,6 +80,37 @@ pub enum SpecTestError {
         /// The offending `max_power`.
         max_power: usize,
     },
+    /// RESET's `max_power` adds `max_power - 1` fitted-value powers, so the
+    /// augmented regression has `k + max_power - 1` regressors: refused —
+    /// before any power column is built — when that leaves no residual
+    /// degree of freedom (`n <= k + max_power - 1`) or the augmented design
+    /// exceeds the auxiliary-regression budgets of the Breusch-Godfrey test
+    /// ([`crate::BG_MAX_AUX_CELLS`], [`crate::BG_WORK_BUDGET`]).
+    ResetPowerTooLarge {
+        /// The offending `max_power`.
+        max_power: usize,
+        /// The sample size `n`.
+        n: usize,
+        /// The number of design columns `k`.
+        k: usize,
+        /// The largest admissible `max_power` (at least 2), or `None` when
+        /// even `max_power = 2` does not fit.
+        max: Option<usize>,
+        /// `true` when the order fits the sample but not the budgets.
+        over_budget: bool,
+    },
+    /// A fitted-value power `yhat^power` (`power <= max_power`) overflows to
+    /// infinity, so RESET's augmented regression cannot be formed. RESET is
+    /// invariant to the scale of `y`, so rescaling `y` (or a smaller
+    /// `max_power`) avoids it.
+    ResetPowerOverflow {
+        /// The offending `max_power`.
+        max_power: usize,
+        /// The first power that overflows.
+        power: usize,
+        /// The largest absolute fitted value.
+        max_abs_fitted: f64,
+    },
     /// A design (original, auxiliary, or a recursive-residual window) was rank
     /// deficient — collinear columns — so the normal equations have no unique
     /// solution.
@@ -194,6 +225,70 @@ impl fmt::Display for SpecTestError {
                 "invalid RESET max_power {max_power}: RESET adds fitted-value powers \
                  yhat^2 .. yhat^max_power, so it requires max_power >= 2"
             ),
+            Self::ResetPowerTooLarge {
+                max_power,
+                n,
+                k,
+                max,
+                over_budget,
+            } => {
+                let q = (*max_power as u128).saturating_sub(1);
+                let p = *k as u128 + q;
+                if *over_budget {
+                    // p < n here, so the counts fit a usize.
+                    let pu = usize::try_from(p).unwrap_or(usize::MAX);
+                    write!(
+                        f,
+                        "max_power = {max_power} makes the augmented RESET regression \
+                         n = {n} observations by k + max_power - 1 = {p} regressors ({} \
+                         entries, about {:.2e} multiply-adds), past {} (checked before any \
+                         power column is built)",
+                        n.saturating_mul(pu),
+                        crate::breusch_godfrey::breusch_godfrey_work(*n, pu) as f64,
+                        crate::breusch_godfrey::breusch_godfrey_exceeded_budget(*n, pu)
+                            .unwrap_or("the budget"),
+                    )?;
+                } else {
+                    write!(
+                        f,
+                        "max_power = {max_power} adds {q} fitted-value powers yhat^2 .. \
+                         yhat^max_power, so the augmented RESET regression has k + \
+                         max_power - 1 = {p} regressors for n = {n} observations and no \
+                         residual degree of freedom: it needs n > k + max_power - 1, with \
+                         k = {k} design columns"
+                    )?;
+                }
+                match max {
+                    Some(m) => write!(f, "; pass max_power <= {m}"),
+                    None => write!(
+                        f,
+                        "; even max_power = 2 does not fit, so supply a longer series or \
+                         fewer design columns"
+                    ),
+                }
+            }
+            Self::ResetPowerOverflow {
+                max_power,
+                power,
+                max_abs_fitted,
+            } => {
+                write!(
+                    f,
+                    "max_power = {max_power}: the fitted-value power yhat^{power} overflows to \
+                     infinity (max |yhat| = {max_abs_fitted:.4e}), so the augmented RESET \
+                     regression cannot be formed; "
+                )?;
+                if *power > 2 {
+                    write!(
+                        f,
+                        "pass max_power <= {}, or rescale y (RESET is invariant to the scale \
+                         of y)",
+                        power - 1
+                    )
+                } else {
+                    write!(f, "rescale y (RESET is invariant to the scale of y)")
+                }
+            }
             Self::SingularDesign { what } => write!(
                 f,
                 "singular design in the {what}: the columns are collinear (rank \

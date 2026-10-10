@@ -195,7 +195,8 @@ pub enum ForecastError {
     },
     /// The long-run-variance lag truncation is too large for the sample:
     /// `lags` must be strictly less than the number of observations, since
-    /// the Bartlett sum needs an autocovariance at that lag.
+    /// the Bartlett sum needs an autocovariance at that lag. The message
+    /// names the `lrv_lags` argument of every test that raises it.
     InvalidLrvLags {
         /// Which test rejected the lag count.
         what: &'static str,
@@ -567,9 +568,11 @@ impl fmt::Display for ForecastError {
             ),
             ForecastError::InvalidLrvLags { what, lags, n } => write!(
                 f,
-                "{what}: long-run-variance lag truncation {lags} is invalid \
-                 for {n} observations: requires lags < n so the Bartlett sum \
-                 has an autocovariance at every lag up to {lags}"
+                "{what}: lrv_lags = {lags} (the Bartlett long-run-variance lag \
+                 truncation) is invalid for {n} observations: requires \
+                 lrv_lags < n so the Bartlett sum has an autocovariance at \
+                 every lag up to lrv_lags; pass lrv_lags <= {}",
+                n.saturating_sub(1)
             ),
             ForecastError::EmptyTestFunctions => write!(
                 f,

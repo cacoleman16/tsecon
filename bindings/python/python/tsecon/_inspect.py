@@ -22,6 +22,8 @@ boundary is already satisfied.
 """
 from __future__ import annotations
 
+import operator
+
 import numpy as np
 
 from . import _core
@@ -89,6 +91,60 @@ def _validate_alpha(alpha):
             f"read its statistic against the reported critical values."
         )
     return a
+
+
+def _count_arg(name, value):
+    """An integer count argument, as the compiled boundary takes one: a Python
+    or NumPy integer (a bool counts as 0/1); a float — even an integer-valued
+    one — a string or None is refused naming the argument."""
+    try:
+        return operator.index(value)
+    except TypeError:
+        raise TypeError(
+            f"check_series: {name}={value!r} is of type {type(value).__name__}, "
+            f"but this parameter takes an integer — a count such as a lag "
+            f"length or a number of breaks."
+        ) from None
+
+
+def _validate_counts(arr, lags, max_breaks):
+    """Validate `lags` (shape-dependent) and `max_breaks` up front, by name.
+
+    They used to pass through unchecked: a 1D `lags` of -1, 0 or 2**62 was
+    silently clamped into [1, n - 2]; a 2D `lags` of 2**62 drove a
+    pure-Python loop of that length (a hang); and `max_breaks=-1` was
+    accepted on a quiet series but raised a bare OverflowError naming
+    nothing when the sup-F scan escalated to bai_perron.
+    """
+    if lags is not None:
+        lg = _count_arg("lags", lags)
+        if arr.ndim == 1:
+            hi = int(arr.shape[0]) - 3
+            if not 1 <= lg <= hi:
+                raise ValueError(
+                    f"check_series: lags={lg} is out of range: for 1D input `lags` "
+                    f"is the Ljung-Box horizon and must satisfy 1 <= lags <= n - 3 "
+                    f"= {hi} (the battery may test the n - 1 first differences, and "
+                    f"the horizon must leave the last autocorrelation two products "
+                    f"to average). Omit it for the default min(10, n // 5)."
+                )
+        elif lg < 1:
+            raise ValueError(
+                f"check_series: lags={lg} is out of range: for 2D input `lags` "
+                f"caps the VAR lag search and must be >= 1 (default 8; a cap "
+                f"beyond the feasible lags simply searches all of them). It is "
+                f"not a Ljung-Box horizon here."
+            )
+        lags = lg
+    mb = _count_arg("max_breaks", max_breaks)
+    if not 1 <= mb <= 10:
+        raise ValueError(
+            f"check_series: max_breaks={mb} is out of range: it caps the "
+            f"Bai-Perron scan run when the sup-F test rejects and must satisfy "
+            f"1 <= max_breaks <= 10 (the published sequential critical values "
+            f"stop at 10 breaks; default 5)."
+        )
+    return lags, mb
 
 
 def _detrend(y):
@@ -182,8 +238,9 @@ def _outliers(y):
 
 def _serial_correlation(z, scale, lags, alpha, tests_run):
     m = z.size
-    lb_lags = int(lags) if lags is not None else min(10, m // 5)
-    lb_lags = max(1, min(lb_lags, m - 2))
+    # `lags` was validated up front (1 <= lags <= n - 3 <= m - 2); the
+    # default min(10, m // 5) is at least 3 since m >= 19.
+    lb_lags = lags if lags is not None else min(10, m // 5)
     lb = _core.ljung_box(z, nlags=lb_lags)
     lb_p = float(np.asarray(lb["lb_pvalue"])[-1])
     tests_run.append(
@@ -1031,23 +1088,13 @@ def _multivariate(data, lags, alpha):
         )
 
     nv = var_data.shape[0]
-    cap = int(lags) if lags is not None else 8
-    max_lag = 0
-    for p in range(1, cap + 1):
-        if nv - p - (k * p + 1) >= 10:  # >=10 residual dof per equation
-            max_lag = p
+    cap = lags if lags is not None else 8  # validated >= 1 up front
+    # The largest p <= cap leaving >= 10 residual dof per equation,
+    # nv - p - (k p + 1) >= 10, i.e. p <= (nv - 11) / (k + 1) — in closed
+    # form, so a huge cap costs nothing (a loop up to it used to hang).
+    max_lag = max(0, min(cap, (nv - 11) // (k + 1)))
     sel = None
-    if cap < 1:
-        report["var_lag_selection"] = {
-            "skipped_reason": (
-                f"VAR lag search skipped: lags={cap} caps the search below 1. "
-                f"For 2D input the `lags` argument is the lag-search cap "
-                f"(default 8), not a Ljung-Box horizon — pass lags>=1 or omit "
-                f"it."
-            )
-        }
-        report["stability"] = {"skipped_reason": "no VAR was fit"}
-    elif max_lag == 0:
+    if max_lag == 0:
         report["var_lag_selection"] = {
             "skipped_reason": (
                 f"no VAR lag is feasible with n={nv}, k={k}: even lags=1 "
@@ -1315,8 +1362,13 @@ def check_series(
     ``(n, 1)`` column squeezes to univariate).
 
     ``lags`` means different things by input shape: for 1D input it is the
-    Ljung-Box horizon (default ``min(10, n // 5)``); for 2D input it caps
-    the VAR lag search (default 8). ``alpha`` must lie in (0.01, 0.10] —
+    Ljung-Box horizon, an integer ``1 <= lags <= n - 3`` (default
+    ``min(10, n // 5)``); for 2D input it caps the VAR lag search, an
+    integer ``>= 1`` (default 8; a cap beyond the feasible lags searches all
+    of them). ``max_breaks`` must be an integer in ``[1, 10]``. Both are
+    validated up front and refused by name otherwise — a float, even an
+    integer-valued one, is refused like at the compiled boundary.
+    ``alpha`` must lie in (0.01, 0.10] —
     the compiled KPSS p-value is clamped to that range, so values outside
     it would decide the confirmatory quadrant by the clamp rather than the
     data. ``seasonal_period`` must be an integer >= 2 with at least two
@@ -1335,6 +1387,7 @@ def check_series(
     """
     alpha = _validate_alpha(alpha)
     arr = _validate(data)
+    lags, max_breaks = _validate_counts(arr, lags, max_breaks)
     if seasonal_period is not None:
         s = int(seasonal_period)
         if s != seasonal_period or s < 2:

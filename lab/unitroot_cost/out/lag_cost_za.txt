@@ -1,0 +1,5 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+zivot_andrews(n = 3000, regression 'c', fixed lags): largest admissible lags = 70 (the work budget binds; int(n*trim) - 1 = 449)
+  work 3.37e+10 multiply-adds, ran in 37.1 s (1.10 ns/madd)
+zivot_andrews(n = 1e5, lags = 14000, autolag=None): refused in 0.4 ms, quoting lags <= 68

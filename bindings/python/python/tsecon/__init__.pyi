@@ -51,6 +51,11 @@ def jarque_bera(x: _ArrayLike) -> dict[str, float]:
 def arch_lm(resid: _ArrayLike, nlags: int = ...) -> dict[str, float]:
     """Engle's ARCH-LM test for conditional heteroskedasticity.
 
+    `nlags` must leave `n >= 2*nlags + 2`; an order past that, or one whose
+    `(n - nlags) x nlags` auxiliary design exceeds 2^26 entries (512 MiB) or
+    whose normal equations exceed 2^35 multiply-adds, is refused before any
+    lag column is built, naming `nlags` and the largest order that fits.
+
     Returned keys: `df`, `nobs`, `p_value`, `statistic`.
 
     Further arguments, with defaults: `nlags` (4).
@@ -64,6 +69,14 @@ def adf(
     maxlag: int | None = ...,
 ) -> dict[str, Any]:
     """Augmented Dickey-Fuller test with MacKinnon p-values.
+
+    A `maxlag` past the statsmodels bound n//2 - ntrend - 1 (one less for
+    regression "n" on an even n), or whose lag design exceeds 2^26 entries
+    (512 MiB) or lag search 2^35 multiply-adds (about a minute), is refused
+    before any lag column is built, naming `maxlag` and the largest that
+    fits. Orders up to the default cap ceil(12*(n/100)^(1/4)) are exempt
+    from the work budget, so a default call is refused only when its design
+    would not fit in memory (above about 610,000 observations).
 
     Returned keys: `crit`, `nobs`, `p_value`, `statistic`, `used_lag`.
 
@@ -82,6 +95,11 @@ def kpss(
 
 def check_stationarity(y: _ArrayLike, alpha: float = ...) -> dict[str, Any]:
     """The ADF + KPSS confirmatory-quadrant workflow with a recommendation.
+
+    The ADF leg runs the default lag search, so a series whose default lag
+    design exceeds the lag budget of `adf` (2^26 entries, above about
+    610,000 observations) is refused; run `adf` with an explicit `maxlag`
+    there.
 
     Returned keys: `adf_p_value`, `adf_statistic`, `alpha`,
     `interpretation`, `kpss_p_value`, `kpss_statistic`, `quadrant`,
@@ -122,7 +140,11 @@ def dfgls(
     `method` ("aic" default, "bic", "t-stat") on the OLS-detrended series
     (Perron-Qu 2007) searching 0..=`max_lags` (default: Schwert's
     ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1). When `lags` is given,
-    `method`/`max_lags` are ignored (arch behavior). Returns `statistic`,
+    `method`/`max_lags` are ignored (arch behavior). A `lags` or `max_lags`
+    that leaves too few observations (`n >= 2*lags + 3`, and `n >= 3 +
+    ntrend + lags` for a fixed lag), or past the size budgets of `adf`, is
+    refused before any lag column is built, naming the keyword and the
+    largest value that fits. Returns `statistic`,
     `p_value`, `used_lag`, `nobs` (= n - 1 - used_lag), `crit`
     ({"1%","5%","10%"}), `trend`. Statistic and selected lag match
     arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
@@ -152,7 +174,8 @@ def ng_perron(
     this battery over `dfgls` under a suspected large negative MA root;
     caveat (Perron-Qu 2007): on data far from the null MAIC drives the lag
     to its maximum and power collapses — cap `max_lags` or fix `lags`
-    there."""
+    there. A `lags` or `max_lags` too long for the sample or past the size
+    budgets of `adf` is refused as in `dfgls`, naming the keyword."""
 
 def phillips_ouliaris(
     y: _ArrayLike,
@@ -190,9 +213,18 @@ def zivot_andrews(
     `autolag` "aic" (default) / "bic" / "t-stat" capped at `max_lags`, or
     `autolag=None` with `lags` fixed (both None: int(12*(n/100)**0.25)).
     Pass either `lags` or `autolag`, not both. P-values and critical values
-    interpolate the statsmodels-simulated null table. Returns dict keys:
-    `stat`, `pvalue`, `crit` {"1%","5%","10%"}, `break_index`, `lags`,
-    `nobs`, `trim`, `regression`. Matches statsmodels `zivot_andrews`.
+    interpolate the statsmodels-simulated null table. A `max_lags` past the
+    base ADF's bound n//2 - 3 or its size budgets (see `adf`) is refused
+    naming `max_lags`. The lag the break regressions use must satisfy
+    lags <= int(n*trim) - 1, refused naming `lags` when fixed and `max_lags`
+    when searched. The break-date scan refits a (n - 1 - lags) x (k + lags)
+    design at each of the n - 2*int(n*trim) candidate breaks and shares the
+    lag budgets of `adf` (lags up to the default cap are exempt from the
+    work budget): a lag past them is refused before the design is built,
+    naming `lags` or the `max_lags` that admitted it.
+    Returns dict keys: `stat`, `pvalue`, `crit` {"1%","5%","10%"},
+    `break_index`, `lags`, `nobs`, `trim`, `regression`. Matches
+    statsmodels `zivot_andrews`.
     """
 
 def variance_ratio(
@@ -254,6 +286,10 @@ def ndiffs(
 ) -> dict[str, Any]:
     """How many differences a series needs, with the per-order test evidence.
 
+    With `test="adf"` a series whose default lag design exceeds the lag
+    budget of `adf` (2^26 entries, above about 610,000 observations) is
+    refused.
+
     Returned keys: `alpha`, `d`, `interpretation`, `max_d`, `steps`, `stop`,
     `test`.
 
@@ -308,8 +344,11 @@ def check_series(
     reported in families with the multiple-testing arithmetic shown — never
     silently corrected — and the report ends in an ordered `recommendations`
     list routing to concrete tsecon calls. JSON-serializable throughout.
-    `lags` is shape-dependent: the Ljung-Box horizon for 1D input (default
-    min(10, n//5)), the VAR lag-search cap for 2D input (default 8). `alpha`
+    `lags` is shape-dependent: the Ljung-Box horizon for 1D input, an
+    integer 1 <= lags <= n - 3 (default min(10, n//5)); the VAR lag-search
+    cap for 2D input, an integer >= 1 (default 8). `max_breaks` must be an
+    integer in [1, 10]. Both are validated up front and refused by name
+    (a float is refused as at the compiled boundary). `alpha`
     must lie in (0.01, 0.10] — the compiled KPSS p-value is clamped to that
     range. `seasonal_period` must be an integer >= 2 with at least two full
     cycles in sample.
@@ -1173,7 +1212,13 @@ def stl(
 
     Mirrors statsmodels.tsa.seasonal.STL parameter semantics and defaults
     exactly (matched elementwise at 1e-8; observed ~1e-12); requires
-    n >= 2*period. Returns `seasonal`, `trend`, `resid` (y = seasonal +
+    n >= 2*period (a longer period is refused naming `period` and the
+    largest that fits). `inner_iter` and `outer_iter` are fixed loop counts,
+    budgeted: more than 32 inner passes (`inner_iter * (outer_iter + 1)`,
+    the robust default's count) whose LOESS work exceeds 2^32 evaluation
+    units (about half a minute) are refused before any smoothing, naming
+    the count and its largest admissible value; the default counts are
+    never refused. Returns `seasonal`, `trend`, `resid` (y = seasonal +
     trend + resid), `weights` (bisquare robustness weights; all 1 unless
     the outer loop runs), `period`, and `config` (the resolved windows,
     degrees, jumps, and inner/outer iteration counts).
@@ -1212,7 +1257,11 @@ def mstl(
     (default 2; 1 for a single period), remaining STL keywords forwarded
     to every pass. statsmodels' Box-Cox `lmbda` option is not implemented
     (pre-transform y instead); duplicate periods and iterate=0 are
-    refused. Returns `seasonal` (dict of per-period arrays keyed
+    refused. `iterate`, `inner_iter` and `outer_iter` share the STL work
+    budget (2^32 LOESS units over all rounds and periods; the default
+    counts — at most 32 inner passes per fit over at most two rounds — are
+    never refused), naming the count. Returns `seasonal` (dict of
+    per-period arrays keyed
     "seasonal_<period>"), `trend`, `resid`, `weights` (from the final
     pass), the resolved `periods`/`windows`, `iterate`,
     `dropped_periods`, and per-period `seasonal_strength` (None for a
@@ -1228,8 +1277,9 @@ def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
     """Wang-Smith-Hyndman seasonal/trend strength from a default STL fit.
 
     strength = max(0, 1 - var(resid)/var(component + resid)), sample
-    variances; near 1 means the component dominates. Returns
-    `seasonal_strength`, `trend_strength`, `period`.
+    variances; near 1 means the component dominates. A period longer than
+    n/2 is refused naming `period`. Returns `seasonal_strength`,
+    `trend_strength`, `period`.
     """
 
 # ------------------------------------------------- forecasting / evaluation
@@ -2560,6 +2610,9 @@ def cw_test(
 ) -> dict[str, float]:
     """Clark-West test for nested-model equal predictive accuracy.
 
+    `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+    below the number of observations (refused by name otherwise).
+
     Returned keys: `cw_stat`, `mean_adj_diff`, `p_value`.
 
     Further arguments, with defaults: `lrv_lags` (0).
@@ -2567,6 +2620,9 @@ def cw_test(
 
 def gw_test(loss1: _ArrayLike, loss2: _ArrayLike, lrv_lags: int = ...) -> dict[str, Any]:
     """Giacomini-White unconditional test of equal predictive ability.
+
+    `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+    below the number of observations (refused by name otherwise).
 
     Returned keys: `df`, `gw_stat`, `p_value`.
 
@@ -3845,7 +3901,10 @@ def panel_unit_root(
     series (unbalanced OK for "ips"/"fisher"; "llc" needs a common T). test is
     "ips" (default), "llc", or "fisher"; regression is "c"/"ct"/"n" ("n" is
     invalid for "ips"); lags is None (per-unit auto AIC), an int (fixed common
-    lag), or "aic"/"bic"/"t-stat". Returns statistic, p_value,
+    lag), or "aic"/"bic"/"t-stat"; a per-unit lag order too long for a unit
+    (or past the size budgets of `adf`) is refused naming `lags` (fixed) or
+    `max_lags` (the search cap). `lrv_bandwidth` must be a finite value
+    >= 0 (None: the LLC rule round(3.21 T^(1/3))). Returns statistic, p_value,
     per_unit_tstat/pvalue/lags/nobs, n_units, regression, plus test-specific
     extras: ips -> t_bar; llc -> delta_hat, t_delta, s_n, t_bar_periods;
     fisher -> maddala_wu, choi_z, choi_z_pvalue.
@@ -4099,6 +4158,14 @@ def heteroskedasticity_test(
 def reset_test(y: _ArrayLike, x: _ArrayLike, max_power: int = ...) -> dict[str, Any]:
     """Ramsey RESET functional-form F-test; x is T x k.
 
+    The augmented regression has k + max_power - 1 regressors, so
+    `max_power` must leave T > k + max_power - 1 and the augmented design
+    within the Breusch-Godfrey auxiliary-regression budgets (2^26 entries,
+    2^34 multiply-adds); a larger one is refused before any power column is
+    built, naming `max_power` and the largest that fits. A power of a large
+    fitted value that overflows to infinity is refused naming `max_power`
+    (RESET is invariant to the scale of `y`, so rescaling it also helps).
+
     Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
 
     Further arguments, with defaults: `max_power` (3).
@@ -4260,7 +4327,11 @@ def dsge_solve(
 ) -> dict[str, Any]:
     """Blanchard-Kahn solution of a linear RE model A E[y_{t+1}] = B y_t + C z.
 
-    Returns the decision rule g, the law of motion p/q, eigenvalue_moduli, and verdict.
+    Returns the decision rule g, the law of motion p/q, eigenvalue_moduli,
+    and the Blanchard-Kahn verdict, which on return always reads "unique
+    stable solution (...)": an indeterminate model (fewer unstable
+    eigenvalues than jump variables) or one with no stable solution (more)
+    raises ValueError instead, naming the regime and both counts.
 
     Returned keys: `eigenvalue_moduli`, `g`, `p`, `q`, `verdict`.
     """

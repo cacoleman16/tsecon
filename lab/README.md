@@ -46,6 +46,10 @@ lab/
 ├── bq_bands/            # evidence behind the shipped long_run_svar_bands:
 │   │                    #   the committed coverage Monte Carlo output, the
 │   │                    #   replication-guard numbers and the card examples
+├── stl_cost/            # cost of stl/mstl per LOESS unit: the evidence
+│                        #   behind the STL iteration budget (audit round 16)
+├── unitroot_cost/       # cost of the adf/arch_lm lag regressions: the
+│                        #   evidence behind the tsecon-diag lag budget
 ├── audit/               # probe scripts + summaries behind the audit rounds
 │   ├── round11/         #   audit round 11 sweeps (docs/roadmap/26-)
 │   └── repo/            #   the whole-repository audit (docs/roadmap/27-)

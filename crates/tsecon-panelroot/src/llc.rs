@@ -208,6 +208,8 @@ pub(crate) fn llc(
                 unit: i,
                 kernel: kernel.name(),
                 value: sigma_y2,
+                bandwidth,
+                nobs: dx.len(),
             });
         }
         s_list.push(sigma_y2.sqrt() / sigma_eps);

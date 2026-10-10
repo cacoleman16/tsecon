@@ -59,6 +59,7 @@
 mod acf;
 mod advisors;
 mod arch;
+mod budget;
 mod dfgls;
 mod error;
 mod mackinnon;
@@ -81,8 +82,9 @@ pub use advisors::{
     NsdiffsStop, NSDIFFS_SEAS_THRESHOLD,
 };
 pub use arch::{arch_lm, ArchLmResult};
+pub use budget::{lag_budget_exceeded, LAG_DESIGN_MAX_CELLS, LAG_WORK_BUDGET};
 pub use dfgls::{dfgls, DfglsResult, DfglsTrend};
-pub use error::DiagError;
+pub use error::{DiagError, LagLimit};
 pub use mackinnon::{mackinnon_crit, mackinnon_p, AdfCriticalValues};
 pub use mackinnon_ext::{mackinnon_coint_crit, mackinnon_coint_p};
 pub use ng_perron::{

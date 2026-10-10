@@ -715,9 +715,12 @@ def test_johansen_states_its_deterministic_case():
 
 
 def test_multivariate_lags_zero_names_the_cap_not_dof():
+    # Audit round 16 (B5): lags < 1 is refused up front, naming `lags` and
+    # still explaining that for 2D input it caps the VAR lag search (it used
+    # to be reported as a skipped search).
     rng = np.random.default_rng(5)
-    rep = tsecon.check_series(rng.standard_normal((120, 2)), lags=0)
-    assert "caps the search" in rep["var_lag_selection"]["skipped_reason"]
+    with pytest.raises(ValueError, match=r"lags=0 is out of range: for 2D input `lags` caps the VAR lag search"):
+        tsecon.check_series(rng.standard_normal((120, 2)), lags=0)
 
 
 def test_outlier_spike_is_cross_referenced_in_the_normality_caveat():
