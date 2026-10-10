@@ -10,9 +10,17 @@
 //!   `center`/`scale`: the standardized-panel smoother output, the edge factor
 //!   and the de-standardized edge nowcast.
 //!
+//! * `singular_cases` — zero idiosyncratic variances observed together (a
+//!   singular observation density): the log-likelihood is the density on
+//!   the support, the value with the redundant column set to NaN, against
+//!   statsmodels on that reduced panel and an exact (rational / 80-digit
+//!   decimal) Kalman filter, under several column orders.
+//!
 //! statsmodels' filter and the crate's univariate sequential filter agree to
 //! roundoff, not bitwise; the gates are 1e-8 relative on the log-likelihood
-//! and 1e-8 absolute on the moments (achieved 5e-13 and 6e-11; see
+//! and 1e-8 absolute on the moments (achieved over the three pinned cases:
+//! log-likelihood 5.2e-13 relative, states 2.6e-10 and covariances 1.2e-10
+//! absolute, both on the standardized panel; see
 //! `achieved_agreement_is_far_inside_the_gates`).
 
 mod common;
@@ -145,17 +153,149 @@ fn standardized_smoother_and_edge_nowcast_match_reference() {
 
 #[test]
 fn achieved_agreement_is_far_inside_the_gates() {
-    // Measured on the committed fixture (x86-64): loglik 1.7e-13 / 5.2e-13
-    // relative, smoothed states 6.0e-11 / 2.8e-11 and their covariances
-    // 1.7e-11 / 8.6e-12 absolute for the two raw cases. A drift towards the
-    // 1e-8 gates would mean a real change in the recursion, not roundoff.
+    // Measured on the committed fixture (x86-64): loglik 1.7e-13 / 5.2e-13 /
+    // 3.5e-13 relative, smoothed states 6.0e-11 / 2.8e-11 / 2.6e-10 and
+    // their covariances 1.7e-11 / 8.6e-12 / 1.2e-10 absolute for
+    // dynamic_factor_r2_p2 / kalman_smoother_q / standardized_r1_p3 — the
+    // worst over the three, which the docs quote, is the standardized case.
+    // A drift towards the 1e-8 gates would mean a real change in the
+    // recursion, not roundoff.
+    let mut devs = Vec::new();
     for name in ["dynamic_factor_r2_p2", "kalman_smoother_q"] {
-        let (ll, s, cv) = assert_case_raw(name);
+        devs.push((name, assert_case_raw(name)));
+    }
+    let c = case("standardized_r1_p3");
+    let x = as_mat_nan(&c["panel"]);
+    let res = smooth_standardized(
+        &params_of(&c),
+        x.as_ref(),
+        &as_vec(&c["center"]),
+        &as_vec(&c["scale"]),
+    )
+    .unwrap();
+    let sm = &res.smoothing;
+    let dev = deviations(&c, sm.loglik, &sm.smoothed_state, &sm.smoothed_state_cov);
+    devs.push(("standardized_r1_p3", dev));
+    for (name, (ll, s, cv)) in devs {
         eprintln!("{name}: loglik rel {ll:e}, state abs {s:e}, state cov abs {cv:e}");
         assert!(
             ll < 1e-11 && s < 1e-9 && cv < 1e-9,
             "{name}: {ll:e} {s:e} {cv:e}"
         );
+    }
+}
+
+/// The singular-density cases of `singular_cases`, one per column order:
+/// the case's parameters and panel with the columns in `order`, the index
+/// (in the permuted panel) of the redundant column, and the order's entry.
+fn singular_orders(name: &str) -> Vec<(DfmParams, Mat<f64>, usize, Value)> {
+    let fx = load_fixture(FIXTURE);
+    let c = fx["singular_cases"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .find(|c| c["name"] == name)
+        .unwrap_or_else(|| panic!("singular case {name} missing"))
+        .clone();
+    let params = params_of(&c);
+    let y = as_mat_nan(&c["panel"]);
+    c["orders"]
+        .as_array()
+        .unwrap()
+        .iter()
+        .map(|o| {
+            let order: Vec<usize> = o["order"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .map(|v| v.as_u64().unwrap() as usize)
+                .collect();
+            let p = DfmParams {
+                loadings: Mat::from_fn(order.len(), params.n_factors(), |i, j| {
+                    params.loadings[(order[i], j)]
+                }),
+                factor_ar: params.factor_ar.clone(),
+                factor_cov: params.factor_cov.clone(),
+                idiosyncratic: order.iter().map(|&k| params.idiosyncratic[k]).collect(),
+            };
+            let yo = Mat::from_fn(y.nrows(), order.len(), |t, i| y[(t, order[i])]);
+            let redundant = o["redundant"].as_u64().unwrap() as usize;
+            (p, yo, redundant, o.clone())
+        })
+        .collect()
+}
+
+/// **Zero idiosyncratic variances observed together.** When more than `r`
+/// series with zero idiosyncratic variance are observed in one period, the
+/// first pins the factor and the others are redundant: the log-likelihood
+/// is the density on the support, the value with the redundant column set
+/// to NaN — pinned against statsmodels on that reduced panel (1e-10) and an
+/// exact rational / 80-digit decimal Kalman filter (1e-12), and bitwise
+/// against the crate's own smoother on the reduced panel (a skipped element
+/// leaves the recursion untouched). Before the roundoff test on `F_*`
+/// (tsecon-ssm `TOLERANCE_CANCEL`) the redundant element's dust variance
+/// entered the sum: the two-period case returned `+18.657` against
+/// `-1.737`, and orders `[0, 1, 2, 3]`, `[0, 1, 3, 2]`, `[0, 3, 1, 2]` and
+/// `[0, 3, 2, 1]` of the T = 100 panel `-275.617` / `-336.902` against
+/// `-293.151` / `-355.055`.
+#[test]
+fn zero_variance_series_observed_together_give_the_density_on_the_support() {
+    for name in ["zero_idio_two_periods", "zero_idio_pair_t100"] {
+        for (params, y, redundant, o) in singular_orders(name) {
+            let order = &o["order"];
+            let full = smooth_fixed(&params, y.as_ref()).unwrap();
+            let mut yr = y.clone();
+            for t in 0..yr.nrows() {
+                yr[(t, redundant)] = f64::NAN;
+            }
+            let reduced = smooth_fixed(&params, yr.as_ref()).unwrap();
+            assert_eq!(
+                full.loglik.to_bits(),
+                reduced.loglik.to_bits(),
+                "{name} {order}: {} vs {} with the redundant column NaN",
+                full.loglik,
+                reduced.loglik
+            );
+            assert_eq!(
+                full.smoothed_state, reduced.smoothed_state,
+                "{name} {order}"
+            );
+            let ll_sm = o["loglik"].as_f64().unwrap();
+            let ll_exact = o["loglik_exact"].as_f64().unwrap();
+            let rel_sm = (full.loglik - ll_sm).abs() / ll_sm.abs();
+            let rel_exact = (full.loglik - ll_exact).abs() / ll_exact.abs();
+            assert!(
+                rel_sm <= 1e-10,
+                "{name} {order}: loglik {} vs statsmodels {ll_sm}",
+                full.loglik
+            );
+            assert!(
+                rel_exact <= 1e-12,
+                "{name} {order}: loglik {} vs exact {ll_exact}",
+                full.loglik
+            );
+            let ref_state = as_mat(&o["smoothed_state"]);
+            for (t, row) in full.smoothed_state.iter().enumerate() {
+                for (j, v) in row.iter().enumerate() {
+                    assert!(
+                        (v - ref_state[(t, j)]).abs() <= 1e-9,
+                        "{name} {order}: state[{t}][{j}]"
+                    );
+                }
+            }
+            let ref_cov = o["smoothed_state_cov"].as_array().unwrap();
+            for (t, m) in full.smoothed_state_cov.iter().enumerate() {
+                let r = as_mat(&ref_cov[t]);
+                for i in 0..m.nrows() {
+                    for j in 0..m.ncols() {
+                        assert!(
+                            (m[(i, j)] - r[(i, j)]).abs() <= 1e-9,
+                            "{name} {order}: cov[{t}]"
+                        );
+                    }
+                }
+            }
+        }
     }
 }
 

@@ -17,7 +17,13 @@ machine's load, so the ns-per-unit column is the number that matters); the
 one-off coefficient prices the edge-of-stationarity case. Each case is timed
 as the best of three on a stationary model with unit idiosyncratic
 variances; the ns-per-unit column is what the 2^34 cap is calibrated against.
-The last block shows refusals past the caps.
+The wide-N cases at the end (N = 4096 and 8192, the largest N the N x N guard
+admits, at m = 1, 30 and 60 and T up to the cap) were added in audit round 16:
+before tsecon-ssm accepted a diagonal observation covariance without its dense
+jittered Cholesky, that unpriced O(N^3) one-off took 18-20 s and 3.1 GB at
+N = 8192 even for one period, and the at-cap calls 20-36 s. The N^2 term of
+the budget now prices building that dense matrix (once; per period it
+over-covers it). The last block shows refusals past the caps.
 
 Run:  python lab/audit/wave11/dfm_smooth_cost.py --fit > lab/audit/wave11/out/dfm_smooth_cost.txt
 """
@@ -46,6 +52,13 @@ CASES = [  # (T, N, r, p, AR coefficient on the first lag)
     (1, 2, 8, 120, 0.5),
     (1, 2, 8, 120, 0.99999),
     (1, 2, 1, 960, EDGE),  # one factor: its root is exact, so it stays < 1
+    # Wide N (audit round 16): one period, then T up to the cap.
+    (1, 8192, 1, 1, 0.5),
+    (227, 8192, 1, 1, 0.5),
+    (77, 8192, 30, 1, 0.5),
+    (25, 8192, 60, 1, 0.5),
+    (819, 4096, 1, 1, 0.5),
+    (181, 4096, 30, 1, 0.5),
 ]
 N_FIT = 10
 REFUSED = [  # (T, N, r, p): past a cap, refused before anything is built

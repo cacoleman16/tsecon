@@ -8,7 +8,7 @@
 //! and "the transition matrix", which are not arguments of this function.
 
 use numpy::{IntoPyArray, PyArrayMethods, PyReadonlyArray1, PyReadonlyArray2};
-use pyo3::exceptions::PyValueError;
+use pyo3::exceptions::{PyTypeError, PyValueError};
 use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tsecon_nowcast::tsecon_ssm::tsecon_linalg::LinalgError;
@@ -23,22 +23,28 @@ use crate::{to_faer, to_py, vec1};
 /// The filter and smoother keep sequences of `m x m` covariance matrices,
 /// one per period (predicted, filtered, smoothed, plus the returned
 /// `smoothed_state_cov`), and the state-space form stores the `N x N`
-/// observation covariance densely. `2^26` cells is half a GiB per sequence
-/// — the bound `unobserved_components` uses for the same engine.
+/// observation covariance densely, once. `2^26` cells is half a GiB per
+/// sequence or for that one matrix — the bound `unobserved_components` uses
+/// for the same engine. (The engine accepts the diagonal `N x N` matrix by
+/// inspection; until audit round 16 it confirmed it with a dense jittered
+/// Cholesky, about six `N x N` buffers and `O(N^3)` work that no budget
+/// priced: 3.1 GB and 18-20 s at `N = 8192`.)
 const MAX_CELLS: u128 = 1 << 26;
 
 /// Work budget of one smoothing pass, in units of about a nanosecond:
 /// `2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000` per period plus `16 m^3` once.
 /// Per period the filter and smoother form a few `m x m` triple products,
 /// each observed series costs an `O(m^2)` update on the way forward and
-/// back, the engine touches the dense `N x N` observation covariance, and
-/// the last two terms are the per-series and per-period overhead (about 1
+/// back, the `N^2` term prices building and checking the dense `N x N`
+/// observation covariance (a one-off that the per-period term over-covers
+/// for `T > 1`), and the last two terms are the per-series and per-period
+/// overhead (about 1
 /// and 12 microseconds); the one-off term is the stationary initialization
 /// (the companion eigenvalue check and the Lyapunov doubling). The doubling
 /// runs until `rho^(2^k)` drops below machine precision, so its iteration
 /// count grows with the factors' persistence: about 6 doublings at a
 /// spectral radius of 0.5, 22 at 0.99999 and 58 just below one, where a
-/// one-period call costs about 14 ns per `m^3` (12.4 s at `m = 960`) — the
+/// one-period call costs about 12 ns per `m^3` (10.9 s at `m = 960`) — the
 /// `16 m^3` term prices that worst case. The per-period coefficients were
 /// chosen from a non-negative least-squares fit to the timings that
 /// `lab/audit/wave11/dfm_smooth_cost.py` records, which also times the
@@ -54,8 +60,16 @@ fn err(msg: String) -> PyErr {
 
 /// A 2-D float argument: a NumPy array (pandas/array-likes are coerced to
 /// one by the Python layer) or a nested list of rows — the shape
-/// `dfm_nowcast` returns `loadings`/`factor_ar`/`factor_cov` in.
+/// `dfm_nowcast` returns `loadings`/`factor_ar`/`factor_cov` in. A complex
+/// array or cell is refused by name first (the shared real-numeric gate).
 fn matrix_arg(name: &str, obj: &Bound<'_, PyAny>) -> PyResult<Mat<f64>> {
+    // Before any float extraction: a complex array or cell would otherwise
+    // be read through its `__float__`, which drops the imaginary part.
+    if let Some(why) = crate::real_numeric::non_real_reason(obj, name, true)? {
+        return Err(PyTypeError::new_err(format!(
+            "dfm_smooth: {name} must hold real numbers, {why}"
+        )));
+    }
     if let Ok(a) = obj.extract::<PyReadonlyArray2<'_, f64>>() {
         return Ok(to_faer(&a));
     }
@@ -194,10 +208,23 @@ fn rewrite(e: NowcastError) -> PyErr {
 /// model's level of every series at the last period, observed or not),
 /// `n_factors` (`r`) and `factor_order` (`p`).
 ///
+/// ZERO IDIOSYNCRATIC VARIANCES. `idiosyncratic >= 0` admits exact zeros.
+/// When more than `r` series with zero idiosyncratic variance are observed
+/// in the same period, the first ones pin the factors and the rest are
+/// deterministic functions of them: the joint density is singular, and
+/// `loglik` is the density on its support — an element an earlier series of
+/// the same period has pinned is skipped exactly like a missing value (the
+/// value with that cell set to NaN). Which series pins depends on the
+/// column order of `data`; two orders differ by the Jacobian
+/// `ln |loading_j / loading_i|` per such period. (statsmodels takes the
+/// roundoff variance of the redundant element as information there.)
+///
 /// Refusals name the argument: shapes (`data`'s columns vs `loadings`' rows,
 /// `factor_ar` rows vs `r` and width a multiple of `r`, `factor_cov`
-/// `r x r`, lengths of `idiosyncratic`/`center`/`scale`); non-finite
-/// parameters; `inf` in `data` (NaN is missing, not an error); zero rows;
+/// `r x r`, lengths of `idiosyncratic`/`center`/`scale`); complex entries in
+/// `loadings`/`factor_ar`/`factor_cov` (refused, not truncated to their real
+/// part); non-finite parameters; `inf` in `data` (NaN is missing, not an
+/// error); zero rows;
 /// negative `idiosyncratic`; `scale <= 0`; a non-stationary `factor_ar`; a
 /// non-PSD `factor_cov`; and finite inputs that overflow double precision —
 /// a standardized entry `(data - center) / scale` that is not finite (named
@@ -207,14 +234,18 @@ fn rewrite(e: NowcastError) -> PyErr {
 /// cells per sequence and the state space an `N x N` observation
 /// covariance, each capped at 2^26; the work is about
 /// `T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) + 16 m^3` units with
-/// `m = r p` (per period the triple products, the per-series updates, the
-/// dense observation covariance and the per-series / per-period overhead;
-/// once, the stationary initialization, priced at its worst case: a factor
-/// VAR at the edge of stationarity, where the Lyapunov doubling runs about
-/// 58 steps), capped at 2^34 — measured at 0.17-1.03 ns per unit, so a call
-/// at the cap takes about 18 s at most (9.3 s at T = 8000, N = 1000, m = 2,
-/// 0.97 of the cap; 12.4 s for one period at m = 960 with the spectral
-/// radius the largest double below one, 0.93 of the cap;
+/// `m = r p` (per period the triple products, the per-series updates,
+/// building the dense observation covariance — a one-off the per-period
+/// term over-covers — and the per-series / per-period overhead; once, the
+/// stationary initialization, priced at its worst case: a factor VAR at the
+/// edge of stationarity, where the Lyapunov doubling runs about 58 steps),
+/// capped at 2^34 — measured at 0.14-1.07 ns per unit across nineteen
+/// shapes from 3% of the cap up, so a call at the cap takes about 18 s at
+/// most (17.0 s at N = 8192, m = 60, 0.97 of the cap; 10.1 s at T = 8000,
+/// N = 1000, m = 2; 10.9 s for one period at m = 960 with the spectral
+/// radius the largest double below one, 0.93 of the cap; one period at
+/// N = 8192, 0.4% of the cap, takes 1.0 s, building the dense N x N
+/// matrix;
 /// `lab/audit/wave11/dfm_smooth_cost.py` records the timings, the
 /// nowcasting model card quotes them). Past either cap the call is refused
 /// before any work.
@@ -223,7 +254,12 @@ fn rewrite(e: NowcastError) -> PyErr {
 /// factors, VAR(2), ragged edge) and its generic `KalmanSmoother` (a
 /// non-identity `factor_cov`; a standardized panel with its edge nowcast):
 /// log-likelihood 1e-8 relative, states and covariances 1e-8 absolute
-/// (achieved 5e-13 and 6e-11) — `fixtures/dfm_smooth.json`.
+/// (achieved over the three: log-likelihood 5.2e-13, states 2.6e-10 and
+/// covariances 1.2e-10, the latter two on the standardized panel; 6.0e-11
+/// and 1.7e-11 on the raw ones); zero idiosyncratic variances observed
+/// together against statsmodels on the panel with the redundant column
+/// missing and an exact rational / 80-digit Kalman filter (1e-12) —
+/// `fixtures/dfm_smooth.json`.
 ///
 /// Further arguments, with defaults: `factor_cov` (None: identity), `center`
 /// (None: zeros), `scale` (None: ones).

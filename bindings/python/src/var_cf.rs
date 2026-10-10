@@ -27,6 +27,9 @@ use crate::{mat_to_vec2, parse_trend, py_type_name, to_py, var_results};
 /// beyond `len(conditions)` up to `steps` are free, so a short list
 /// conditions the near horizons only; `steps` defaults to `len(conditions)`.
 /// At least one cell must be pinned (the all-free case is `var_forecast`).
+/// Every cell of `conditions` and `condition_sd` is a real number, None or
+/// NaN: a complex array or cell is refused by name, not truncated to its
+/// real part.
 /// COST: the guard on `steps` is a MEMORY budget (`steps * k` cells times the
 /// constrained cells must stay inside 2^24 doubles), but the work is
 /// QUADRATIC in `steps` — measured on a k = 3 VAR(2): 0.03 s at 1 000 steps,
@@ -205,7 +208,7 @@ fn var_conditional_forecast<'py>(
 }
 
 /// `repr(obj)`, cut to 60 characters so a huge table cannot flood a message.
-fn short_repr(obj: &Bound<'_, PyAny>) -> String {
+pub(crate) fn short_repr(obj: &Bound<'_, PyAny>) -> String {
     let s = obj
         .repr()
         .map(|r| r.to_string())
@@ -250,6 +253,13 @@ fn sized_iter<'py>(obj: &Bound<'py, PyAny>) -> Option<(usize, Bound<'py, PyItera
 /// is not a sequence / a number-or-None is named by its position; the scan
 /// walks sized containers only, at most their length.
 fn grid_arg(obj: &Bound<'_, PyAny>, name: &str) -> PyResult<Vec<Vec<Option<f64>>>> {
+    // Before any float extraction: a complex array or cell would otherwise
+    // be read through its `__float__`, which drops the imaginary part.
+    if let Some(why) = crate::real_numeric::non_real_reason(obj, name, true)? {
+        return Err(PyTypeError::new_err(format!(
+            "var_conditional_forecast: {name} must hold real numbers or None, {why}"
+        )));
+    }
     if let Ok(v) = obj.extract::<Vec<Vec<Option<f64>>>>() {
         return Ok(v);
     }

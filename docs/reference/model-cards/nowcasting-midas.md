@@ -120,8 +120,8 @@ data release that caused it.
 | Call | Argument | Default | Notes |
 |------|----------|---------|-------|
 | `midas_weights` | `scheme`, `θ₁`, `θ₂`, `k` | — | `"exp_almon"` or `"beta"`; k lags |
-| `umidas` | `se_type` | `"hac"` | robust SEs on the OLS coefficients |
-| | `maxlags` | `None` | HAC bandwidth (auto if `None`) |
+| `umidas` | `se_type` | `"hac"` | Bartlett/Newey-West with the `n/(n−k)` factor, or `"nonrobust"` |
+| | `maxlags` | `None` | HAC bandwidth (auto if `None`); refused under `"nonrobust"` |
 | `adl_midas` | `ar_lags` | `1` | lags of the target; `0` is refused (that model is `umidas`) |
 | | `se_type` | `"hac"` | Bartlett/Newey-West with the `n/(n−k)` factor, or `"nonrobust"` |
 | | `maxlags` | `None` | `floor(4 (nobs/100)^(2/9))` on the **fitted** rows `nobs = n − P`; refused under `"nonrobust"` |
@@ -229,6 +229,16 @@ data release that caused it.
 - **Reading `dfm_smooth`'s `loglik` on the raw scale.** It is the
   standardized panel's likelihood; two calls with different `scale` are not
   comparable without the Jacobian term above.
+- **More zero idiosyncratic variances than factors.** With more than `r`
+  series of zero idiosyncratic variance observed in one period, the first
+  ones pin the factors and the rest are deterministic: the joint density is
+  singular, and `dfm_smooth`'s `loglik` is the density on its support (a
+  pinned element is skipped like a missing value — the value with that cell
+  set to NaN). Which series pins follows the column order of `data`, so
+  reordering the columns moves `loglik` by `ln |loading_j / loading_i|` per
+  such period; the smoothed states do not move. statsmodels' `DynamicFactor`
+  takes the redundant element's roundoff variance as information there
+  (1366.07 against −293.15 on the pinned `T = 100` panel).
 - **Unrestricted MIDAS overfitting.** With a large frequency ratio, `umidas`
   has too many parameters and fits noise; switch to `weighted_midas`.
 - **`weighted_midas` not converging.** Poorly identified weight shapes can stall
@@ -236,18 +246,24 @@ data release that caused it.
   before trusting the fit.
 
 **What it costs.** `dfm_smooth` keeps sequences of `T × (rp)²` covariance
-cells and the dense `N × N` observation covariance, each capped at 2^26
-cells, and its work is about `T (2m³ + 20Nm² + N² + 1000N + 12000) + 16m³`
-units (`m = rp`), capped at 2^34. The one-off term is the stationary
-initialization, priced at its worst case: the Lyapunov doubling runs until
-`ρ^(2^k)` is below machine precision, about 6 steps at a spectral radius of
-0.5 but about 58 at the largest double below one, where one period at
-`m = 960` takes 12.4 s (2.8 s at 0.5). A unit measured 0.17–1.03 ns across
-fourteen shapes, so a call at the cap takes about 18 s at most: 9.3 s at
-`T = 8000`, `N = 1000`, `m = 2` (0.97 of the cap), 4.5 s at `T = 4000`.
+cells and one dense `N × N` observation covariance, each capped at 2^26
+cells (half a GiB), and its work is about
+`T (2m³ + 20Nm² + N² + 1000N + 12000) + 16m³` units (`m = rp`), capped at
+2^34; the `N²` term prices building the dense observation covariance, once.
+The one-off term is the stationary initialization, priced at its worst
+case: the Lyapunov doubling runs until `ρ^(2^k)` is below machine
+precision, about 6 steps at a spectral radius of 0.5 but about 58 at the
+largest double below one, where one period at `m = 960` takes 10.9 s
+(2.2 s at 0.5). A unit measured 0.14–1.07 ns across nineteen shapes from 3%
+of the cap up, so a call at the cap takes about 18 s at most: 17.0 s at
+`N = 8192`, `m = 60` (0.97 of the cap), 10.1 s at `T = 8000`, `N = 1000`,
+`m = 2`, 4.9 s at `T = 4000`. (Until audit round 16 the engine confirmed
+the diagonal observation covariance with a dense `O(N³)` factorization no
+budget priced: one period at `N = 8192` took 18–20 s and 3.1 GB, and the
+calls at the cap 20–36 s; it now takes 1.0 s.)
 `adl_midas` caps its `nobs × (1 + P + K)`
 design at 2^26 cells and its work, about `nobs k² (min(maxlags, nobs − 1) + 2)`
-units with `k = 1 + P + K`, at 2^33; a unit measured 0.65–2.16 ns, 13.2 s at
+units with `k = 1 + P + K`, at 2^33; a unit measured 0.29–1.65 ns, 11.3 s at
 the cap itself (`n = 100000`, `K = 6`, `maxlags = 1340`). Past a cap either
 call is refused before anything is built, naming what sizes it (`ar_lags`, or
 `maxlags` when the bandwidth alone is too wide). The timings are recorded by
@@ -269,13 +285,23 @@ and the weighted-MIDAS NLS against their published definitions.
 a ragged panel with an interior gap, against statsmodels' generic
 `KalmanSmoother` for a non-identity `factor_cov`, and on a standardized
 `r = 1, p = 3` panel with its edge nowcast: log-likelihood 1e-8 relative,
-smoothed states and covariances 1e-8 absolute (achieved 5.2e-13 and 6.0e-11 —
-statsmodels' filter and the crate's univariate one agree to roundoff, not
-bitwise). The round trip with `dfm_nowcast` is bitwise on both estimation
-routes. `adl_midas` (0.11) is pinned against statsmodels `OLS` on a design
-built independently with `pandas.shift` — params, residuals, R², and bse /
-t-values under nonrobust and HAC at the default and at `maxlags = 8` — at
-1e-10 (achieved 3.2e-14), which also pins the parameter order. Fixtures:
+smoothed states and covariances 1e-8 absolute (achieved over the three cases:
+log-likelihood 5.2e-13, states 2.6e-10 and covariances 1.2e-10, the latter two
+on the standardized panel, 6.0e-11 and 1.7e-11 on the raw ones — statsmodels'
+filter and the crate's univariate one agree to roundoff, not bitwise). Zero
+idiosyncratic variances observed together (the audit's two-period repro and a
+`T = 100`, four-series panel under eight column orders) are pinned at the
+density on the support: statsmodels on the panel with the redundant column
+missing and an exact rational / 80-digit Kalman filter, 1e-12. The round trip
+with `dfm_nowcast` is bitwise on both estimation routes. `adl_midas` (0.11) is
+pinned against statsmodels `OLS` on a design built independently with
+`pandas.shift` — params, residuals, R², and bse / t-values under nonrobust and
+HAC at the default and at `maxlags = 8` — at 1e-10 (achieved 6.9e-15), which
+also pins the parameter order; on two persistent level targets (a log-GDP
+level, an index near 100, `cond(X)` 2.4e3 and 1.4e5) it is pinned against the
+exact rational least-squares solution of the same float64 design: params 3e-13,
+nonrobust bse 3e-14, HAC bse 1.3e-13 — closer than statsmodels' own HAC bse
+(7.8e-10). Fixtures:
 [`fixtures/tsecon-nowcast.json`](../../../fixtures/tsecon-nowcast.json),
 [`fixtures/nowcast_news.json`](../../../fixtures/nowcast_news.json),
 [`fixtures/midas.json`](../../../fixtures/midas.json),

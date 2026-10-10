@@ -844,3 +844,127 @@ fn error_paths_teach() {
     let msg = lrv(&z, Kernel::Bartlett, -1.0).unwrap_err().to_string();
     assert!(msg.contains("maxlags"), "unexpected message: {msg}");
 }
+
+// ------------------------------------------------- equilibration and scale
+
+/// Every standard-error flavor, for the scale tests below.
+fn all_se_types() -> Vec<SeType> {
+    vec![
+        SeType::NonRobust,
+        SeType::Hc0,
+        SeType::Hc1,
+        SeType::Hc2,
+        SeType::Hc3,
+        SeType::Hac {
+            kernel: Kernel::Bartlett,
+            bandwidth: 5.0,
+            use_correction: true,
+        },
+        SeType::Ewc { b: 8 },
+    ]
+}
+
+/// **Power-of-two rescaling is exact.** Multiplying `y` by `2^a` and column
+/// `j` by `2^{b_j}` multiplies coefficient `j` and its standard error by
+/// exactly `2^{a - b_j}` and leaves every t-statistic untouched — to the
+/// bit, because the solve equilibrates by powers of two and Householder QR
+/// is equivariant under them. The sweep runs from `2^-1000` to `2^1000`,
+/// where the sums of squares of the raw data overflow or underflow: before
+/// the equilibration, scales near `1e77` returned NaN HAC standard errors
+/// and near `1e154` NaN coefficients or a false "collinear columns"
+/// refusal.
+#[test]
+fn power_of_two_rescaling_is_exact_at_every_scale() {
+    let (y, x) = regression_data(120, 21);
+    let base = ols(&y, &x).unwrap();
+    // Each (a, b) keeps every rescaled answer in the normal range: the
+    // claim is about representable answers.
+    for (a, bs) in [
+        (-1000, [-30, -100, -20]),
+        (1000, [5, 100, 20]),
+        (500, [0, 0, 0]),
+        (-500, [0, 0, 0]),
+        (40, [-900, 900, 0]),
+    ] {
+        let sy = 2f64.powi(a);
+        let ys: Vec<f64> = y.iter().map(|v| v * sy).collect();
+        let xs: Vec<Vec<f64>> = x
+            .iter()
+            .zip(bs)
+            .map(|(c, b)| c.iter().map(|v| v * 2f64.powi(b)).collect())
+            .collect();
+        let fit = ols(&ys, &xs).unwrap_or_else(|e| panic!("a = {a}, b = {bs:?}: {e}"));
+        for (j, b) in bs.iter().enumerate() {
+            let f = 2f64.powi(a - b);
+            assert_eq!(
+                fit.params[j],
+                base.params[j] * f,
+                "a = {a}, b = {bs:?}: params[{j}]"
+            );
+        }
+        for (u, v) in fit.residuals.iter().zip(&base.residuals) {
+            assert_eq!(*u, v * sy, "a = {a}: residuals");
+        }
+        for se in all_se_types() {
+            let got = fit.inference(se).unwrap();
+            let want = base.inference(se).unwrap();
+            for (j, b) in bs.iter().enumerate() {
+                let f = 2f64.powi(a - b);
+                assert_eq!(got.bse[j], want.bse[j] * f, "a = {a}, {se:?}: bse[{j}]");
+                assert_eq!(got.tvalues[j], want.tvalues[j], "a = {a}, {se:?}: t[{j}]");
+            }
+        }
+    }
+}
+
+/// **Finite inputs give finite answers.** At decimal scales that overflow
+/// the raw sums of squares (`1e77`: the HAC meat, of order `y^4`; `1e155`:
+/// `X'X` itself) the fit equals the rescaled unit-scale fit to roundoff,
+/// for every standard-error flavor.
+#[test]
+fn extreme_decimal_scales_give_finite_rescaled_answers() {
+    let (y, x) = regression_data(150, 33);
+    let base = ols(&y, &x).unwrap();
+    for (sy, sx) in [
+        (1e77, 1.0),
+        (1e155, 1.0),
+        (1.0, 1e155),
+        (1e300, 1.0),
+        (1e-300, 1e-300),
+    ] {
+        let ys: Vec<f64> = y.iter().map(|v| v * sy).collect();
+        let xs: Vec<Vec<f64>> = x
+            .iter()
+            .enumerate()
+            .map(|(j, c)| {
+                if j == 0 {
+                    c.clone()
+                } else {
+                    c.iter().map(|v| v * sx).collect()
+                }
+            })
+            .collect();
+        let fit = ols(&ys, &xs).unwrap_or_else(|e| panic!("sy = {sy:e}, sx = {sx:e}: {e}"));
+        let factor = |j: usize| if j == 0 { sy } else { sy / sx };
+        for j in 0..3 {
+            let want = base.params[j] * factor(j);
+            assert!(
+                (fit.params[j] - want).abs() <= 1e-12 * want.abs(),
+                "sy = {sy:e}, sx = {sx:e}: params[{j}] {} vs {want}",
+                fit.params[j]
+            );
+        }
+        for se in all_se_types() {
+            let got = fit.inference(se).unwrap();
+            let want = base.inference(se).unwrap();
+            for j in 0..3 {
+                let w = want.bse[j] * factor(j);
+                assert!(
+                    got.bse[j].is_finite() && (got.bse[j] - w).abs() <= 1e-12 * w,
+                    "sy = {sy:e}, sx = {sx:e}, {se:?}: bse[{j}] {} vs {w}",
+                    got.bse[j]
+                );
+            }
+        }
+    }
+}

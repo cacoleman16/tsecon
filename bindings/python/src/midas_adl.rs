@@ -22,8 +22,9 @@ const MAX_DESIGN_CELLS: u128 = 1 << 26;
 /// Work budget, in units of `nobs * k^2` per HAC lag plus two for the OLS
 /// fit and the sandwich (`k = 1 + P + K` coefficients, the HAC meat summing
 /// `min(maxlags, nobs - 1)` lagged score cross-products of `k^2` terms each).
-/// Measured at 0.65-2.16 ns per unit (`lab/audit/wave11/adl_midas_cost.py`),
-/// so a call at the cap takes under 20 s; past it the call is refused
+/// Measured at 0.29-1.65 ns per unit (`lab/audit/wave11/adl_midas_cost.py`;
+/// a 160-row fit, 0.3 ms, comes out at 4.1), so a call at the cap takes
+/// under 20 s; past it the call is refused
 /// before any column is built, naming `maxlags` when the bandwidth is what
 /// exceeds it and `ar_lags` otherwise.
 const WORK_BUDGET: u128 = 1 << 33;
@@ -72,7 +73,7 @@ fn err(msg: String) -> PyErr {
 /// design `nobs x (1 + P + K)` is capped at 2^26 cells and the work,
 /// about `nobs k^2 (min(maxlags, nobs - 1) + 2)` units with
 /// `k = 1 + P + K` (no lag term under `"nonrobust"`), at 2^33 — measured at
-/// 0.65-2.16 ns per unit, so a call at the cap takes under 20 s (13.2 s at
+/// 0.29-1.65 ns per unit, so a call at the cap takes under 20 s (11.3 s at
 /// n = 100000, K = 6, maxlags = 1340, the cap itself;
 /// `lab/audit/wave11/adl_midas_cost.py`). Past either cap the call is
 /// refused before any column is built, naming `maxlags` when the bandwidth
@@ -81,7 +82,15 @@ fn err(msg: String) -> PyErr {
 /// Validated against statsmodels 0.15.0 `OLS` on the same design built
 /// independently with `pandas.shift` — params, residuals, R², and bse /
 /// t-values under nonrobust and HAC (default and `maxlags=8`) at 1e-10
-/// (achieved 3.2e-14) — `fixtures/adl_midas.json`.
+/// (achieved 6.9e-15) — `fixtures/adl_midas.json`. On persistent LEVEL
+/// targets (a log-GDP level, an index near 100: the lagged-y columns nearly
+/// collinear with the constant, `cond(X)` up to 1.4e5) the fit is pinned
+/// against the exact rational least-squares solution of the same float64
+/// design: params within 3e-13 and HAC bse within 1.3e-13 (statsmodels'
+/// pinv params are within 1e-12 of it, its HAC bse 7.8e-10). The OLS
+/// engine solves by Householder QR of the equilibrated design, so finite
+/// inputs of any magnitude whose answer is representable return finite
+/// params, bse and R².
 ///
 /// Further arguments, with defaults: `ar_lags` (1), `se_type` ("hac"),
 /// `maxlags` (None: the effective-rows Newey-West rule under "hac").

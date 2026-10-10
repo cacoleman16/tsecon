@@ -3317,6 +3317,10 @@ def umidas(
 
 U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K).
 
+    se_type "hac" (default): Bartlett/Newey-West with the n/(n - k) factor at
+    maxlags (None: floor(4 (nobs/100)^(2/9))); "nonrobust" refuses an
+    explicit maxlags (it is the HAC bandwidth and would be ignored).
+
     Returned keys: `bse`, `params`, `rsquared`.
 
     Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
@@ -3346,10 +3350,13 @@ ADL-MIDAS: U-MIDAS plus ar_lags lags of the low-frequency target, by OLS.
     refused (that model is umidas). Cost caps, checked before any column is
     built: the nobs x (1 + P + K) design at most 2^26 cells, and about
     nobs k^2 (min(maxlags, nobs - 1) + 2) work units (k = 1 + P + K; no lag
-    term under "nonrobust") at most 2^33 (measured 0.65-2.16 ns per unit) --
+    term under "nonrobust") at most 2^33 (measured 0.29-1.65 ns per unit) --
     refused naming maxlags when the bandwidth alone exceeds it, ar_lags
     otherwise. Validated against statsmodels OLS on a pandas.shift design at
-    1e-10.
+    1e-10; on persistent level targets against the exact rational
+    least-squares solution (params 3e-13, HAC bse 1.3e-13). The OLS engine
+    solves by QR of the equilibrated design: finite inputs of any magnitude
+    whose answer is representable return finite params, bse and R^2.
 
     Returned keys: `bse`, `first_index` (= P, index into y of the first
     fitted row), `maxlags` (resolved; None under "nonrobust"), `nobs`
@@ -4271,18 +4278,28 @@ Fixed-parameter DFM Kalman smoother over a (ragged) T x N panel.
     dfm_smooth(new_data, **{k: fit[k] for k in ("loadings", "factor_ar",
     "factor_cov", "idiosyncratic", "center", "scale")}) reproduces
     dfm_nowcast's loglik, edge_factor and nowcast bit for bit on the same
-    panel. Refusals name the argument (shapes, non-finite parameters, inf in
-    data, negative idiosyncratic, scale <= 0, a non-stationary factor_ar, a
+    panel. With more than r zero idiosyncratic variances observed in one
+    period the joint density is singular and loglik is the density on its
+    support: a series an earlier one of the same period has pinned is
+    skipped like a missing value (so the column order of data picks which
+    pins, a Jacobian ln|loading_j / loading_i| per such period). Refusals
+    name the argument (shapes, complex entries in loadings / factor_ar /
+    factor_cov -- not truncated to their real part, non-finite parameters,
+    inf in data, negative idiosyncratic, scale <= 0, a non-stationary
+    factor_ar, a
     non-PSD factor_cov, finite inputs that overflow double precision -- a
     non-finite (data - center) / scale cell, a -inf log-likelihood, a Kalman
     recursion that overflows -- and sizes past the caps: T (r p)^2 and N^2
     at most 2^26 cells, T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) +
     16 m^3 at most 2^34 work units, m = r p, the one-off term pricing the
     stationary initialization at the edge of stationarity -- measured
-    0.17-1.03 ns per unit, 9.3 s at T = 8000, N = 1000, m = 2, and 12.4 s
-    for one period at m = 960 with the spectral radius just below one).
+    0.14-1.07 ns per unit from 3% of the cap up: 17.0 s at N = 8192,
+    m = 60, 10.1 s at T = 8000, N = 1000, m = 2, and 10.9 s for one period
+    at m = 960 with the spectral radius just below one).
     Validated against statsmodels DynamicFactor.smooth and KalmanSmoother
-    at 1e-8.
+    at 1e-8 (achieved: loglik 5.2e-13 relative, states 2.6e-10 and
+    covariances 1.2e-10 on the standardized case), and the singular case
+    against an exact Kalman filter at 1e-12.
 
     Returned keys: `edge_factor` (length r, the last smoothed factor),
     `factor_order` (p), `loglik` (of the STANDARDIZED panel z; no Jacobian
@@ -4570,7 +4587,7 @@ Breusch-Godfrey LM test for serial correlation of order up to `nlags`
 
     COST: about `T k_aux^2 / 2 + 6 k_aux^3` multiply-adds for the auxiliary
     regression — linear in `T` at a fixed `nlags`, quadratic to cubic in
-    `nlags` (measured: 0.05 s at T = 10^5 with nlags = 10, 30 s with
+    `nlags` (measured: 0.05 s at T = 10^5 with nlags = 10, 14.5 s with
     nlags = 564; model card). An order whose auxiliary design would pass
     2^26 entries (512 MiB) or 2^34 multiply-adds (about half a minute) is
     refused before anything is built, naming `nlags` and the largest order
@@ -6572,7 +6589,9 @@ Conditional VAR forecast, hard or soft: the forecast of every series
     it free — a NumPy array with NaN for the free cells or a pandas DataFrame
     with missing entries works too. Rows beyond `len(conditions)` up to
     `steps` are free; `steps` defaults to `len(conditions)`. At least one
-    cell must be pinned (the all-free case is `var_forecast`).
+    cell must be pinned (the all-free case is `var_forecast`). Every cell of
+    `conditions` and `condition_sd` is a real number, None or NaN: a complex
+    array or cell is refused by name, not truncated to its real part.
     COST: the guard on `steps` is a MEMORY budget (`steps * k` cells times
     the constrained cells must stay inside 2^24 doubles), but the work is
     QUADRATIC in `steps` — measured on a k = 3 VAR(2): 0.03 s at 1 000

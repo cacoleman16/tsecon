@@ -691,3 +691,237 @@ fn the_diffuse_period_is_invariant_to_rescaling_one_state_coordinate() {
         );
     }
 }
+
+// ---------------------------------------------------------------------
+// Singular observation densities: the same roundoff class on `F_*`.
+// ---------------------------------------------------------------------
+
+/// One AR(2) factor seen by four series (state `[f_t, f_{t-1}]`, stationary
+/// initialization, unit innovation variance): `y_i = lam_i f_t + e_i` with
+/// `Var(e_i) = idio_i`, in the series order `order`.
+fn one_factor_four_series(lam: &[f64; 4], idio: &[f64; 4], order: &[usize]) -> LinearGaussianSSM {
+    let n = order.len();
+    LinearGaussianSSM::builder(n, 2, 1)
+        .z(Mat::from_fn(
+            n,
+            2,
+            |i, j| if j == 0 { lam[order[i]] } else { 0.0 },
+        ))
+        .h(Mat::from_fn(n, n, |i, j| {
+            if i == j {
+                idio[order[i]]
+            } else {
+                0.0
+            }
+        }))
+        .t(Mat::from_fn(2, 2, |i, j| match (i, j) {
+            (0, 0) => 0.5,
+            (0, 1) => 0.2,
+            (1, 0) => 1.0,
+            _ => 0.0,
+        }))
+        .r(Mat::from_fn(2, 1, |i, _| if i == 0 { 1.0 } else { 0.0 }))
+        .q(Mat::from_fn(1, 1, |_, _| 1.0))
+        .initialization(Initialization::Stationary)
+        .build()
+        .expect("the one-factor model is valid")
+}
+
+/// **A redundant zero-variance element is skipped exactly like a missing
+/// value.** Series 1 and 2 have zero idiosyncratic variance and load on the
+/// same factor, so whichever is filtered first pins `f_t` and the other is
+/// a deterministic function of it: the joint density of `y_t` is singular,
+/// and the reported log-likelihood is the density on its support — the
+/// value with the redundant cell set to NaN. That is a closed form the
+/// filter must hit to the last bit, because a skipped element leaves the
+/// recursions untouched.
+///
+/// Before the roundoff test on `F_*` (see `TOLERANCE_CANCEL`), the
+/// redundant element's `F_*` was dust of the pinning update and its
+/// cancellation-free reference was dust too, so the update was taken in
+/// some periods: on this panel 4 of the 24 column orders came out 17.5 to
+/// 18.2 log-likelihood points too high (`[0, 1, 2, 3]`: `-264.673` against
+/// `-282.207` with the redundant column missing), and which 4 depended on
+/// roundoff alone.
+#[test]
+fn redundant_zero_variance_element_is_skipped_like_a_missing_value() {
+    let lam: [f64; 4] = [1.0, 0.7, -1.3, 0.4];
+    let idio: [f64; 4] = [0.5, 0.0, 0.0, 0.3];
+    let n = 100;
+    let mut rng = Lcg::new(2026);
+    let (mut f1, mut f2) = (0.0, 0.0);
+    let mut y = Mat::<f64>::zeros(n, 4);
+    for t in 0..n {
+        let f = 0.5 * f1 + 0.2 * f2 + 1.7 * rng.symmetric();
+        (f2, f1) = (f1, f);
+        for i in 0..4 {
+            y[(t, i)] = lam[i] * f + (3.0 * idio[i]).sqrt() * rng.symmetric();
+        }
+    }
+    let mut orders = Vec::new();
+    for a in 0..4 {
+        for b in 0..4 {
+            for c in 0..4 {
+                for d in 0..4 {
+                    let o = [a, b, c, d];
+                    if (0..4).all(|k| o.contains(&k)) {
+                        orders.push(o);
+                    }
+                }
+            }
+        }
+    }
+    assert_eq!(orders.len(), 24);
+    let mut distinct = Vec::new();
+    for order in &orders {
+        let model = one_factor_four_series(&lam, &idio, order);
+        let yo = Mat::from_fn(n, 4, |t, i| y[(t, order[i])]);
+        // The redundant series is the zero-variance one filtered second.
+        let pos1 = order.iter().position(|&k| k == 1).unwrap();
+        let pos2 = order.iter().position(|&k| k == 2).unwrap();
+        let redundant = pos1.max(pos2);
+        let mut yr = yo.clone();
+        for t in 0..n {
+            yr[(t, redundant)] = f64::NAN;
+        }
+        let full = tsecon_ssm::smooth_univariate(&model, yo.as_ref()).unwrap();
+        let reduced = tsecon_ssm::smooth_univariate(&model, yr.as_ref()).unwrap();
+        assert_eq!(
+            full.filter.loglik.to_bits(),
+            reduced.filter.loglik.to_bits(),
+            "order {order:?}: loglik {} vs {} with the redundant column missing",
+            full.filter.loglik,
+            reduced.filter.loglik
+        );
+        assert_eq!(
+            full.smoothed_state, reduced.smoothed_state,
+            "order {order:?}"
+        );
+        if !distinct
+            .iter()
+            .any(|&(k, _): &(usize, f64)| k == order[redundant])
+        {
+            distinct.push((order[redundant], full.filter.loglik));
+        }
+    }
+    // Which series pins the factor changes the support's coordinates, so
+    // the two conventions differ by exactly the Jacobian of y_2 = (lam_2 /
+    // lam_1) y_1 over the n periods: n ln |lam_2 / lam_1|.
+    assert_eq!(distinct.len(), 2);
+    let (pinned_by_1, pinned_by_2) = if distinct[0].0 == 2 {
+        (distinct[0].1, distinct[1].1)
+    } else {
+        (distinct[1].1, distinct[0].1)
+    };
+    let jacobian = n as f64 * (lam[2] / lam[1]).abs().ln();
+    assert!(
+        ((pinned_by_1 - pinned_by_2) - jacobian).abs() <= 1e-9 * jacobian.abs(),
+        "pinned by series 1: {pinned_by_1}, by series 2: {pinned_by_2}, Jacobian {jacobian}"
+    );
+}
+
+/// Two factors (`T`, `Q` full, stationary initialization) seen by five
+/// series in the column order `order`: the loadings are the rows of `lam`,
+/// the idiosyncratic variances `idio`.
+fn two_factor_model(lam: &[[f64; 2]; 5], idio: &[f64; 5], order: &[usize]) -> LinearGaussianSSM {
+    LinearGaussianSSM::builder(5, 2, 2)
+        .z(Mat::from_fn(5, 2, |i, j| lam[order[i]][j]))
+        .h(Mat::from_fn(5, 5, |i, j| {
+            if i == j {
+                idio[order[i]]
+            } else {
+                0.0
+            }
+        }))
+        .t(Mat::from_fn(2, 2, |i, j| [[0.5, 0.1], [-0.2, 0.4]][i][j]))
+        .r(Mat::from_fn(2, 2, |i, j| if i == j { 1.0 } else { 0.0 }))
+        .q(Mat::from_fn(2, 2, |i, j| [[1.0, 0.3], [0.3, 0.8]][i][j]))
+        .initialization(Initialization::Stationary)
+        .build()
+        .expect("the two-factor model is valid")
+}
+
+/// **A pin that was itself nearly redundant does not let the redundant
+/// element in.** Series 0, 1 and 2 have zero idiosyncratic variance and
+/// two factors, so whichever two come first in the column order pin `f_t`
+/// and the third is redundant. Series 0 and 1 load at an angle of `0.02`
+/// rad: when they pin, the second pin has `F_*` of order `4e-4` of its
+/// reference, its covariance downdate leaves dust of order `eps / 0.02`
+/// along the redundant direction, and that dust cleared the predicted-`P_*`
+/// test (`TOLERANCE_CANCEL`) on its own. The square-root companion reads
+/// the redundant `F_*` with dust of order `(eps / 0.02)^2` and refuses
+/// it, so in every one of the 120 column orders the panel gives, to the
+/// bit, the log-likelihood and smoothed states of the panel with the
+/// redundant cells set to NaN.
+///
+/// Measured before the companion (the predicted-reference test alone): all
+/// 40 orders that pin with series 0 and 1 came out 115 to 839
+/// log-likelihood points above the value with the redundant cells missing
+/// (over the 60 periods); the 80 that pin with a well-separated pair were
+/// already exact.
+#[test]
+fn nearly_collinear_pinning_does_not_let_the_redundant_element_in() {
+    let (phi, theta) = (0.7_f64, 0.02_f64);
+    let lam: [[f64; 2]; 5] = [
+        [phi.cos(), phi.sin()],
+        [1.2 * (phi + theta).cos(), 1.2 * (phi + theta).sin()],
+        [0.7, -1.1],
+        [1.0, 0.5],
+        [-0.3, 0.9],
+    ];
+    let idio: [f64; 5] = [0.0, 0.0, 0.0, 0.4, 0.6];
+    let n = 60;
+    let mut rng = Lcg::new(77);
+    let (c11, c21) = (1.0_f64, 0.3_f64);
+    let c22 = (0.8_f64 - c21 * c21).sqrt();
+    let mut f = [0.0_f64; 2];
+    let mut y = Mat::<f64>::zeros(n, 5);
+    for t in 0..n {
+        let e = [3f64.sqrt() * rng.symmetric(), 3f64.sqrt() * rng.symmetric()];
+        f = [
+            0.5 * f[0] + 0.1 * f[1] + c11 * e[0],
+            -0.2 * f[0] + 0.4 * f[1] + c21 * e[0] + c22 * e[1],
+        ];
+        for i in 0..5 {
+            y[(t, i)] =
+                lam[i][0] * f[0] + lam[i][1] * f[1] + (3.0 * idio[i]).sqrt() * rng.symmetric();
+        }
+    }
+    let mut orders = Vec::new();
+    for code in 0..5usize.pow(5) {
+        let o: Vec<usize> = (0..5).map(|d| code / 5usize.pow(d) % 5).collect();
+        if (0..5).all(|k| o.contains(&k)) {
+            orders.push(o);
+        }
+    }
+    assert_eq!(orders.len(), 120);
+    let mut collinear_pins = 0;
+    for order in &orders {
+        let model = two_factor_model(&lam, &idio, order);
+        let yo = Mat::from_fn(n, 5, |t, i| y[(t, order[i])]);
+        // The redundant series is the zero-variance one filtered third.
+        let zero_positions: Vec<usize> = (0..5).filter(|&i| idio[order[i]] == 0.0).collect();
+        let redundant = zero_positions[2];
+        if order[zero_positions[2]] == 2 {
+            collinear_pins += 1;
+        }
+        let mut yr = yo.clone();
+        for t in 0..n {
+            yr[(t, redundant)] = f64::NAN;
+        }
+        let full = tsecon_ssm::smooth_univariate(&model, yo.as_ref()).unwrap();
+        let reduced = tsecon_ssm::smooth_univariate(&model, yr.as_ref()).unwrap();
+        assert_eq!(
+            full.filter.loglik.to_bits(),
+            reduced.filter.loglik.to_bits(),
+            "order {order:?}: loglik {} vs {} with the redundant column missing",
+            full.filter.loglik,
+            reduced.filter.loglik
+        );
+        assert_eq!(
+            full.smoothed_state, reduced.smoothed_state,
+            "order {order:?}"
+        );
+    }
+    assert_eq!(collinear_pins, 40);
+}
