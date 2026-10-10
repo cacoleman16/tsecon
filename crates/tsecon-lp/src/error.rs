@@ -34,6 +34,11 @@ pub enum LpError {
     },
     /// After building lag controls and shifting the outcome forward by `h`,
     /// too few observations remain to fit the horizon-`h` regression.
+    ///
+    /// The estimators scan every horizon `0..=horizons` up front, in pure
+    /// arithmetic and before anything is sized by `horizons`, so `horizon`
+    /// is the first infeasible one: `horizons` can be at most
+    /// `horizon - 1` (and nothing is estimable when `horizon` is 0).
     HorizonTooLong {
         /// The horizon that ran out of data.
         horizon: usize,
@@ -154,6 +159,17 @@ impl fmt::Display for LpError {
                  index-aligned and equal length"
             ),
             LpError::HorizonTooLong {
+                horizon: 0,
+                nobs,
+                nparams,
+            } => write!(
+                f,
+                "horizon h = 0: only {nobs} usable observations remain after \
+                 building lag controls, but the design has {nparams} regressors, \
+                 so no horizon is estimable (not even horizons = 0); reduce \
+                 n_lag_controls or supply a longer series"
+            ),
+            LpError::HorizonTooLong {
                 horizon,
                 nobs,
                 nparams,
@@ -162,7 +178,9 @@ impl fmt::Display for LpError {
                 "horizon h = {horizon}: only {nobs} usable observations remain \
                  after building lag controls and shifting the outcome forward, \
                  but the design has {nparams} regressors; shorten the maximum \
-                 horizon, reduce n_lag_controls, or supply a longer series"
+                 horizon (horizons can be at most {} for this sample and these \
+                 controls), reduce n_lag_controls, or supply a longer series",
+                horizon - 1
             ),
             LpError::SeriesTooShort { n, n_lag_controls } => write!(
                 f,

@@ -112,6 +112,17 @@ pub fn flp(
     }
 
     let nparams = 1 + k + p;
+    // Horizon h keeps nobs = T - h - p rows for a fixed nparams, so the
+    // first infeasible horizon is T - p - nparams (or 0). Refuse a maximum
+    // horizon at or past it before anything is sized by `horizons`.
+    let first_infeasible = (t - p).saturating_sub(nparams);
+    if horizons >= first_infeasible {
+        return Err(FuncShockError::HorizonTooLong {
+            horizon: first_infeasible,
+            nobs: t - p - first_infeasible,
+            nparams,
+        });
+    }
     let mut out = FlpFit {
         horizons: Vec::with_capacity(horizons + 1),
         n_factors: k,

@@ -5,8 +5,8 @@ use tsecon_linalg::faer::linalg::solvers::DenseSolveCore;
 use tsecon_linalg::faer::{Mat, Side};
 
 use crate::design::{
-    check_finite, const_column, contemporaneous_column, horizon_sample, impulse_column, lag_column,
-    outcome_column,
+    check_finite, check_horizons, const_column, contemporaneous_column, horizon_sample,
+    impulse_column, lag_column, outcome_column,
 };
 use crate::error::LpError;
 use crate::spec::{LpIvResult, LpMultiplierResult, LpSpec, SeKind, SeSpec};
@@ -73,6 +73,9 @@ pub fn lp_iv(
             n_lag_controls: p,
         });
     }
+
+    // Refuse an unreachable maximum horizon before sizing the outputs by it.
+    check_horizons(spec.horizons, |h| (horizon_sample(n, h, p, 0).1, p + 2))?;
 
     let mut horizons = Vec::with_capacity(spec.horizons + 1);
     let mut irf = Vec::with_capacity(spec.horizons + 1);
@@ -363,6 +366,9 @@ pub fn lp_multiplier(
             n_lag_controls: p,
         });
     }
+
+    // Refuse an unreachable maximum horizon before sizing the outputs by it.
+    check_horizons(spec.horizons, |h| (horizon_sample(n, h, p, p).1, 2 + 2 * p))?;
 
     let cap = spec.horizons + 1;
     let mut horizons = Vec::with_capacity(cap);

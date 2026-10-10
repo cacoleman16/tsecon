@@ -116,8 +116,67 @@ fn exhausting_horizons_are_rejected_with_the_arithmetic() {
             .collect()
     };
     let err = quantile_lp(&scramble(20, 1), &scramble(20, 2), &[0.5], 12, 4).unwrap_err();
-    assert!(matches!(err, QuantileError::HorizonExhaustsSample { .. }));
-    assert_teaches(&err, &["lower the maximum horizon", "lag controls"]);
+    assert!(matches!(
+        err,
+        QuantileError::HorizonsExhaustSample {
+            max_horizons: 5,
+            ..
+        }
+    ));
+    assert_teaches(
+        &err,
+        &[
+            "horizons = 12",
+            "horizons can be at most 5",
+            "lower the maximum horizon",
+            "lag controls",
+        ],
+    );
+    // The largest admissible value is admissible.
+    let fit = quantile_lp(&scramble(20, 1), &scramble(20, 2), &[0.5], 5, 4).unwrap();
+    assert_eq!(fit.horizons, vec![0, 1, 2, 3, 4, 5]);
+
+    // A maximum horizon far beyond the sample is refused by name before the
+    // per-tau outputs are sized by it (it used to reserve horizons + 1 slots
+    // per tau first and abort the process).
+    for horizons in [1usize << 31, 1usize << 40, usize::MAX] {
+        let err = quantile_lp(&scramble(20, 1), &scramble(20, 2), &[0.5], horizons, 4).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                QuantileError::HorizonsExhaustSample {
+                    max_horizons: 5,
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert_teaches(&err, &[&format!("horizons = {horizons}"), "at most 5"]);
+    }
+
+    // An n_lag_controls that leaves even horizon 0 short is named as the
+    // cause (it used to be reported as "horizon 0 leaves nobs = 0 ...").
+    // n = 20 admits n_lag_controls <= (20 - 3) / 3 = 5: p = 5 keeps 15 rows
+    // for k = 12, p = 6 keeps 14 for k = 14.
+    for p in [6usize, 1 << 31, usize::MAX / 2, usize::MAX] {
+        let err = quantile_lp(&scramble(20, 1), &scramble(20, 2), &[0.5], 0, p).unwrap_err();
+        assert!(
+            matches!(err, QuantileError::LagControlsExhaustSample { n_lag_controls, n: 20 } if n_lag_controls == p),
+            "{err:?}"
+        );
+        assert_teaches(
+            &err,
+            &[
+                &format!("n_lag_controls = {p}"),
+                "n_lag_controls can be at most 5",
+            ],
+        );
+    }
+    // p = 5 passes the sample check (whatever the 15-row fit then says).
+    assert!(!matches!(
+        quantile_lp(&scramble(20, 1), &scramble(20, 2), &[0.5], 0, 5),
+        Err(QuantileError::LagControlsExhaustSample { .. })
+    ));
 
     let cond: Vec<f64> = (0..6).map(|t| (t as f64 * 0.83).cos()).collect();
     let err = growth_at_risk(&ok_y(6), &[cond], 4, &[0.5], true).unwrap_err();

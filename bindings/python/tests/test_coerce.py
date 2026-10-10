@@ -223,7 +223,7 @@ def test_exempt_set_covers_every_integer_rust_parameter():
     # by hand are invisible to the `Vec` scan, but must be exempt too (the
     # parser has to tell [2, 4] from [2.0, 4.0]). Each must still exist in
     # the source with that type, so this list cannot go stale either.
-    hand_parsed = {"variance_ratio": {"lags"}}
+    hand_parsed = {"variance_ratio": {"lags"}, "mlp_regression": {"hidden"}}
     any_param_re = re.compile(r"^\s+([a-z_0-9]+)\s*:\s*Option<&Bound<'py,\s*PyAny>>")
     any_found: dict[str, set[str]] = {}
     current = None
