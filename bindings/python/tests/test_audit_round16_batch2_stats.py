@@ -5,14 +5,17 @@ and the nowcast-crate refusal wording.
 * DF16-1 — `dfm_smooth`: more than r zero idiosyncratic variances observed
   together gave a roundoff-driven log-likelihood (+20 points); the value is now
   the density on the support, pinned against statsmodels on the reduced panel
-  and an exact Kalman filter (`fixtures/dfm_smooth.json`, `singular_cases`).
+  and an exact Kalman filter (`fixtures/dfm_smooth.json`, `singular_cases`);
+  also when the pinning loadings are nearly collinear (the square-root
+  companion of tsecon-ssm), against a dense Gaussian density computed here.
 * DF16-2 — `adl_midas`: OLS by QR of the design instead of Cholesky on X'X;
   level targets pinned against an exact rational least-squares solution
   (`fixtures/adl_midas.json`, `level_cases`).
 * H16-11 — finite inputs at extreme magnitudes give the rescaled finite fit.
 * H16-05 — `dfm_smooth` at N = 8192 no longer runs an O(N^3) factorization of
   the diagonal observation covariance (18 s and 3.1 GB before).
-* H16-06 — complex arrays and cells are refused by name, not truncated.
+* H16-06 — complex arrays, cells and pandas objects are refused by name, not
+  truncated.
 * API16-4 — `umidas` refuses an inert `maxlags` under `se_type="nonrobust"`.
 * B2 (nowcast-crate cells) — refusals name `factor_order`, `target_series`,
   `n_factors`.
@@ -89,6 +92,81 @@ def test_dfm_smooth_audit_repro_value():
         rr = tsecon.dfm_smooth(zz, lam, [[-0.8642299294783886, -0.8484056219079968]],
                                [0.8355556816599208, 0.0, 0.0], factor_cov=[[0.13302995088165312]])
         assert rr["loglik"] == r["loglik"]
+
+
+def _dense_density_on_support(y, lam, A, Q, idio):
+    """The density on the support with no Kalman filter at all: the joint
+    Gaussian log-density of the cells that are not redundant, from the dense
+    stationary covariance of the stacked panel (factor VAR(1)). A zero-variance
+    cell is redundant when its loading lies in the span of the loadings of the
+    zero-variance cells of the same period observed before it."""
+    from scipy.linalg import solve_discrete_lyapunov
+    from scipy.stats import multivariate_normal
+
+    T, N = y.shape
+    r = lam.shape[1]
+    S = solve_discrete_lyapunov(A, Q)
+    F = np.zeros((T * r, T * r))
+    G = S
+    for h in range(T):
+        for t in range(T - h):
+            F[(t + h) * r:(t + h + 1) * r, t * r:(t + 1) * r] = G
+            F[t * r:(t + 1) * r, (t + h) * r:(t + h + 1) * r] = G.T
+        G = A @ G
+    L = np.kron(np.eye(T), lam)
+    full = L @ F @ L.T + np.kron(np.eye(T), np.diag(idio))
+    keep = []
+    for t in range(T):
+        pinned = []
+        for i in range(N):
+            if np.isnan(y[t, i]):
+                continue
+            if idio[i] == 0.0:
+                if pinned and np.linalg.matrix_rank(np.vstack(pinned + [lam[i]])) == len(pinned):
+                    continue
+                pinned.append(lam[i])
+            keep.append(t * N + i)
+    v = y.reshape(-1)[keep]
+    return multivariate_normal(np.zeros(len(v)), full[np.ix_(keep, keep)]).logpdf(v)
+
+
+@pytest.mark.parametrize("perm", [[0, 1, 2, 3, 4], [1, 3, 0, 4, 2], [4, 0, 1, 2, 3], [2, 0, 1, 3, 4]])
+def test_dfm_smooth_nearly_collinear_pins_still_skip_the_redundant_series(perm):
+    # Series 0 and 1 have zero idiosyncratic variance and loadings 0.02 rad
+    # apart; series 2 has zero variance too, so with two factors the third
+    # zero-variance series of each period is redundant. When 0 and 1 pin, the
+    # second pin's downdate leaves dust of order eps / 0.02, which the
+    # predicted-P_* test alone took as a variance (115 to 839 points too high
+    # on the Rust test's panel); the square-root companion refuses it.
+    rng = np.random.default_rng(16)
+    phi, theta = 0.7, 0.02
+    lam = np.array([[np.cos(phi), np.sin(phi)],
+                    [1.2 * np.cos(phi + theta), 1.2 * np.sin(phi + theta)],
+                    [0.7, -1.1], [1.0, 0.5], [-0.3, 0.9]])
+    idio = np.array([0.0, 0.0, 0.0, 0.4, 0.6])
+    A = np.array([[0.5, 0.1], [-0.2, 0.4]])
+    Q = np.array([[1.0, 0.3], [0.3, 0.8]])
+    T = 25
+    f = np.zeros(2)
+    y = np.zeros((T, 5))
+    C = np.linalg.cholesky(Q)
+    for t in range(T):
+        f = A @ f + C @ rng.standard_normal(2)
+        y[t] = lam @ f + np.sqrt(idio) * rng.standard_normal(5)
+    y[rng.uniform(size=y.shape) < 0.1] = np.nan
+    yp, lp, ip = y[:, perm], lam[perm], idio[perm]
+    full = tsecon.dfm_smooth(yp, lp, A, ip, factor_cov=Q)
+    # The same panel with each period's redundant cell missing.
+    yr = yp.copy()
+    for t in range(T):
+        zero_seen = [i for i in range(5) if ip[i] == 0.0 and not np.isnan(yp[t, i])]
+        for i in zero_seen[2:]:
+            yr[t, i] = np.nan
+    reduced = tsecon.dfm_smooth(yr, lp, A, ip, factor_cov=Q)
+    assert full["loglik"] == reduced["loglik"]
+    np.testing.assert_array_equal(full["smoothed_state"], reduced["smoothed_state"])
+    ref = _dense_density_on_support(yp, lp, A, Q, ip)
+    assert abs(full["loglik"] - ref) <= 1e-9 * abs(ref)
 
 
 # --------------------------------------------------------------------------
@@ -287,6 +365,38 @@ def test_var_conditional_forecast_still_takes_none_cells_and_object_arrays():
     c = tsecon.var_conditional_forecast(X, np.array([[1.0, np.nan]]))
     np.testing.assert_array_equal(a["point"], b["point"])
     np.testing.assert_array_equal(a["point"], c["point"])
+
+
+def test_complex_array_rows_are_named_by_their_dtype():
+    P, L, A, ID = _dfm_args()
+    rows = [np.array([complex(v)]) for v in L[:, 0]]
+    with pytest.raises(TypeError, match=r"dfm_smooth: loadings must hold real numbers, "
+                                        r"loadings\[0\] has dtype complex128: a complex value"):
+        tsecon.dfm_smooth(P, rows, A, ID)
+    with pytest.raises(TypeError, match=r"conditions\[0\] has dtype complex128"):
+        tsecon.var_conditional_forecast(_var2(), [np.array([1 + 1j, np.nan])])
+
+
+def test_complex_pandas_input_is_refused_not_cast():
+    # The input layer cast every pandas object to float64, which drops the
+    # imaginary part with a mere ComplexWarning; a complex DataFrame now
+    # reaches the boundary as the complex array it holds.
+    pd = pytest.importorskip("pandas")
+    P, L, A, ID = _dfm_args()
+    with pytest.raises(TypeError, match=r"dfm_smooth: loadings must hold real numbers, "
+                                        r"got dtype complex128"):
+        tsecon.dfm_smooth(P, pd.DataFrame(L + 0.5j), A, ID)
+    X = _var2()
+    for which in ("conditions", "condition_sd"):
+        kw = dict(conditions=[[1.0, None]], condition_sd=[[0.3, None]], soft="signal")
+        kw[which] = pd.DataFrame([[1.0 + 2j, np.nan]])
+        with pytest.raises(TypeError, match=rf"var_conditional_forecast: {which} must hold real "
+                                            r"numbers or None, got dtype complex128"):
+            tsecon.var_conditional_forecast(X, **kw)
+    # Real pandas input is still converted, bit for bit.
+    base = tsecon.dfm_smooth(P, L, A, ID)
+    assert tsecon.dfm_smooth(pd.DataFrame(P), pd.DataFrame(L), A, pd.Series(ID))["loglik"] == \
+        base["loglik"]
 
 
 def test_impact_still_refuses_complex_by_name():

@@ -7,7 +7,9 @@ a pandas ``DataFrame``/``Series`` (or any object exposing ``.to_numpy``, e.g.
 polars), a ``float32``/``float16`` array, a non-contiguous slice, or an
 **integer / boolean** array (data read with ``dtype=int``, ``np.arange``, a
 ``0/1`` recession dummy, a ``y > 0`` mask) — are converted to ``float64``
-C-contiguous arrays before the call.
+C-contiguous arrays before the call. A complex pandas object is the exception:
+it is handed on as the complex array it holds, as a complex ndarray is, so the
+boundary refuses it by name instead of the cast dropping the imaginary part.
 
 Integer arrays are the delicate case, because a handful of parameters
 legitimately want integers: they are *labels* and *column indices*, not data,
@@ -122,6 +124,17 @@ def _is_pandas(x: object) -> bool:
     return hasattr(x, "to_numpy") and not isinstance(x, np.ndarray)
 
 
+def _pandas_to_array(x) -> np.ndarray:
+    """A pandas/polars object as a C-contiguous ``float64`` array — unless it
+    holds complex numbers, which are handed on as the complex array they are
+    (as a complex ndarray argument is), so the boundary refuses them by name
+    instead of the cast silently dropping the imaginary part."""
+    arr = x.to_numpy()
+    if getattr(arr, "dtype", None) is not None and arr.dtype.kind == "c":
+        return arr
+    return np.ascontiguousarray(arr, dtype=np.float64)
+
+
 def _coerce(x: object) -> object:
     """Conservative rule: coerce floating-point arrays and pandas objects only.
 
@@ -137,7 +150,7 @@ def _coerce(x: object) -> object:
             return np.ascontiguousarray(x, dtype=np.float64)
         return x
     if _is_pandas(x):
-        return np.ascontiguousarray(x.to_numpy(), dtype=np.float64)
+        return _pandas_to_array(x)
     return x
 
 
@@ -160,7 +173,7 @@ def _coerce_data(x: object) -> object:
             return np.ascontiguousarray(x, dtype=np.float64)
         return x
     if _is_pandas(x):
-        return np.ascontiguousarray(x.to_numpy(), dtype=np.float64)
+        return _pandas_to_array(x)
     if isinstance(x, list):
         # Only *lists* are considered data. A tuple is how this API spells a
         # fixed-arity option (`weighted_midas(weight_start=(2.0, 3.0))`,

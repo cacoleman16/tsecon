@@ -28,9 +28,17 @@ fn dtype_kind(obj: &Bound<'_, PyAny>) -> Option<(String, String)> {
 }
 
 /// True for a Python `complex` (NumPy's `complex128` subclasses it) or a
-/// NumPy complex scalar of any width.
+/// NumPy complex scalar of any width — not for a complex array of rank one
+/// or more, which the row scan names by its dtype instead.
 fn is_complex_scalar(cell: &Bound<'_, PyAny>) -> bool {
-    cell.is_instance_of::<PyComplex>() || matches!(dtype_kind(cell), Some((k, _)) if k == "c")
+    if cell.is_instance_of::<PyComplex>() {
+        return true;
+    }
+    let rank = cell
+        .getattr("ndim")
+        .and_then(|d| d.extract::<usize>())
+        .unwrap_or(0);
+    rank == 0 && matches!(dtype_kind(cell), Some((k, _)) if k == "c")
 }
 
 /// Why `obj` is not an array of real numbers, or `None` when it may be one
