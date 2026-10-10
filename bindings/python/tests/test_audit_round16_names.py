@@ -76,7 +76,7 @@ def test_favar_names_the_slow_index_and_the_count():
         tsecon.favar(panel, policy, n_factors=2, lags=1, horizon=8, slow_indices=[0])
     # The valid slow-fast call is unchanged.
     out = tsecon.favar(panel, policy, n_factors=1, lags=1, horizon=8, slow_indices=[0, 1])
-    assert np.all(np.isfinite(np.asarray(out["irf_factors"], dtype=float)))
+    assert np.all(np.isfinite(np.asarray(out["irf_panel"], dtype=float)))
 
 
 @pytest.mark.parametrize("value", [0, 1, -1])

@@ -918,9 +918,11 @@ for a in (0.7, 2.0):
         v = str(exc)
     print(f"a={a}:  {v}")
 # a=0.7:  unique stable solution (1 unstable eigenvalue(s) = 1 jump variable(s))
-# a=2.0:  Blanchard-Kahn: indeterminate: 0 unstable eigenvalue(s) < 1 jump variable(s),
-#         so a continuum of stable solutions exists — add a jump variable or a
-#         forward-looking equation
+# a=2.0:  Blanchard-Kahn: indeterminate: 0 unstable eigenvalue(s) < 1 jump variable(s)
+#         (the variables past n_predetermined), so a continuum of stable solutions
+#         exists — check n_predetermined (a variable the past fixes is predetermined,
+#         not a jump), or change the calibration so that the model has one explosive
+#         root per jump (for a policy rule, the Taylor principle)
 ```
 
 Scanning a parameter grid this way maps the model's **determinacy region** — the set of calibrations that deliver a unique equilibrium at all — which for many New-Keynesian cores is the whole point of the exercise (the Taylor principle is a determinacy condition of exactly this form). When the counts *disagree*, `dsge_solve` raises rather than returning matrices, so an indeterminate or explosive calibration can never be silently plotted as if it had a clean impulse response.
