@@ -619,6 +619,68 @@ fn validate_options(opts: &AutoArimaOptions) -> Result<(), ArimaError> {
     Ok(())
 }
 
+/// Refuses, before any advisor runs, a seasonal search the series cannot
+/// support, naming the option that asks for too much and the largest value
+/// that fits:
+///
+/// * a fixed `D` whose `D * seasonal_period` seasonal differences consume
+///   the whole series (`y.len() <= D * s`), naming `D` — or
+///   `seasonal_period` when even one difference at that period leaves
+///   nothing;
+/// * with `D` chosen by the seasonal-strength rule, a `seasonal_period`
+///   longer than half the (non-constant) series: the STL fit behind the
+///   rule needs two full cycles, `y.len() >= 2 * s` ([`tsecon_diag::nsdiffs`]
+///   would refuse the same series without naming the option). A constant
+///   series is left to `nsdiffs`, which reports `D = 0` for it.
+fn check_seasonal_fit(y: &[f64], s: usize, fixed_d: Option<usize>) -> Result<(), ArimaError> {
+    let n = y.len();
+    match fixed_d {
+        Some(dd) if dd > 0 => {
+            let lost = (dd as u128) * (s as u128);
+            if lost >= n as u128 {
+                let what = if s >= n {
+                    format!(
+                        "seasonal_period = {s} is not shorter than the series ({n} \
+                         observations), so even one seasonal difference (D = {dd} was \
+                         fixed) leaves nothing to fit; seasonal_period can be at most {} \
+                         for one difference — pass the true period (12 monthly, 4 \
+                         quarterly)",
+                        n.saturating_sub(1)
+                    )
+                } else {
+                    format!(
+                        "D = {dd} seasonal differences at seasonal_period = {s} drop D * \
+                         seasonal_period = {lost} observations, but y has {n}, so nothing \
+                         would remain to fit; D can be at most {} here (R's auto.arima caps \
+                         max.D at 1, and more than one seasonal difference is rarely \
+                         warranted)",
+                        (n - 1) / s
+                    )
+                };
+                return Err(ArimaError::Selection { what });
+            }
+        }
+        Some(_) => {}
+        None => {
+            let constant = y.iter().all(|&v| v == y[0]);
+            if n >= 4 && !constant && (n as u128) < 2 * (s as u128) {
+                return Err(ArimaError::Selection {
+                    what: format!(
+                        "seasonal_period = {s} is too long for a series of {n} observations: \
+                         the seasonal-strength rule that chooses D fits an STL decomposition, \
+                         which needs two full cycles (2 * seasonal_period = {} observations), \
+                         so seasonal_period can be at most {} here — pass the true period (12 \
+                         monthly, 4 quarterly), or fix D yourself",
+                        2 * (s as u128),
+                        n / 2
+                    ),
+                });
+            }
+        }
+    }
+    Ok(())
+}
+
 /// Automatic ARIMA order selection: the Hyndman-Khandakar (2008)
 /// algorithm as implemented by `forecast::auto.arima`, on this crate's
 /// exact-MLE engine.
@@ -678,9 +740,11 @@ fn validate_options(opts: &AutoArimaOptions) -> Result<(), ArimaError> {
 /// * [`ArimaError::NonFinite`] when `y` contains NaN/infinity;
 /// * [`ArimaError::Selection`] when the `d`/`D` advisors cannot run
 ///   (most often: too few observations for KPSS or for an STL fit at
-///   the given period), or when **no** candidate produced an admissible
-///   fit (the error names how many were tried and why the last one
-///   failed).
+///   the given period — a `seasonal_period` past half the series, or a
+///   fixed `D` whose seasonal differences consume it, is refused up front
+///   naming the option and its largest admissible value), or when **no**
+///   candidate produced an admissible fit (the error names how many were
+///   tried and why the last one failed).
 pub fn auto_arima(y: &[f64], opts: &AutoArimaOptions) -> Result<AutoArimaResult, ArimaError> {
     validate_options(opts)?;
     if let Some(index) = y.iter().position(|v| !v.is_finite()) {
@@ -690,6 +754,9 @@ pub fn auto_arima(y: &[f64], opts: &AutoArimaOptions) -> Result<AutoArimaResult,
         });
     }
     let s = opts.seasonal_period;
+    if s >= 2 {
+        check_seasonal_fit(y, s, opts.fixed_seasonal_d)?;
+    }
 
     // --- Stage 1: D from seasonal strength (seasonal searches only). ---
     let (seasonal_d, seasonal_d_evidence) = if s >= 2 {
@@ -717,12 +784,16 @@ pub fn auto_arima(y: &[f64], opts: &AutoArimaOptions) -> Result<AutoArimaResult,
     let mut ys: Vec<f64> = y.to_vec();
     for _ in 0..seasonal_d {
         if ys.len() <= s {
+            // Unreachable after `check_seasonal_fit` (a fixed D is checked
+            // up front, and the seasonal-strength rule differences only
+            // while two full cycles remain); kept as the defensive guard.
             return Err(ArimaError::InsufficientObservations {
                 needed: s + 1,
                 got: ys.len(),
                 nobs: y.len(),
                 what: "seasonal differencing before the KPSS d-sequence (each seasonal \
                        difference drops a full period)",
+                remedy: "Lower D or seasonal_period, or supply a longer series.",
             });
         }
         ys = ys.windows(s + 1).map(|w| w[s] - w[0]).collect();

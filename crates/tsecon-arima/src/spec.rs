@@ -1,10 +1,24 @@
 //! The ARIMA model specification: orders, constant, parameter layout.
 
 use crate::error::ArimaError;
+use crate::results::EstimationMethod;
 
 /// Guard against accidental pathological orders (a mistyped order would
 /// otherwise allocate enormous state matrices before any data check).
 const MAX_ORDER: usize = 1000;
+
+/// Work budget of one ARIMA estimation, in multiply-adds (`2^37`): the work
+/// [`ArimaSpec::estimation_cost`] counts — what every fit is *guaranteed* to
+/// do, whatever its optimizer does — may not pass it. Measured on the
+/// release wheel (`lab/arima_budget/arima_cost.py`), see that script's
+/// output for seconds per unit.
+pub const ARIMA_WORK_BUDGET: u128 = 1 << 37;
+
+/// Memory budget of one exact-likelihood evaluation, in `f64` values
+/// (`2^28`, 2 GiB): the Kalman filter keeps three `m x m` covariances per
+/// observation (predicted, predicted-diffuse and filtered), `3 (n_eff + 1)
+/// m^2` values for a state of dimension `m`.
+pub const ARIMA_BUDGET_VALUES: u128 = 1 << 28;
 
 /// Specification of an ARIMA(p, d, q) model, optionally with a constant:
 ///
@@ -220,6 +234,91 @@ impl ArimaSpec {
         usize::from(self.include_constant) + self.p + self.q + self.seasonal_p + self.seasonal_q + 1
     }
 
+    /// The state dimension of the exact likelihood's Kalman filter,
+    /// `m = max(p + s*P, q + s*Q + 1)` (the Harvey form of the multiplied-out
+    /// ARMA(p + s*P, q + s*Q); see [`crate::arma_ssm`]).
+    #[inline]
+    pub fn state_dim(&self) -> usize {
+        let ar = self.p + self.period * self.seasonal_p;
+        let ma = self.q + self.period * self.seasonal_q;
+        ar.max(ma + 1)
+    }
+
+    /// The cost of estimating this specification on `n_eff` usable
+    /// observations (after differencing) by `method`: `(work, values)`, the
+    /// multiply-adds every such fit is guaranteed to spend and the `f64`
+    /// values one exact-likelihood evaluation holds. Counted in `u128`, so
+    /// no order can overflow the check meant to refuse it.
+    ///
+    /// With `m` the [`state_dim`](ArimaSpec::state_dim) and `k` the
+    /// [`k_params`](ArimaSpec::k_params):
+    ///
+    /// * one exact-likelihood evaluation costs `E = (4 n_eff + 200) m^3`
+    ///   (each filter step forms `T P T'` for the covariance and its diffuse
+    ///   companion, about `4 m^3`; the stationary initialization — Lyapunov
+    ///   doubling plus the spectral-radius check — at most about `200 m^3`)
+    ///   and holds `3 (n_eff + 1) m^2` values;
+    /// * a fit evaluates its objective at least `2 k (k + 2) + 1` times
+    ///   whatever the optimizer does: one central-difference gradient
+    ///   (`2k + 1`) and the four-point observed-information Hessian behind
+    ///   the standard errors (`2 k (k + 1)`);
+    /// * exact MLE ([`EstimationMethod::ExactMle`]): `work = (2 k (k + 2) +
+    ///   1) E`; CSS ([`EstimationMethod::Css`]): the recursion costs
+    ///   `n_eff (p + s*P + q + s*Q + 1)` per evaluation and the residuals run
+    ///   the exact filter once more, `work = (2 k (k + 2) + 1) n_eff (p + s*P
+    ///   + q + s*Q + 1) + E`; a single evaluation at fixed parameters
+    ///   ([`EstimationMethod::Fixed`]): `work = E`.
+    pub fn estimation_cost(&self, n_eff: usize, method: EstimationMethod) -> (u128, u128) {
+        cost_at(self.state_dim(), self, n_eff, method)
+    }
+
+    /// Refuses a specification whose [`estimation_cost`](Self::estimation_cost)
+    /// passes [`ARIMA_WORK_BUDGET`] or [`ARIMA_BUDGET_VALUES`], naming the
+    /// orders and the largest state dimension that fits.
+    pub(crate) fn check_budget(
+        &self,
+        n_eff: usize,
+        method: EstimationMethod,
+    ) -> Result<(), ArimaError> {
+        let fits = |m: usize| {
+            let (work, values) = cost_at(m, self, n_eff, method);
+            (work <= ARIMA_WORK_BUDGET, values <= ARIMA_BUDGET_VALUES)
+        };
+        let m = self.state_dim();
+        let exceeded = match fits(m) {
+            (true, true) => return Ok(()),
+            (false, false) => {
+                "both the work budget of 2^37 multiply-adds and the memory budget of 2^28 \
+                 values (2 GiB)"
+            }
+            (false, true) => "the work budget of 2^37 multiply-adds",
+            (true, false) => "the memory budget of 2^28 values (2 GiB) for the filter",
+        };
+        // Both counts grow with m: bisect on the largest that fits.
+        let ok = |m: usize| fits(m) == (true, true);
+        let max_state_dim = if ok(1) {
+            let (mut lo, mut hi) = (1usize, m);
+            while lo < hi {
+                let mid = lo + (hi - lo).div_ceil(2);
+                if ok(mid) {
+                    lo = mid;
+                } else {
+                    hi = mid - 1;
+                }
+            }
+            lo
+        } else {
+            0
+        };
+        Err(ArimaError::TooLarge {
+            state_dim: m,
+            k_params: self.k_params(),
+            n_eff,
+            exceeded,
+            max_state_dim,
+        })
+    }
+
     /// Parameter names in estimation order, statsmodels style:
     /// `["const"?, "ar.L1", ..., "ar.Lp", "ma.L1", ..., "ma.Lq",
     /// "ar.S.Ls", ..., "ar.S.L{P*s}", "ma.S.Ls", ..., "ma.S.L{Q*s}",
@@ -289,6 +388,26 @@ impl ArimaSpec {
             sigma2,
         })
     }
+}
+
+/// [`ArimaSpec::estimation_cost`] at state dimension `m` (the bisection in
+/// [`ArimaSpec::check_budget`] varies `m` with the parameter count fixed).
+fn cost_at(m: usize, spec: &ArimaSpec, n_eff: usize, method: EstimationMethod) -> (u128, u128) {
+    let (m, n, k) = (m as u128, n_eff as u128, spec.k_params() as u128);
+    let exact = (4 * n + 200) * m * m * m;
+    let values = 3 * (n + 1) * m * m;
+    let evals = 2 * k * (k + 2) + 1;
+    let work = match method {
+        EstimationMethod::ExactMle => evals * exact,
+        EstimationMethod::Css => {
+            let lags = (spec.p + spec.period * spec.seasonal_p) as u128
+                + (spec.q + spec.period * spec.seasonal_q) as u128
+                + 1;
+            evals * n * lags + exact
+        }
+        EstimationMethod::Fixed => exact,
+    };
+    (work, values)
 }
 
 /// Multiplies a regular lag polynomial into a seasonal one, returning the

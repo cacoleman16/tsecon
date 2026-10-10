@@ -443,6 +443,8 @@ fn hannan_rissanen(x: &[f64], spec: &ArimaSpec) -> Result<Vec<f64>, ArimaError> 
             what: "the Hannan-Rissanen starting-value regression (a long \
                    autoregression of order h covering the largest seasonal lag, \
                    then the AR/MA/seasonal lag terms plus a constant)",
+            remedy: "Lower p or q, or the seasonal orders or period (seasonal=(P, D, Q, \
+                     s)), or supply a longer series.",
         });
     }
 
@@ -649,11 +651,15 @@ impl ArimaSpec {
     ///   [`ArimaError::InvalidArgument`] on a malformed parameter vector;
     /// * [`ArimaError::NonFinite`] / [`ArimaError::InsufficientObservations`]
     ///   on malformed data;
+    /// * [`ArimaError::TooLarge`] when one filter pass would pass the work or
+    ///   memory budget ([`ArimaSpec::estimation_cost`] with
+    ///   [`EstimationMethod::Fixed`]), checked before anything is allocated;
     /// * [`ArimaError::Ssm`] when filtering fails (e.g. non-stationary AR
     ///   coefficients, for which no stationary initialization exists).
     pub fn loglike(&self, y: &[f64], params: &[f64]) -> Result<f64, ArimaError> {
         let diffed = difference(y, self.d(), self.seasonal_d(), self.period())?;
         let blocks = self.unpack(params)?;
+        self.check_budget(diffed.series.len(), EstimationMethod::Fixed)?;
         let (ar_full, ma_full) = blocks.expanded(self.period());
         let model = arma_ssm(&ar_full, &ma_full, blocks.sigma2, blocks.constant)?;
         let n = diffed.series.len();
@@ -675,6 +681,7 @@ impl ArimaSpec {
     pub fn at_params(&self, y: &[f64], params: &[f64]) -> Result<ArimaResults, ArimaError> {
         let diffed = difference(y, self.d(), self.seasonal_d(), self.period())?;
         let blocks = self.unpack(params)?;
+        self.check_budget(diffed.series.len(), EstimationMethod::Fixed)?;
         let (ar_full, ma_full) = blocks.expanded(self.period());
         let model = arma_ssm(&ar_full, &ma_full, blocks.sigma2, blocks.constant)?;
         let n_eff = diffed.series.len();
@@ -714,10 +721,15 @@ impl ArimaSpec {
     /// * [`ArimaError::NonFinite`] if `y` contains NaN/infinity;
     /// * [`ArimaError::InsufficientObservations`] when fewer than
     ///   `k + 1` observations remain after differencing;
+    /// * [`ArimaError::TooLarge`] when the specification's guaranteed work
+    ///   or its filter storage would pass the budgets
+    ///   ([`ArimaSpec::estimation_cost`]), checked before anything is
+    ///   allocated, naming the largest state dimension that fits;
     /// * [`ArimaError::EstimationFailed`] if no optimization stage found
     ///   a finite likelihood.
     pub fn fit(&self, y: &[f64]) -> Result<ArimaResults, ArimaError> {
         let diffed = difference(y, self.d(), self.seasonal_d(), self.period())?;
+        self.check_mle_estimable(diffed.series.len())?;
         let start = starting_values(&diffed.series, self);
         self.fit_mle_core(
             diffed.series,
@@ -758,6 +770,7 @@ impl ArimaSpec {
         let diffed = difference(y, self.d(), self.seasonal_d(), self.period())?;
         // Validates layout, finiteness, and sigma2 > 0.
         self.unpack(start_params)?;
+        self.check_mle_estimable(diffed.series.len())?;
         self.fit_mle_core(
             diffed.series,
             diffed.anchors,
@@ -767,11 +780,35 @@ impl ArimaSpec {
         )
     }
 
+    /// The exact-MLE preconditions on the differenced sample, checked before
+    /// starting values are formed: at least `k + 1` usable observations,
+    /// then the work and memory budgets ([`ArimaSpec::estimation_cost`]).
+    fn check_mle_estimable(&self, n_eff: usize) -> Result<(), ArimaError> {
+        let k = self.k_params();
+        if n_eff < k + 1 {
+            let seasonal = self.seasonal_p() + self.seasonal_d() + self.seasonal_q() > 0;
+            return Err(ArimaError::InsufficientObservations {
+                needed: k + 1,
+                got: n_eff,
+                nobs: n_eff + self.d() + self.seasonal_d() * self.period(),
+                what: "exact-likelihood estimation of the p + q + P + Q + constant + \
+                       sigma2 free parameters",
+                remedy: if seasonal {
+                    "Lower p or q, or d, or the seasonal orders (seasonal=(P, D, Q, s)), \
+                     or supply a longer series."
+                } else {
+                    "Lower p, d, or q, or supply a longer series."
+                },
+            });
+        }
+        self.check_budget(n_eff, EstimationMethod::ExactMle)
+    }
+
     /// Shared exact-MLE optimization core on the already-differenced
-    /// sample; `start` must be a valid interior point of the constrained
-    /// domain (stationary AR, invertible MA, positive variance).
-    /// `local_first` selects the basin-faithful stage order used by
-    /// [`ArimaSpec::fit_with_start`].
+    /// sample (its size already checked by `check_mle_estimable`); `start`
+    /// must be a valid interior point of the constrained domain (stationary
+    /// AR, invertible MA, positive variance). `local_first` selects the
+    /// basin-faithful stage order used by [`ArimaSpec::fit_with_start`].
     fn fit_mle_core(
         &self,
         x: Vec<f64>,
@@ -781,16 +818,6 @@ impl ArimaSpec {
         local_first: bool,
     ) -> Result<ArimaResults, ArimaError> {
         let n_eff = x.len();
-        let k = self.k_params();
-        if n_eff < k + 1 {
-            return Err(ArimaError::InsufficientObservations {
-                needed: k + 1,
-                got: n_eff,
-                nobs: n_eff + self.d() + self.seasonal_d() * self.period(),
-                what: "exact-likelihood estimation of the p + q + P + Q + constant + \
-                       sigma2 free parameters",
-            });
-        }
 
         let transform = ArimaTransform {
             constant: self.include_constant(),
@@ -885,6 +912,13 @@ impl ArimaSpec {
                 nobs: y.len(),
                 what: "the conditional-sum-of-squares recursion (p + s*P conditioning \
                        values plus at least one residual)",
+                remedy: if self.period() * self.seasonal_p() > 0 {
+                    "Lower p, or the seasonal AR order P or the period s (seasonal=(P, D, \
+                     Q, s)) — the s*P conditioning values are usually the binding term — \
+                     or supply a longer series."
+                } else {
+                    "Lower p, d, or q, or supply a longer series."
+                },
             });
         }
         let mut probe = mean_params.to_vec();
@@ -944,14 +978,24 @@ impl ArimaSpec {
         // AR order).
         let p_full = self.p() + self.period() * self.seasonal_p();
         if n_eff < p_full + k + 1 {
+            let seasonal = self.seasonal_p() + self.seasonal_d() + self.seasonal_q() > 0;
             return Err(ArimaError::InsufficientObservations {
                 needed: p_full + k + 1,
                 got: n_eff,
                 nobs: n_eff + self.d() + self.seasonal_d() * self.period(),
-                what: "conditional-sum-of-squares estimation (p + s*P presample values \
-                       plus the p + q + P + Q + constant + sigma2 free parameters)",
+                what: "conditional-sum-of-squares estimation (p + s*P presample values, \
+                       the p + q + P + Q + constant + sigma2 free parameters, and at least \
+                       one residual degree of freedom)",
+                remedy: if seasonal {
+                    "Lower the seasonal orders or the period s (seasonal=(P, D, Q, s)) — \
+                     the s*P presample values are usually the binding term — or p or q, \
+                     or supply a longer series."
+                } else {
+                    "Lower p, d, or q, or supply a longer series."
+                },
             });
         }
+        self.check_budget(n_eff, EstimationMethod::Css)?;
 
         let c = usize::from(self.include_constant());
         let k_mean = c + self.p() + self.q() + self.seasonal_p() + self.seasonal_q();
