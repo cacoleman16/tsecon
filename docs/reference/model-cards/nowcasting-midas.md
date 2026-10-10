@@ -119,7 +119,7 @@ data release that caused it.
 
 | Call | Argument | Default | Notes |
 |------|----------|---------|-------|
-| `midas_weights` | `scheme`, `θ₁`, `θ₂`, `k` | — | `"exp_almon"` or `"beta"`; k lags |
+| `midas_weights` | `scheme`, `θ₁`, `θ₂`, `k` | — | `"exp_almon"` or `"beta"`; k lags, at most 2^27 (refused by name before allocating) |
 | `umidas` | `se_type` | `"hac"` | robust SEs on the OLS coefficients |
 | | `maxlags` | `None` | HAC bandwidth (auto if `None`) |
 | `adl_midas` | `ar_lags` | `1` | lags of the target; `0` is refused (that model is `umidas`) |
