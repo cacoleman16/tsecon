@@ -237,7 +237,10 @@ fn guardrails_teach_on_degenerate_inputs() {
     ));
     assert!(matches!(
         drift(&y, 0, 0.95).unwrap_err(),
-        ForecastError::InvalidSteps { steps: 0 }
+        ForecastError::InvalidSteps {
+            steps: 0,
+            name: "steps"
+        }
     ));
     assert!(matches!(
         theta_forecast_with(&y, 1, 4, 0.5).unwrap_err(),

@@ -80,7 +80,7 @@ pub(crate) fn check_steps(
     what: &'static str,
 ) -> Result<(), ForecastError> {
     if steps == 0 {
-        return Err(ForecastError::InvalidSteps { steps });
+        return Err(ForecastError::InvalidSteps { steps, name });
     }
     if steps > MAX_FORECAST_STEPS {
         return Err(ForecastError::TooLarge {
@@ -88,7 +88,7 @@ pub(crate) fn check_steps(
             name,
             value: steps,
             requirement: format!(
-                "every forecast step is materialised, so the horizon is capped at \
+                "every forecast step is materialised and the horizon is capped at \
                  {MAX_FORECAST_STEPS} steps (as in arima_fit and ets_fit)"
             ),
             max: Some(MAX_FORECAST_STEPS),

@@ -80,6 +80,9 @@ pub enum ForecastError {
     InvalidSteps {
         /// The offending step count.
         steps: usize,
+        /// The caller's keyword for it (`steps`, or `horizon` in the
+        /// conformal methods).
+        name: &'static str,
     },
     /// A size parameter asks for more than the series, the forecast-horizon
     /// cap ([`crate::MAX_FORECAST_STEPS`]) or a work/memory budget allows.
@@ -439,9 +442,9 @@ impl fmt::Display for ForecastError {
                 "{what}: period = {period} is invalid for a series of \
                  length {n}: requires {requirement}"
             ),
-            ForecastError::InvalidSteps { steps } => write!(
+            ForecastError::InvalidSteps { steps, name } => write!(
                 f,
-                "steps = {steps} is invalid: the forecast horizon must be a \
+                "{name} = {steps} is invalid: the forecast horizon must be a \
                  positive integer"
             ),
             ForecastError::TooLarge {
