@@ -483,7 +483,10 @@ pub fn lp_band(
     spec: LpSpec,
     band: BandSpec,
 ) -> Result<LpBandResult, LpError> {
-    check_sup_t_simulation(&band, spec.horizons.saturating_add(1))?;
+    // A horizon past the sample is the estimator's refusal (naming
+    // `horizons`), not the simulation budget's: size the family by the
+    // horizons the sample can reach at all.
+    check_sup_t_simulation(&band, spec.horizons.min(y.len()).saturating_add(1))?;
     let res = lp(y, shock, spec)?;
     let cov = match band.method {
         BandMethod::SupT => Some(lp_irf_cov(y, shock, spec)?),
@@ -517,7 +520,8 @@ pub fn smooth_lp_band(
     spec: &SmoothLpSpec,
     band: BandSpec,
 ) -> Result<SmoothLpBandResult, LpError> {
-    check_sup_t_simulation(&band, spec.horizons.saturating_add(1))?;
+    // As in `lp_band`: an unreachable horizon is `smooth_lp`'s refusal.
+    check_sup_t_simulation(&band, spec.horizons.min(y.len()).saturating_add(1))?;
     let res = smooth_lp(y, shock, spec)?;
     let cov = match band.method {
         BandMethod::SupT => Some(LpIrfCov {
