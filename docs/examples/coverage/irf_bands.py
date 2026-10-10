@@ -1101,8 +1101,13 @@ def exp_simultaneous(reps, horizon=12, n=500):
                 alpha=ALPHA,
                 band=method,
                 band_scope="horizon",
-                band_seed=band_seed(tag, n, rep),
-                band_n_sim=SIM_N_SIM,
+                # Only the sup-t band simulates; the closed forms refuse the
+                # simulation keywords as inert.
+                **(
+                    {"band_seed": band_seed(tag, n, rep), "band_n_sim": SIM_N_SIM}
+                    if method == "sup-t"
+                    else {}
+                ),
             )
             lo = cell(res, "lower", resp, shock)
             hi = cell(res, "upper", resp, shock)

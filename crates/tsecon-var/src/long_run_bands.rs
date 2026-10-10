@@ -66,33 +66,47 @@
 //!
 //! Every allocation that scales with a user count is sized before it is made
 //! and refused beyond [`LONG_RUN_BANDS_BUDGET_VALUES`] (`2^28` doubles,
-//! 2 GiB), with checked multiplies so absurd counts cannot overflow. The
-//! count is of real storage, not of cells. One `k x k` matrix occupies
-//! `mf = 8 ceil(k / 8) k + 8` doubles, because faer pads each column to 64
-//! bytes and the matrix header takes about a cache line. The reported cubes
-//! are also converted to Python nested lists, at about `4 k^2 + 8 k` doubles
-//! per horizon. With `H1 = horizon + 1`, `cells = H1 k^2` and `K` the band
-//! family size (`H1`, `k H1` or `cells` for `band_scope` `"horizon"`,
-//! `"shock"`, `"all"`):
+//! 2 GiB, the shared [`crate::budget::BUDGET_VALUES`]), with checked
+//! multiplies so absurd counts cannot overflow. The count is of real
+//! storage, not of cells ([`crate::budget`]): a `k x k` faer matrix costs
+//! `mf = 8 ceil(k / 8) k + 16` doubles and its Python nested list
+//! `4 k^2 + (k + 1)(k + 10)`. With `H1 = horizon + 1`, `cells = H1 k^2` and
+//! `K` the band family size (`H1`, `k H1` or `cells` for `band_scope`
+//! `"horizon"`, `"shock"`, `"all"`):
 //!
-//! * bootstrap: `n_boot * (H1 mf + mf + 16)` (the draw cubes, the long-run
-//!   draws and one RNG substream per replication), plus `n_boot * lags * mf`
-//!   with `bias_correct` (the inner estimates), `n_boot * K` with a
-//!   simultaneous band (the flattened family draws), and `n_boot * (cells +
-//!   k^2)` when the draws are kept (the caller's flat copy);
+//! * bootstrap: each replication keeps its responses, its long-run matrix,
+//!   its `impact_signs` cells and its companion radius in its slot of ONE
+//!   store of `n_boot * (cells + k^2 + n_anchors + 1)` values (not `H1 + 1`
+//!   padded matrices, and no allocation of its own), plus a fixed
+//!   per-replication overhead for its RNG substream, its result slots and
+//!   its slot lock (`DRAW_OVERHEAD_VALUES`, 48) and one value of the
+//!   percentile buffer; plus its inner estimate with `bias_correct` (`lags`
+//!   k x k blocks of the inner store, counted at the padded-matrix size, and
+//!   an inner overhead), its copy of the band family (`K + 1`) with a
+//!   simultaneous band, and `cells + k^2` when the draws are kept (the
+//!   returned flat arrays);
 //! * delta method: `cells * (3 dim + 2 k(k+1)/2 + 8) + H1 * 8 ceil(k^2 / 8)
 //!   dim + dim^2` (`dim = lags k^2`: the per-cell loading rows, the `G_h`
-//!   Jacobians and the coefficient covariance), plus `3 K^2` for a
-//!   simultaneous band (the family's joint covariance and its factorization,
-//!   `((horizon + 1) k^2)^2` under `band_scope="all"`) and `K * band_n_sim`
-//!   uniforms for sup-t. The sup-t simulation work `n_families * band_n_sim *
-//!   K^2` is capped at [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`), and the
-//!   Jacobians `G_h = sum_{m<h} (A')^{h-1-m} ⊗ Phi_m`, whose work
+//!   Jacobians and the coefficient covariance), plus `3 K^2` and the family
+//!   cell lists for a simultaneous band (the family's joint covariance and
+//!   its factorization, `((horizon + 1) k^2)^2` under `band_scope="all"`)
+//!   and `(K + 1) band_n_sim` uniforms and maxima for sup-t. The sup-t
+//!   simulation work `n_families * band_n_sim * K^2` is capped at
+//!   [`LONG_RUN_BANDS_SUPT_WORK`] (`2^36`), and the Jacobians
+//!   `G_h = sum_{m<h} (A')^{h-1-m} ⊗ Phi_m`, whose work
 //!   `horizon (horizon + 1) / 2 * k^2 * dim` is QUADRATIC in `horizon`, at
 //!   [`LONG_RUN_BANDS_DELTA_WORK`] (`2^28`) — a horizon the storage count
 //!   admits could otherwise run for hours;
-//! * both arms: `6 H1 (mf + 4 k^2 + 8 k)` for the reported cubes (`point`,
-//!   `se`, `lower`, `upper` and the simultaneous pair) and their Python lists.
+//! * both arms: [`crate::budget::CUBE_COPIES`] copies of the reported cubes
+//!   (`point`, `se`, `lower`, `upper`, the simultaneous pair) as matrices and
+//!   Python lists.
+//!
+//! A refusal names the term that is over: `n_boot` (with the largest
+//! replication count that fits at this horizon) or `horizon` on the
+//! bootstrap arm; on the delta arm `horizon and lags` for the pointwise
+//! working set, `horizon and band_scope` for a family's covariance,
+//! `band_n_sim` for the sup-t simulation and `horizon` for the Jacobian
+//! work, each with the largest value that fits.
 //!
 //! # References
 //!
@@ -106,31 +120,36 @@ use tsecon_linalg::faer::{Mat, MatRef};
 
 use crate::error::VarError;
 use crate::irf_asymptotic::{
-    apply_critical_values, critical_values_from_family_covs, delta_workspace, duplication_matrix,
-    kron, pinv_full_col_rank, BandMethod, IrfBandScope, IrfCriticalValues,
+    apply_critical_values, critical_values_from_family_covs, delta_refusal, delta_workspace,
+    duplication_matrix, family_dims, kron, pinv_full_col_rank, sup_t_terms, BandMethod, DeltaTerms,
+    IrfBandScope, IrfCriticalValues,
 };
 use crate::irf_bootstrap::{
-    draw_critical_values, spectral_radius_of, summarize, Cube, ResidualBootstrap,
+    bootstrap_refusal, draw_critical_values, fill_slot, spectral_radius_of, summarize, write_block,
+    Cube, DrawStore, ResidualBootstrap, DRAW_OVERHEAD_VALUES,
 };
 use crate::results::VarResults;
 use crate::spec::Trend;
 
-/// The working-set budget of one call, in `f64` values (`2^28`, i.e. 2 GiB).
-pub const LONG_RUN_BANDS_BUDGET_VALUES: usize = 1 << 28;
+/// The working-set budget of one call, in `f64` values (`2^28`, i.e. 2 GiB):
+/// the shared [`crate::budget::BUDGET_VALUES`].
+pub const LONG_RUN_BANDS_BUDGET_VALUES: usize = crate::budget::BUDGET_VALUES;
 
 /// The simulation-work cap of the delta-method sup-t band:
-/// `n_families * band_n_sim * K^2` multiply-adds (`2^36`).
-pub const LONG_RUN_BANDS_SUPT_WORK: u128 = 1 << 36;
+/// `n_families * band_n_sim * K^2` multiply-adds (`2^36`), the shared
+/// [`tsecon_stats::simultaneous::SUP_T_MAX_WORK`].
+pub const LONG_RUN_BANDS_SUPT_WORK: u128 = tsecon_stats::simultaneous::SUP_T_MAX_WORK;
 
 /// The work cap of the delta-method Jacobians `G_1..G_horizon`:
-/// `horizon (horizon + 1) / 2 * k^2 * lags k^2` multiply-adds (`2^28`).
+/// `horizon (horizon + 1) / 2 * k^2 * lags k^2` multiply-adds (`2^28`), the
+/// shared [`crate::irf_asymptotic::DELTA_JACOBIAN_WORK`].
 ///
 /// The `G_h` sums are quadratic in `horizon`, so the storage budget alone
 /// admits horizons that run for hours. Measured on the Blanchard-Quah VAR(8)
 /// (`k = 2`): `horizon = 2000` (just under the cap) takes about 3.5 s,
 /// `horizon = 8000` about 90 s, and `horizon = 30000` over two minutes.
 /// Blanchard-Quah horizons are tens of periods.
-pub const LONG_RUN_BANDS_DELTA_WORK: u128 = 1 << 28;
+pub const LONG_RUN_BANDS_DELTA_WORK: u128 = crate::irf_asymptotic::DELTA_JACOBIAN_WORK;
 
 /// What to estimate and how to band it. Field defaults mirror the Python
 /// `long_run_svar_bands` signature.
@@ -250,10 +269,13 @@ pub struct LongRunBands {
     /// `point + c se` of the simultaneous band.
     pub sim_upper: Option<Vec<Mat<f64>>>,
     /// Per-draw reported responses (cumulated iff `cumulative`,
-    /// bias-corrected iff `bias_correct`), when `keep_draws`.
-    pub irf_draws: Option<Vec<Vec<Mat<f64>>>>,
-    /// Per-draw long-run matrices, when `keep_draws`.
-    pub long_run_draws: Option<Vec<Mat<f64>>>,
+    /// bias-corrected iff `bias_correct`), when `keep_draws`: one flat array
+    /// in row-major `(n_boot, horizon + 1, k, k)` order, cell `(b, h, i, j)`
+    /// at `((b (horizon + 1) + h) k + i) k + j`.
+    pub irf_draws: Option<Vec<f64>>,
+    /// Per-draw long-run matrices, when `keep_draws`: row-major
+    /// `(n_boot, k, k)`.
+    pub long_run_draws: Option<Vec<f64>>,
 }
 
 // ---------------------------------------------------------------------------
@@ -292,6 +314,37 @@ fn identify(
         multiplier: r.long_run_multiplier,
         pre_anchor,
     })
+}
+
+/// [`theta_cube`] written straight into blocks `0..=horizon` of `out`
+/// (row-major `k x k` blocks, the [`DrawStore`] layout), bit for bit: the
+/// same recursion and products, with each `Theta_h` copied out as it is
+/// formed instead of kept as a matrix, so a bootstrap replication never holds
+/// a horizon-long cube of matrices.
+fn theta_into(coefs: &[Mat<f64>], b: &Mat<f64>, horizon: usize, cumulative: bool, out: &mut [f64]) {
+    let k = b.nrows();
+    let k2 = k * k;
+    let p = coefs.len();
+    let mut window: VecDeque<Mat<f64>> = VecDeque::with_capacity(p + 1);
+    let psi0 = Mat::<f64>::identity(k, k);
+    write_block(out, 0, (psi0.as_ref() * b.as_ref()).as_ref());
+    window.push_back(psi0);
+    for h in 1..=horizon {
+        let mut acc = Mat::<f64>::zeros(k, k);
+        for i in 1..=h.min(p) {
+            acc += window[window.len() - i].as_ref() * coefs[i - 1].as_ref();
+        }
+        write_block(out, h, (acc.as_ref() * b.as_ref()).as_ref());
+        window.push_back(acc);
+        if window.len() > p {
+            window.pop_front();
+        }
+    }
+    if cumulative {
+        for c in k2..(horizon + 1) * k2 {
+            out[c] += out[c - k2];
+        }
+    }
 }
 
 /// `Theta_h = Psi_h B` for `h = 0..=horizon`, cumulated when asked.
@@ -424,59 +477,74 @@ fn validate(spec: &LongRunBandSpec, k: usize) -> Result<(), VarError> {
     Ok(())
 }
 
-/// Number of cells in each band family under `scope`.
-fn family_size(k: usize, cells_per_path: usize, scope: IrfBandScope) -> Option<usize> {
-    match scope {
-        IrfBandScope::Horizon => Some(cells_per_path),
-        IrfBandScope::Shock => cells_per_path.checked_mul(k),
-        IrfBandScope::All => cells_per_path.checked_mul(k)?.checked_mul(k),
-    }
-}
-
-/// Storage of one `k x k` faer matrix in `f64` units: columns padded to 64
-/// bytes, plus the header.
-fn mat_footprint(k: usize) -> Option<usize> {
-    k.div_ceil(8).checked_mul(8)?.checked_mul(k)?.checked_add(8)
-}
-
-/// The reported cubes (`point`, `se`, `lower`, `upper` and a simultaneous
-/// pair) and their Python nested lists, in `f64` units.
-fn report_footprint(k: usize, hp1: usize) -> Option<usize> {
-    let per_h = mat_footprint(k)?
-        .checked_add(k.checked_mul(k)?.checked_mul(4)?)?
-        .checked_add(k.checked_mul(8)?)?;
-    hp1.checked_mul(per_h)?.checked_mul(6)
-}
-
 /// The bootstrap working set in `f64` values (see the module docs), or
 /// `None` when the count itself overflows.
 pub fn bootstrap_budget_values(spec: &LongRunBandSpec, k: usize) -> Option<usize> {
+    use crate::budget::{cube_values, mat_values, CUBE_COPIES};
     let k2 = k.checked_mul(k)?;
-    let mf = mat_footprint(k)?;
     let hp1 = spec.horizon.checked_add(1)?;
     let cells = hp1.checked_mul(k2)?;
-    let mut per_draw = hp1.checked_mul(mf)?.checked_add(mf)?.checked_add(16)?;
+    // The replication's store slot (responses, long-run matrix, impact_signs
+    // cells, radius), its overhead and one percentile-buffer value.
+    let mut per_draw = draw_width(spec, k)?.checked_add(DRAW_OVERHEAD_VALUES + 1)?;
     if spec.bias_correct {
-        per_draw = per_draw.checked_add(spec.lags.checked_mul(mf)?)?;
+        per_draw = per_draw
+            .checked_add(spec.lags.checked_mul(mat_values(k)?)?)?
+            .checked_add(DRAW_OVERHEAD_VALUES)?;
     }
     if let Some((_, scope)) = spec.band {
-        per_draw = per_draw.checked_add(family_size(k, hp1, scope)?)?;
+        let (_, kf) = family_dims(k, spec.horizon, scope)?;
+        per_draw = per_draw.checked_add(kf.checked_add(1)?)?;
     }
     if spec.keep_draws {
         per_draw = per_draw.checked_add(cells.checked_add(k2)?)?;
     }
     spec.n_boot
         .checked_mul(per_draw)?
-        .checked_add(report_footprint(k, hp1)?)
+        .checked_add(cube_values(k, hp1, CUBE_COPIES)?)
 }
 
-/// The delta-method working set in `f64` values and the sup-t simulation
-/// work (see the module docs), or `None` on overflow.
-pub fn asymptotic_budget(spec: &LongRunBandSpec, k: usize) -> Option<(usize, u128)> {
+/// Values of one replication's [`DrawStore`] slot: the responses (blocks
+/// `0..=horizon`), the long-run matrix (block `horizon + 1`), the
+/// pre-anchor `impact_signs` cells and the companion spectral radius.
+fn draw_width(spec: &LongRunBandSpec, k: usize) -> Option<usize> {
+    let anchors = spec.impact_signs.as_ref().map_or(0, Vec::len);
+    spec.horizon
+        .checked_add(2)?
+        .checked_mul(k.checked_mul(k)?)?
+        .checked_add(anchors)?
+        .checked_add(1)
+}
+
+/// The delta-method size terms (see the module docs).
+pub(crate) fn asymptotic_terms(spec: &LongRunBandSpec, k: usize) -> DeltaTerms {
+    let (mut family, mut sim, mut sim_work) = (Some(0usize), Some(0usize), Some(0u128));
+    if let Some((method, scope)) = spec.band {
+        family = long_run_family_values(k, spec.horizon, scope);
+        if method == BandMethod::SupT {
+            (sim, sim_work) = match family_dims(k, spec.horizon, scope) {
+                Some((n_fam, kf)) => sup_t_terms(n_fam, kf, spec.band_n_sim),
+                None => (None, None),
+            };
+        }
+    }
+    DeltaTerms {
+        base: long_run_base_values(k, spec.lags, spec.horizon),
+        family,
+        sim,
+        sim_work,
+        jacobian_work: asymptotic_jacobian_work(spec, k),
+    }
+}
+
+/// The pointwise delta-method working set: the per-cell loading rows, the
+/// `G_h` Jacobians, the coefficient covariance and the reported cubes.
+fn long_run_base_values(k: usize, lags: usize, horizon: usize) -> Option<usize> {
+    use crate::budget::{cube_values, CUBE_COPIES};
     let k2 = k.checked_mul(k)?;
-    let hp1 = spec.horizon.checked_add(1)?;
+    let hp1 = horizon.checked_add(1)?;
     let cells = hp1.checked_mul(k2)?;
-    let dim = spec.lags.checked_mul(k2)?;
+    let dim = lags.checked_mul(k2)?;
     let half = k.checked_mul(k.checked_add(1)?)? / 2;
     let per_cell = dim
         .checked_mul(3)?
@@ -485,38 +553,83 @@ pub fn asymptotic_budget(spec: &LongRunBandSpec, k: usize) -> Option<(usize, u12
     let jacobians = hp1
         .checked_mul(k2.div_ceil(8).checked_mul(8)?)?
         .checked_mul(dim)?;
-    let mut values = cells
+    cells
         .checked_mul(per_cell)?
         .checked_add(jacobians)?
         .checked_add(dim.checked_mul(dim)?)?
-        .checked_add(report_footprint(k, hp1)?)?;
-    let mut work: u128 = 0;
-    if let Some((method, scope)) = spec.band {
-        let kf = family_size(k, hp1, scope)?;
-        values = values.checked_add(kf.checked_mul(kf)?.checked_mul(3)?)?;
-        if method == BandMethod::SupT {
-            values = values.checked_add(kf.checked_mul(spec.band_n_sim)?)?;
-            let n_fam = (cells / kf.max(1)) as u128;
-            work = n_fam
-                .checked_mul(spec.band_n_sim as u128)?
-                .checked_mul(kf as u128)?
-                .checked_mul(kf as u128)?;
-        }
+        .checked_add(cube_values(k, hp1, CUBE_COPIES)?)
+}
+
+/// A simultaneous band's family covariance and factor (`3 K^2`) and the
+/// family cell lists (three indices per cell).
+fn long_run_family_values(k: usize, horizon: usize, scope: IrfBandScope) -> Option<usize> {
+    let (_, kf) = family_dims(k, horizon, scope)?;
+    let cells = horizon.checked_add(1)?.checked_mul(k.checked_mul(k)?)?;
+    kf.checked_mul(kf)?
+        .checked_mul(3)?
+        .checked_add(cells.checked_mul(3)?)
+}
+
+/// Refuses a bootstrap request on `k` variables whose working set
+/// ([`bootstrap_budget_values`]) exceeds [`LONG_RUN_BANDS_BUDGET_VALUES`]:
+/// naming `n_boot` with the largest replication count that fits at this
+/// horizon, or `horizon` when not even 2 replications fit.
+///
+/// # Errors
+///
+/// [`VarError::SizeBudget`] naming `n_boot` or `horizon`.
+pub fn check_bootstrap_budget(spec: &LongRunBandSpec, k: usize) -> Result<(), VarError> {
+    let at = |n_boot: usize, horizon: usize| {
+        let s = LongRunBandSpec {
+            n_boot,
+            horizon,
+            ..spec.clone()
+        };
+        bootstrap_budget_values(&s, k)
+    };
+    match bootstrap_refusal(at, spec.n_boot, spec.horizon) {
+        Some(e) => Err(e),
+        None => Ok(()),
     }
-    Some((values, work))
+}
+
+/// Refuses a delta-method request on `k` variables whose working set,
+/// sup-t simulation or Jacobian work exceeds its budget, naming the term
+/// that is over with the largest value that fits (see
+/// [`long_run_asymptotic_bands`]).
+///
+/// # Errors
+///
+/// [`VarError::SizeBudget`] naming `horizon` or `band_n_sim`.
+pub fn check_asymptotic_budget(spec: &LongRunBandSpec, k: usize) -> Result<(), VarError> {
+    let supt = matches!(spec.band, Some((BandMethod::SupT, _)));
+    let at = |horizon: usize, band_n_sim: usize| {
+        let s = LongRunBandSpec {
+            horizon,
+            band_n_sim,
+            ..spec.clone()
+        };
+        asymptotic_terms(&s, k)
+    };
+    match delta_refusal(at, spec.horizon, spec.band_n_sim, supt) {
+        Some(e) => Err(e),
+        None => Ok(()),
+    }
+}
+
+/// The delta-method working set in `f64` values and the sup-t simulation
+/// work (see the module docs), or `None` on overflow.
+pub fn asymptotic_budget(spec: &LongRunBandSpec, k: usize) -> Option<(usize, u128)> {
+    let t = asymptotic_terms(spec, k);
+    let values = t.base?.checked_add(t.family?)?.checked_add(t.sim?)?;
+    Some((values, t.sim_work?))
 }
 
 /// The delta-method Jacobian work `horizon (horizon + 1) / 2 * k^2 * lags k^2`
 /// checked against [`LONG_RUN_BANDS_DELTA_WORK`]. Saturating, so an absurd
 /// `horizon` cannot overflow the count meant to refuse it.
 pub fn asymptotic_jacobian_work(spec: &LongRunBandSpec, k: usize) -> u128 {
-    let h = spec.horizon as u128;
-    let k2 = (k as u128).saturating_mul(k as u128);
-    let dim = (spec.lags as u128).saturating_mul(k2);
-    h.saturating_mul(h.saturating_add(1))
-        .saturating_div(2)
-        .saturating_mul(k2)
-        .saturating_mul(dim)
+    crate::irf_asymptotic::delta_jacobian_work(k, spec.lags, spec.horizon)
 }
 
 fn min_root_of(res: &VarResults) -> Result<f64, VarError> {
@@ -531,14 +644,6 @@ fn min_root_of(res: &VarResults) -> Result<f64, VarError> {
 // Bootstrap arm
 // ---------------------------------------------------------------------------
 
-/// One replication's identified, reported objects.
-struct Draw {
-    irf: Cube,
-    long_run: Mat<f64>,
-    pre_anchor: Vec<f64>,
-    radius: f64,
-}
-
 /// Residual-bootstrap bands for the Blanchard-Quah SVAR fitted to `endog`
 /// (`n x k`, observations in rows, oldest first), re-identifying inside every
 /// draw. See the module docs for the algorithm, the Kilian branch and the
@@ -550,9 +655,10 @@ struct Draw {
 ///   [`VarError::Dimension`] for `lags == 0`, `n_boot < 2`, `alpha` outside
 ///   `(0, 1)`, fewer than 2 variables, a `restrictions` pattern that is not a
 ///   column permutation of the recursive scheme, or bad `impact_signs`;
-/// * [`VarError::InvalidArgument`] when the working set exceeds
-///   [`LONG_RUN_BANDS_BUDGET_VALUES`] (naming `n_boot` and `horizon`), checked
-///   before anything is allocated;
+/// * [`VarError::SizeBudget`] when the working set exceeds
+///   [`LONG_RUN_BANDS_BUDGET_VALUES`] (naming `n_boot`, with the largest count
+///   that fits, or `horizon` when no replication count fits), checked before
+///   anything is allocated;
 /// * [`VarError::InvalidArgument`] when the full-sample VAR cannot be
 ///   identified (a singular `I - sum A_i`, naming `data` and `lags`);
 /// * [`VarError::Replication`] naming the first replication whose
@@ -575,19 +681,7 @@ pub fn long_run_bootstrap_bands(
                    default (use 999+ for a sup-t band)",
         });
     }
-    match bootstrap_budget_values(spec, k) {
-        Some(v) if v <= LONG_RUN_BANDS_BUDGET_VALUES => {}
-        _ => {
-            return Err(VarError::InvalidArgument {
-                what: "n_boot and horizon: the bootstrap working set, dominated by the n_boot \
-                       * (horizon + 1) draw matrices of k x k (plus n_boot * lags matrices with \
-                       bias_correct, n_boot times the band family size with a simultaneous band, \
-                       and the draws once more with return_draws), exceeds the 2^28-value \
-                       (2 GiB) budget, checked before anything is allocated; reduce n_boot or \
-                       horizon",
-            });
-        }
-    }
+    check_bootstrap_budget(spec, k)?;
     let (h, cumulative) = (spec.horizon, spec.cumulative);
     let engine = ResidualBootstrap::new(
         endog,
@@ -603,50 +697,56 @@ pub fn long_run_bootstrap_bands(
     let point = theta_cube(&engine.dgp_coefs, &point_id.impact, h, cumulative);
     let min_root = min_root_of(fit)?;
 
-    let raw: Vec<Result<Draw, &'static str>> =
-        engine.replicate(spec.seed, spec.n_boot, true, |res_b, coefs_b| {
+    // Each replication fills its slot of one store: the responses (blocks
+    // 0..=h), the long-run matrix (block h + 1), the pre-anchor cells, then
+    // the raw refit's companion radius.
+    let cells = (h + 1) * k * k;
+    let n_anchor = spec.impact_signs.as_ref().map_or(0, Vec::len);
+    let mut draws = DrawStore::new(spec.n_boot, cells + k * k + n_anchor + 1);
+    let raw: Vec<Result<(), &'static str>> = {
+        let slots = draws.slots();
+        engine.replicate(spec.seed, spec.n_boot, true, |rep, res_b, coefs_b| {
             let radius = spectral_radius_of(&res_b.coefs)?;
             Ok(match identify(coefs_b, res_b.sigma_u.as_ref(), spec) {
-                Ok(id) => Ok(Draw {
-                    irf: theta_cube(coefs_b, &id.impact, h, cumulative),
-                    long_run: id.long_run,
-                    pre_anchor: id.pre_anchor,
-                    radius,
-                }),
+                Ok(id) => {
+                    fill_slot(&slots, rep, |out| {
+                        theta_into(coefs_b, &id.impact, h, cumulative, out);
+                        write_block(out, h + 1, id.long_run.as_ref());
+                        let tail = &mut out[cells + k * k..];
+                        tail[..n_anchor].copy_from_slice(&id.pre_anchor);
+                        tail[n_anchor] = radius;
+                    })?;
+                    Ok(())
+                }
                 Err(e) => Err(ident_draw_message(&e)),
             })
-        })?;
-    let draws = collect_draws(raw)?;
+        })?
+    };
+    collect_draws(raw)?;
+    let tail = |b: usize| &draws.draw(b)[cells + k * k..];
 
-    let n_unstable = draws.iter().filter(|d| d.radius >= 1.0).count();
+    let n_unstable = (0..spec.n_boot)
+        .filter(|&b| tail(b)[n_anchor] >= 1.0)
+        .count();
     let mismatches = spec.impact_signs.as_ref().map(|anchors| {
         (0..anchors.len())
             .map(|a| {
                 let point_neg = point_id.pre_anchor[a] < 0.0;
-                draws
-                    .iter()
-                    .filter(|d| (d.pre_anchor[a] < 0.0) != point_neg)
+                (0..spec.n_boot)
+                    .filter(|&b| (tail(b)[a] < 0.0) != point_neg)
                     .count()
             })
             .collect::<Vec<usize>>()
     });
 
-    let mut irf_draws: Vec<Cube> = Vec::with_capacity(draws.len());
-    let mut lr_draws: Vec<Mat<f64>> = Vec::with_capacity(draws.len());
-    for d in draws {
-        irf_draws.push(d.irf);
-        lr_draws.push(d.long_run);
-    }
-    let (se, lower, upper) = summarize(&irf_draws, h, k, spec.alpha);
-    let lr_cubes: Vec<Cube> = lr_draws.iter().map(|m| vec![m.clone()]).collect();
-    let (lse, llo, lup) = summarize(&lr_cubes, 0, k, spec.alpha);
-    drop(lr_cubes);
+    let (se, lower, upper) = summarize(&draws, 0, h + 1, k, spec.alpha);
+    let (lse, llo, lup) = summarize(&draws, h + 1, 1, k, spec.alpha);
 
     let (simultaneous, sim_lower, sim_upper) = match spec.band {
         None => (None, None, None),
         Some((method, scope)) => {
             let cv = draw_critical_values(
-                &irf_draws,
+                &draws,
                 &point,
                 &se,
                 k,
@@ -661,10 +761,18 @@ pub fn long_run_bootstrap_bands(
         }
     };
     let (irf_keep, lr_keep) = if spec.keep_draws {
-        (Some(irf_draws), Some(lr_draws))
+        let mut irf_flat = Vec::with_capacity(spec.n_boot * cells);
+        let mut lr_flat = Vec::with_capacity(spec.n_boot * k * k);
+        for b in 0..spec.n_boot {
+            let d = draws.draw(b);
+            irf_flat.extend_from_slice(&d[..cells]);
+            lr_flat.extend_from_slice(&d[cells..cells + k * k]);
+        }
+        (Some(irf_flat), Some(lr_flat))
     } else {
         (None, None)
     };
+    drop(draws);
     Ok(LongRunBands {
         point,
         se,
@@ -883,19 +991,17 @@ impl CellRows {
     }
 }
 
-/// Unwraps the per-replication results in replication order, turning the
+/// Checks the per-replication results in replication order, turning the
 /// FIRST identification failure into [`VarError::Replication`] naming its
 /// index. Nothing is dropped: a draw that fails at a boundary is exactly the
 /// kind whose removal would narrow the band.
-fn collect_draws(raw: Vec<Result<Draw, &'static str>>) -> Result<Vec<Draw>, VarError> {
-    let mut draws: Vec<Draw> = Vec::with_capacity(raw.len());
+fn collect_draws(raw: Vec<Result<(), &'static str>>) -> Result<(), VarError> {
     for (index, d) in raw.into_iter().enumerate() {
-        match d {
-            Ok(d) => draws.push(d),
-            Err(what) => return Err(VarError::Replication { index, what }),
+        if let Err(what) = d {
+            return Err(VarError::Replication { index, what });
         }
     }
-    Ok(draws)
+    Ok(())
 }
 
 /// Delta-method bands for the Blanchard-Quah SVAR of a fitted VAR `res`
@@ -907,9 +1013,13 @@ fn collect_draws(raw: Vec<Result<Draw, &'static str>>) -> Result<Vec<Draw>, VarE
 ///
 /// * the validation errors of [`long_run_bootstrap_bands`] (bar `n_boot`);
 /// * [`VarError::InvalidArgument`] for `bias_correct` (the delta method draws
-///   nothing to re-centre), `band_n_sim < 2` under sup-t, a working set /
-///   sup-t work beyond the budget (naming `horizon` and `band_scope`), or a
-///   Jacobian work beyond [`LONG_RUN_BANDS_DELTA_WORK`] (naming `horizon`);
+///   nothing to re-centre) or `band_n_sim < 2` under sup-t;
+/// * [`VarError::SizeBudget`] naming the term that is over, with the largest
+///   value that fits: the pointwise working set (`horizon and lags`), a
+///   simultaneous band's family covariance (`horizon and band_scope`), the
+///   sup-t simulation (`band_n_sim`) or the Jacobian work beyond
+///   [`LONG_RUN_BANDS_DELTA_WORK`] (`horizon`); a pointwise band is never
+///   told to change `band_scope` or `band_n_sim`, which it does not read;
 /// * [`VarError::InvalidArgument`] when the fit cannot be identified;
 /// * [`VarError::NotPositiveDefinite`] from the delta-method building blocks.
 pub fn long_run_asymptotic_bands(
@@ -938,29 +1048,7 @@ pub fn long_run_asymptotic_bands(
             });
         }
     }
-    match asymptotic_budget(spec, k) {
-        Some((v, w)) if v <= LONG_RUN_BANDS_BUDGET_VALUES && w <= LONG_RUN_BANDS_SUPT_WORK => {}
-        _ => {
-            return Err(VarError::InvalidArgument {
-                what: "horizon and band_scope: the delta-method working set ((horizon + 1) \
-                       * k^2 cells times the Jacobian rows, plus K^2 for the joint covariance \
-                       of a simultaneous band's family of K cells -- ((horizon + 1) * k^2)^2 \
-                       under band_scope=\"all\" -- plus band_n_sim uniforms per family cell \
-                       for sup-t) exceeds the 2^28-value (2 GiB) budget, or the sup-t \
-                       simulation work n_families * band_n_sim * K^2 exceeds 2^36; reduce \
-                       horizon, narrow band_scope, or lower band_n_sim",
-            });
-        }
-    }
-    if asymptotic_jacobian_work(spec, k) > LONG_RUN_BANDS_DELTA_WORK {
-        return Err(VarError::InvalidArgument {
-            what: "horizon: the delta-method Jacobians of the moving-average weights cost \
-                   horizon * (horizon + 1) / 2 * k^2 * lags * k^2 multiply-adds, quadratic in \
-                   horizon, which exceeds the 2^28 work cap (a few seconds; Blanchard-Quah \
-                   horizons are tens of periods); reduce horizon or lags, or use \
-                   method=\"bootstrap\", whose cost is linear in horizon",
-        });
-    }
+    check_asymptotic_budget(spec, k)?;
     let h = spec.horizon;
     let cumulative = spec.cumulative;
     let point_id = identify(&res.coefs, res.sigma_u.as_ref(), spec)
@@ -1114,24 +1202,9 @@ pub fn long_run_asymptotic_bands(
 mod tests {
     use super::*;
 
-    fn toy_draw(radius: f64) -> Draw {
-        Draw {
-            irf: vec![Mat::<f64>::identity(2, 2)],
-            long_run: Mat::<f64>::identity(2, 2),
-            pre_anchor: vec![],
-            radius,
-        }
-    }
-
     #[test]
     fn the_first_failing_replication_is_named_and_nothing_is_dropped() {
-        let raw = vec![
-            Ok(toy_draw(0.5)),
-            Ok(toy_draw(0.5)),
-            Err("singular"),
-            Ok(toy_draw(0.5)),
-            Err("later"),
-        ];
+        let raw = vec![Ok(()), Ok(()), Err("singular"), Ok(()), Err("later")];
         match collect_draws(raw) {
             Err(VarError::Replication { index, what }) => {
                 assert_eq!(index, 2);
@@ -1139,13 +1212,9 @@ mod tests {
                 let msg = VarError::Replication { index, what }.to_string();
                 assert!(msg.contains("replication 2"), "{msg}");
             }
-            other => panic!(
-                "expected a Replication error, got {:?}",
-                other.map(|v| v.len())
-            ),
+            other => panic!("expected a Replication error, got {other:?}"),
         }
-        let ok = collect_draws(vec![Ok(toy_draw(0.9)), Ok(toy_draw(1.1))]).unwrap();
-        assert_eq!(ok.len(), 2);
+        assert!(collect_draws(vec![Ok(()), Ok(())]).is_ok());
     }
 
     #[test]
@@ -1211,6 +1280,47 @@ mod tests {
                 }
             }
         }
+    }
+
+    #[test]
+    fn theta_into_is_theta_cube_flattened_bit_for_bit() {
+        let a1 = Mat::from_fn(2, 2, |i, j| [[0.5, 0.1], [0.2, 0.3]][i][j]);
+        let a2 = Mat::from_fn(2, 2, |i, j| [[0.1, 0.0], [0.05, 0.1]][i][j]);
+        let coefs = vec![a1, a2];
+        let b = Mat::from_fn(2, 2, |i, j| [[1.1, 0.0], [0.3, 0.7]][i][j]);
+        for cumulative in [false, true] {
+            for horizon in [0usize, 1, 2, 7] {
+                let cube = theta_cube(&coefs, &b, horizon, cumulative);
+                let mut flat = vec![42.0; (horizon + 2) * 4];
+                theta_into(&coefs, &b, horizon, cumulative, &mut flat);
+                // The trailing block is the caller's (the long-run matrix).
+                assert!(flat[(horizon + 1) * 4..].iter().all(|&v| v == 42.0));
+                for (h, m) in cube.iter().enumerate() {
+                    for i in 0..2 {
+                        for j in 0..2 {
+                            assert_eq!(flat[h * 4 + i * 2 + j].to_bits(), m[(i, j)].to_bits());
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn draw_overhead_covers_the_per_replication_types() {
+        use core::mem::size_of;
+        let budget = DRAW_OVERHEAD_VALUES * 8;
+        // While the substreams are spawned: a SeedSequence child (two heap
+        // buffers of a few words each) beside each stream.
+        let spawn =
+            size_of::<tsecon_rng::SeedSequence>() + 2 * 32 + size_of::<tsecon_rng::Stream>();
+        assert!(spawn <= budget, "{spawn}");
+        // While the results are collected: the stream, up to three result
+        // slots and the replication's slot lock.
+        let lock = size_of::<std::sync::Mutex<&mut [f64]>>();
+        let slot = size_of::<Result<Result<(), &'static str>, VarError>>();
+        let collect = size_of::<tsecon_rng::Stream>() + 3 * slot + lock;
+        assert!(collect <= budget, "{collect}");
     }
 
     #[test]

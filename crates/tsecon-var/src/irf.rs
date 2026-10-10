@@ -48,7 +48,10 @@ pub struct Irf {
 ///   `0 x 0`;
 /// * [`VarError::Dimension`] if the matrices are not square and of equal
 ///   size;
-/// * [`VarError::NonFinite`] on NaN/infinite entries.
+/// * [`VarError::NonFinite`] on NaN/infinite entries;
+/// * [`VarError::SizeBudget`] naming `horizon` when the cube would exceed
+///   the shared size budget ([`crate::budget::check_horizon`]), checked
+///   before anything is allocated.
 pub fn ma_rep(coefs: &[Mat<f64>], horizon: usize) -> Result<Vec<Mat<f64>>, VarError> {
     if coefs.is_empty() {
         return Err(VarError::InvalidArgument {
@@ -90,6 +93,7 @@ pub fn ma_rep(coefs: &[Mat<f64>], horizon: usize) -> Result<Vec<Mat<f64>>, VarEr
             }
         }
     }
+    crate::budget::check_horizon(k, horizon)?;
     let p = coefs.len();
     let mut psi: Vec<Mat<f64>> = Vec::with_capacity(horizon + 1);
     psi.push(Mat::from_fn(k, k, |i, j| f64::from(u8::from(i == j))));
@@ -110,10 +114,13 @@ impl VarResults {
     ///
     /// # Errors
     ///
-    /// Propagates [`ma_rep`] failures (impossible for coefficients
+    /// [`VarError::SizeBudget`] naming `horizon` beyond the shared size
+    /// budget (checked before anything is allocated, a VAR(0) included);
+    /// otherwise propagates [`ma_rep`] failures (impossible for coefficients
     /// produced by a successful fit).
     pub fn ma_rep(&self, horizon: usize) -> Result<Vec<Mat<f64>>, VarError> {
         let k = self.neqs;
+        crate::budget::check_horizon(k, horizon)?;
         if self.spec.lags == 0 {
             let mut psi = vec![Mat::<f64>::zeros(k, k); horizon + 1];
             for i in 0..k {

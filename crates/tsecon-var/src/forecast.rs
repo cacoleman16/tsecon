@@ -305,7 +305,10 @@ impl VarResults {
     ///
     /// # Errors
     ///
-    /// [`VarError::InvalidArgument`] if `steps == 0`.
+    /// [`VarError::InvalidArgument`] if `steps == 0`;
+    /// [`VarError::SizeBudget`] naming `steps` beyond the shared size budget
+    /// ([`crate::budget::check_steps`]), checked before anything is
+    /// allocated.
     pub fn forecast_cov(&self, steps: usize) -> Result<Vec<Mat<f64>>, VarError> {
         if steps == 0 {
             return Err(VarError::InvalidArgument {
@@ -313,6 +316,7 @@ impl VarResults {
                        pass steps >= 1",
             });
         }
+        crate::budget::check_steps(self.neqs, steps)?;
         let psi = self.ma_rep(steps - 1)?;
         let k = self.neqs;
         let mut covs = Vec::with_capacity(steps);
@@ -390,6 +394,7 @@ impl VarResults {
             // Before the point path allocates anything.
             self.check_param_uncertainty_budget(steps)?;
         }
+        crate::budget::check_steps(self.neqs, steps)?;
         let point = self.forecast(steps)?;
         let covs = self.forecast_cov_with(steps, options)?;
         let z = inv_norm_cdf(1.0 - alpha / 2.0)?;
@@ -531,6 +536,7 @@ impl VarResults {
             });
         }
         self.check_param_uncertainty_budget(steps)?;
+        crate::budget::check_steps(self.neqs, steps)?;
         let k = self.neqs;
         let lags = self.spec.lags;
         let n_trend = self.spec.trend.n_terms();
@@ -749,10 +755,23 @@ impl VarResults {
     /// known — so in finite samples it under-covers jointly by about as much as
     /// the marginal band under-covers marginally, and no more.
     ///
+    /// # Budget
+    ///
+    /// The joint covariance is `(steps k)^2` values and its cross-horizon
+    /// blocks cost about `steps^3 / 6` products of `k x k` matrices (CUBIC in
+    /// `steps`: 2.3 s at `steps = 400` on a bivariate VAR). Both are checked
+    /// before anything is allocated, against [`crate::budget::BUDGET_VALUES`]
+    /// and [`JOINT_COV_WORK_BUDGET`], and refused naming `steps`. The sup-t
+    /// simulation is checked against the shared sup-t budgets
+    /// ([`simultaneous::sup_t_n_sim_fits`]) and refused naming `band_n_sim`.
+    /// Each refusal states the largest value that fits.
+    ///
     /// # Errors
     ///
     /// * [`VarError::InvalidArgument`] if `steps == 0`, or `n_sim < 2` under
     ///   [`BandMethod::SupT`];
+    /// * [`VarError::SizeBudget`] naming `steps` or `band_n_sim` beyond the
+    ///   budgets above;
     /// * [`VarError::InvalidParameter`] if `alpha` is not strictly inside
     ///   `(0, 1)`;
     /// * [`VarError::Stats`] from the simultaneous-band layer.
@@ -767,10 +786,13 @@ impl VarResults {
     ) -> Result<ForecastInterval, VarError> {
         if method == BandMethod::SupT && n_sim < 2 {
             return Err(VarError::InvalidArgument {
-                what: "n_sim must be at least 2 to simulate a sup-t critical value; \
+                what: "band_n_sim must be at least 2 to simulate a sup-t critical value; \
                        100000 is the recommended default and 50000 the practical \
                        floor (this is a quantile in the tail of a maximum)",
             });
+        }
+        if let Some(refusal) = joint_band_refusal(self.neqs, steps, method, scope, n_sim) {
+            return Err(refusal);
         }
         let mut fc = self.forecast_interval(steps, alpha)?;
         let k = self.neqs;
@@ -864,6 +886,89 @@ impl VarResults {
         });
         Ok(fc)
     }
+}
+
+/// The work cap of the joint forecast-error covariance a simultaneous band
+/// builds: its cross-horizon blocks are `steps (steps^2 - 1) / 6` products
+/// of `k x k` matrices, counted at `k^3 + 32` each (the 32 stands for the
+/// fixed cost of a small product), against `2^31`: about ten seconds
+/// (measured on a bivariate VAR(1) at 2.3 s for `steps = 400`, where the
+/// count is about `2^28.7`, and 11 s for `steps = 685`, the largest that fits;
+/// `lab/audit/round16/var_budgets/joint_cov_cost.py`).
+pub const JOINT_COV_WORK_BUDGET: u128 = 1 << 31;
+
+const JOINT_STEPS_WHAT: &str = "steps: a simultaneous forecast band builds the joint \
+    forecast-error covariance of every (horizon, series) cell, (steps k)^2 values whose \
+    cross-horizon blocks cost about steps^3 / 6 products of k x k matrices (CUBIC in steps), \
+    and at this many steps it exceeds the 2^28-value (2 GiB) memory budget or the 2^31 work \
+    budget (about ten seconds), checked before anything is allocated; reduce steps, or use \
+    band=\"pointwise\"";
+
+const BAND_N_SIM_WHAT: &str = "band_n_sim: the sup-t simulation draws band_n_sim Gaussian \
+    vectors per family of K cells (K * band_n_sim uniforms, and n_families * band_n_sim * K^2 \
+    multiply-adds to colour them), which exceeds the 2^28-value (2 GiB) memory budget or the \
+    2^36 work budget, checked before anything is allocated; lower band_n_sim (100000 is the \
+    default) or narrow band_scope";
+
+/// The refusal, if any, of a simultaneous forecast band's joint covariance
+/// (naming `steps`) or of its sup-t simulation (naming `band_n_sim`), with
+/// the largest value that fits at the other arguments.
+fn joint_band_refusal(
+    k: usize,
+    steps: usize,
+    method: BandMethod,
+    scope: ForecastBandScope,
+    n_sim: usize,
+) -> Option<VarError> {
+    use crate::budget::{largest_fitting, BUDGET_VALUES};
+    let family = |s: usize| -> (usize, usize) {
+        match scope {
+            ForecastBandScope::Horizon => (k, s),
+            ForecastBandScope::All => (1, s.saturating_mul(k)),
+        }
+    };
+    let joint_fits = |s: usize| {
+        let (_, kc) = family(s);
+        let values = s
+            .checked_mul(k)
+            .and_then(|n| n.checked_mul(n))
+            .and_then(|nn| kc.checked_mul(kc)?.checked_mul(2)?.checked_add(nn));
+        let (su, ku) = (s as u128, k as u128);
+        let work = su
+            .checked_mul(su)
+            .and_then(|s2| s2.checked_mul(su))
+            .map(|s3| s3 / 6)
+            .and_then(|terms| {
+                terms.checked_mul(ku.checked_mul(ku)?.checked_mul(ku)?.checked_add(32)?)
+            });
+        matches!(values, Some(v) if v <= BUDGET_VALUES)
+            && matches!(work, Some(w) if w <= JOINT_COV_WORK_BUDGET)
+    };
+    let sim_fits = |s: usize, n: usize| {
+        let (f, kc) = family(s);
+        method != BandMethod::SupT || simultaneous::sup_t_n_sim_fits(f, kc, n)
+    };
+    if joint_fits(steps) && sim_fits(steps, n_sim) {
+        return None;
+    }
+    if joint_fits(steps) {
+        let (f, kc) = family(steps);
+        let max = simultaneous::sup_t_max_n_sim(f, kc);
+        if max >= 2 {
+            return Some(VarError::SizeBudget {
+                what: BAND_N_SIM_WHAT,
+                name: "band_n_sim",
+                value: n_sim,
+                max: Some(max),
+            });
+        }
+    }
+    Some(VarError::SizeBudget {
+        what: JOINT_STEPS_WHAT,
+        name: "steps",
+        value: steps,
+        max: largest_fitting(1, steps, |s| joint_fits(s) && sim_fits(s, n_sim)),
+    })
 }
 
 #[cfg(test)]

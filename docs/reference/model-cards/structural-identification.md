@@ -96,7 +96,11 @@ lives at the infinite horizon, so the cumulative IRF is the object to read.
 **Key arguments and defaults (and why).** `lags`, `horizon`, `trend="c"`.
 `restrictions=None` gives the classic recursive BQ (long-run matrix lower
 triangular); pass a list of `(variable, shock)` long-run-zero pairs for a custom
-pattern. `normalize="long_run"` (default) makes the long-run diagonal positive;
+pattern. `normalize="long_run"` (default) makes each shock's long-run *pivot*
+positive: `LR[m][s]`, with `m` the number of long-run zeros in shock `s`'s
+column (the first variable the shock may move permanently). Under the default
+recursive pattern the pivots are the long-run diagonal; under a permuted
+`restrictions` pattern the diagonal can be negative or an imposed zero.
 `"impact"` makes the impact diagonal positive instead — a sign convention, not a
 different model. `impact_signs` (None) anchors chosen shocks on their impact
 response, applied after `normalize`: for each `(variable, shock)` pair the
@@ -105,7 +109,9 @@ shock's column of `impact`, `long_run` and `irf` is negated when
 alone, and `cumulative_irf` is recomputed while `fevd` is unchanged. Blanchard
 and Quah's own convention, a demand shock that raises output on impact, is
 `impact_signs=[(0, 1)]` with output growth first. A bad index or a shock
-anchored twice is refused, naming `impact_signs`.
+anchored twice is refused, naming `impact_signs`. `lags=0`, a malformed
+`restrictions` pair such as `[(0,)]`, and a `horizon` past the shared 2^28-value
+memory budget (399456 on two variables) are refused by name as well.
 
 **How to read the output.** `impact` (B), `long_run` (LR = C(1)·B, the cumulative
 structural impact — **check its imposed zeros**), `long_run_multiplier` (C(1)),
@@ -335,11 +341,10 @@ permutation of the recursive pattern.
   `long_run_draws` (n_boot, k, k). That is how to form the page's level objects
   (cumulate row 0, keep row 1) from one set of draws.
 
-Inert keywords are refused rather than ignored: `n_boot`, `seed` and
-`return_draws` on the asymptotic arm; `band_seed` and `band_n_sim` anywhere
-but the asymptotic sup-t band; and a non-default `band_scope` with a pointwise
-band. (`var_irf_bands` still accepts `band_seed`/`band_n_sim` silently on its
-bootstrap arm, which is a follow-up.)
+Inert keywords are refused rather than ignored, by the same rule
+`var_irf_bands` applies: `n_boot`, `seed` and `return_draws` on the asymptotic
+arm; `band_seed` and `band_n_sim` anywhere but the asymptotic sup-t band; and
+a non-default `band_scope` with a pointwise band.
 
 **How to read the output.** `point`, `se`, `lower`, `upper` are `[h][i][j]`.
 `long_run_point`, `long_run_se`, `long_run_lower`, `long_run_upper` are
@@ -381,12 +386,19 @@ and `cumulative`. Three diagnostics:
   replication index as an error, never dropped, because dropping exactly
   the boundary draws would narrow the band; more observations, fewer lags
   or `method="asymptotic"` avoid it.
-* An absurd `n_boot`, `horizon` or family size. The working set is checked
-  against a 2^28-value (2 GiB) budget before anything is allocated, and the
-  refusal names `n_boot` and `horizon` (bootstrap) or `horizon` and
-  `band_scope` (asymptotic). The delta arm's Jacobians are quadratic in
-  `horizon`, so their work is capped as well (2^28 multiply-adds, refused
-  naming `horizon`); the bootstrap arm's cost is linear in `horizon`.
+* An absurd `n_boot`, `horizon`, family size or `band_n_sim`. The working set
+  is counted as real storage and checked against a 2^28-value (2 GiB) budget
+  before anything is allocated, and the refusal names the keyword whose term
+  is over, with the largest value that fits. Bootstrap: `n_boot` (or `horizon`
+  when no count fits); each replication keeps its draws in its slot of one
+  store, measured at 647 bytes per replication against 848 counted on two
+  variables at horizon 12 (the per-matrix storage before 0.11 took 4087 and
+  could exceed its count twofold). Delta method: `horizon and lags` (the
+  pointwise working set), `horizon and band_scope` (a family's joint
+  covariance), `band_n_sim` (the sup-t simulation, also capped at 2^36 work)
+  or `horizon` (the Jacobians, quadratic in `horizon` and capped at 2^28
+  multiply-adds); a pointwise band is never told to change `band_scope` or
+  `band_n_sim`. The bootstrap arm's cost is linear in `horizon`.
 
 **Validated against.**
 [`long_run_svar_bands.json`](../../../fixtures/long_run_svar_bands.json),

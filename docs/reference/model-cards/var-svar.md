@@ -73,7 +73,13 @@ time, which is not what a fan chart is read as; see
 **Failure modes.** A pointwise IRF median is not itself a model at long
 horizons; Cholesky ordering silently drives every "structural" reading;
 comparing ICs across different effective samples flips rankings; near-unit
-roots make long-horizon responses and bands unreliable.
+roots make long-horizon responses and bands unreliable. An absurd `horizon`
+(or `steps`) is refused, not allocated: every moving-average expansion is
+checked against one 2^28-value (2 GiB) budget, counted as real storage
+(padded matrices and the Python lists), and the refusal names the keyword
+and the largest value that fits (horizon 399456 on two variables, 262143 on
+three). `connectedness`, `fvar_scenario`, `mean_group_var` and the
+SVAR callables built on the same expansion inherit it.
 
 **Validated against.** statsmodels `VAR` — coefficients, `sigma_u`, IRF/FEVD,
 `test_causality`, and forecasts; Lütkepohl (2005) textbook conventions
@@ -129,7 +135,14 @@ horizon of every series, $K = \text{steps} \times k$, because that is how a
 forecast figure is normally read. `band_scope="horizon"` gives one family per
 series ($K = \text{steps}$), the right scope for a single-series fan chart.
 `band_seed` and `band_n_sim` drive the sup-t Gaussian simulation and make that
-band a pure function of `band_seed`; the closed forms use neither.
+band a pure function of `band_seed`; the closed forms use neither. Both
+budgets are checked before anything is allocated: the joint covariance,
+$(\text{steps}\cdot k)^2$ values whose cross-horizon blocks cost about
+$\text{steps}^3/6$ products of $k\times k$ matrices, within 2^28 values and
+2^31 work (refused naming `steps`: at most 685 on two variables at lags 2),
+and the sup-t simulation, $(K+1)\cdot$`band_n_sim` uniforms and maxima within
+2^28 values and $n_\text{families}\cdot$`band_n_sim`$\cdot K^2$ multiply-adds
+within 2^36 (refused naming `band_n_sim`).
 
 **How to read the output.** **`lower`/`upper` stay marginal whatever you pass** —
 nothing that already reads them changes meaning. Asking for a simultaneous band
@@ -1154,6 +1167,22 @@ beyond `K` and are correspondingly loose.
   replications, so the existing `seed` reproduces it and neither band argument is
   used; give it `n_boot` ≥ 999 for the same tail-quantile reason. Šidák and
   Bonferroni are closed forms in `K` and need neither.
+- Keywords the chosen arm and band do not read are **refused**, compared to
+  their defaults, exactly as `long_run_svar_bands` refuses them: `n_boot` and
+  `seed` under `method="asymptotic"`, `band_seed` and `band_n_sim` anywhere
+  but the asymptotic sup-t band, and a non-default `band_scope` with
+  `band="pointwise"`.
+- **Size budget.** Every count is checked against a 2^28-value (2 GiB)
+  working-set budget, counted as real storage, before anything is allocated,
+  and a refusal names the keyword whose term is over with the largest value
+  that fits. The bootstrap keeps each replication's responses in its slot of
+  one store (`n_boot`, or `horizon` when no count fits); the delta method
+  names `horizon and lags` (its pointwise working set), `horizon and
+  band_scope` (a family's joint covariance), `band_n_sim` (the sup-t
+  simulation, also capped at 2^36 work) or `horizon` (the Jacobians
+  $G_h$, whose work is QUADRATIC in the horizon and capped at 2^28
+  multiply-adds: 2047 periods on a bivariate VAR(8), 3.4 s; 28 on a
+  20-variable VAR(4), 5.4 s).
 
 **How to read the output.** The extra keys are `sim_lower`/`sim_upper`,
 `critical_value` (a k×k grid — one multiplier per response-shock cell, so you can

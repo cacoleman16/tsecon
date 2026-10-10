@@ -47,6 +47,23 @@ pub enum VarError {
         /// The engine's budget in bytes.
         budget: usize,
     },
+    /// A size argument (a horizon, a step count, a replication or
+    /// simulation count) would push one call's working set or work past the
+    /// engine's budget ([`crate::budget`]). Refused before anything is
+    /// allocated. Carries the offending value and the largest one that fits
+    /// at the other arguments, so the message can state both.
+    SizeBudget {
+        /// The subject (the keyword or keywords that size the request), what
+        /// the budget counts, the budget, and the remedy.
+        what: &'static str,
+        /// The keyword whose largest admissible value is reported.
+        name: &'static str,
+        /// The value supplied for `name`.
+        value: usize,
+        /// The largest admissible `name` at the other arguments; `None` when
+        /// none fits, because the other arguments alone exceed the budget.
+        max: Option<usize>,
+    },
     /// A numeric argument was outside its admissible domain. Carries the
     /// offending value so the message can name it.
     InvalidParameter {
@@ -158,6 +175,26 @@ impl fmt::Display for VarError {
                  (the budget is a fixed constant of the engine, not a machine probe)",
                 *bytes as f64 / f64::from(1u32 << 30),
                 *budget as f64 / f64::from(1u32 << 30)
+            ),
+            Self::SizeBudget {
+                what,
+                name,
+                value,
+                max: Some(max),
+            } => write!(
+                f,
+                "{what} (got {name} = {value}; the largest {name} that fits at the other \
+                 arguments is {max})"
+            ),
+            Self::SizeBudget {
+                what,
+                name,
+                value,
+                max: None,
+            } => write!(
+                f,
+                "{what} (got {name} = {value}; no {name} fits at the other arguments, which \
+                 alone exceed the budget)"
             ),
             Self::InvalidParameter {
                 name,

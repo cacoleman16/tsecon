@@ -42,7 +42,7 @@ use tsecon_linalg::faer::linalg::solvers::DenseSolveCore;
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_var::irf_asymptotic::{BandMethod, IrfBandScope};
 use tsecon_var::long_run_bands::{
-    asymptotic_budget, asymptotic_jacobian_work, bootstrap_budget_values,
+    asymptotic_budget, asymptotic_jacobian_work, bootstrap_budget_values, check_asymptotic_budget,
     LONG_RUN_BANDS_BUDGET_VALUES, LONG_RUN_BANDS_DELTA_WORK,
 };
 use tsecon_var::{
@@ -94,6 +94,32 @@ fn bits(m: &Mat<f64>) -> Vec<u64> {
         }
     }
     v
+}
+
+/// The kept draws (row-major `(n_boot, horizon + 1, k, k)`) as matrices.
+fn draw_cubes(b: &LongRunBands) -> Vec<Vec<Mat<f64>>> {
+    let (k, hh) = (b.long_run_point.nrows(), b.point.len());
+    b.irf_draws
+        .as_ref()
+        .unwrap()
+        .chunks(hh * k * k)
+        .map(|d| {
+            (0..hh)
+                .map(|h| Mat::from_fn(k, k, |i, j| d[(h * k + i) * k + j]))
+                .collect()
+        })
+        .collect()
+}
+
+/// The kept long-run draws (row-major `(n_boot, k, k)`) as matrices.
+fn long_run_mats(b: &LongRunBands) -> Vec<Mat<f64>> {
+    let k = b.long_run_point.nrows();
+    b.long_run_draws
+        .as_ref()
+        .unwrap()
+        .chunks(k * k)
+        .map(|d| Mat::from_fn(k, k, |i, j| d[i * k + j]))
+        .collect()
 }
 
 fn cube_bits(c: &[Mat<f64>]) -> Vec<u64> {
@@ -298,20 +324,8 @@ fn bootstrap_is_bit_identical_at_one_and_four_threads() {
     let a = pool1.install(|| long_run_bootstrap_bands(data.as_ref(), &spec).unwrap());
     let b = pool4.install(|| long_run_bootstrap_bands(data.as_ref(), &spec).unwrap());
     assert_eq!(bands_bits(&a), bands_bits(&b));
-    let da: Vec<u64> = a
-        .irf_draws
-        .as_ref()
-        .unwrap()
-        .iter()
-        .flat_map(|c| cube_bits(c))
-        .collect();
-    let db: Vec<u64> = b
-        .irf_draws
-        .as_ref()
-        .unwrap()
-        .iter()
-        .flat_map(|c| cube_bits(c))
-        .collect();
+    let da: Vec<u64> = draw_cubes(&a).iter().flat_map(|c| cube_bits(c)).collect();
+    let db: Vec<u64> = draw_cubes(&b).iter().flat_map(|c| cube_bits(c)).collect();
     assert_eq!(da, db);
     // The seed is live.
     let other =
@@ -332,10 +346,7 @@ fn draws_the_same_pseudo_samples_as_var_irf_bands() {
         spec.bias_correct = bias_correct;
         spec.keep_draws = true;
         let lr = long_run_bootstrap_bands(data.as_ref(), &spec).unwrap();
-        let psi_draws: Vec<Vec<Mat<f64>>> = lr
-            .irf_draws
-            .as_ref()
-            .unwrap()
+        let psi_draws: Vec<Vec<Mat<f64>>> = draw_cubes(&lr)
             .iter()
             .map(|cube| {
                 let binv = cube[0].partial_piv_lu().inverse();
@@ -390,20 +401,8 @@ fn cumulative_bands_are_percentiles_of_the_cumulated_draws() {
         },
     )
     .unwrap();
-    let summed: Vec<Vec<Mat<f64>>> = plain
-        .irf_draws
-        .as_ref()
-        .unwrap()
-        .iter()
-        .map(|c| cumsum(c))
-        .collect();
-    let kept: Vec<u64> = cum
-        .irf_draws
-        .as_ref()
-        .unwrap()
-        .iter()
-        .flat_map(|c| cube_bits(c))
-        .collect();
+    let summed: Vec<Vec<Mat<f64>>> = draw_cubes(&plain).iter().map(|c| cumsum(c)).collect();
+    let kept: Vec<u64> = draw_cubes(&cum).iter().flat_map(|c| cube_bits(c)).collect();
     let mine: Vec<u64> = summed.iter().flat_map(|c| cube_bits(c)).collect();
     assert_eq!(
         kept, mine,
@@ -414,21 +413,16 @@ fn cumulative_bands_are_percentiles_of_the_cumulated_draws() {
     assert_eq!(cube_bits(&cum.upper), cube_bits(&up));
     // The long-run draws do not depend on cumulation.
     assert_eq!(
-        plain
-            .long_run_draws
-            .as_ref()
-            .unwrap()
+        long_run_mats(&plain)
             .iter()
             .flat_map(bits)
             .collect::<Vec<_>>(),
-        cum.long_run_draws
-            .as_ref()
-            .unwrap()
+        long_run_mats(&cum)
             .iter()
             .flat_map(bits)
             .collect::<Vec<_>>()
     );
-    assert_eq!(plain.irf_draws.as_ref().unwrap().len(), 50);
+    assert_eq!(draw_cubes(&plain).len(), 50);
 }
 
 /// The anchor is re-applied inside every draw: output's impact response to
@@ -440,7 +434,7 @@ fn the_impact_sign_anchor_holds_in_every_draw() {
     let mut spec = bq_spec(4, 80);
     spec.keep_draws = true;
     let b = long_run_bootstrap_bands(data.as_ref(), &spec).unwrap();
-    for (n, cube) in b.irf_draws.as_ref().unwrap().iter().enumerate() {
+    for (n, cube) in draw_cubes(&b).iter().enumerate() {
         assert!(cube[0][(0, 1)] >= 0.0, "draw {n}: {}", cube[0][(0, 1)]);
     }
     assert!(b.point[0][(0, 1)] > 0.0);
@@ -624,9 +618,12 @@ fn bootstrap_budget_is_checked_at_its_boundary_before_allocating() {
     };
     let per = at(2) - at(1);
     let fixed = at(1) - per;
-    // A 2 x 2 matrix occupies 8 * 2 + 8 doubles (64-byte column padding plus
-    // the header), not 4: the budget counts storage, not cells.
-    assert!(per >= 41 * 24, "{per}");
+    // Each replication keeps its 41 response matrices, its long-run matrix,
+    // its one impact_signs cell and its companion radius in ONE store slot
+    // (42 * 4 + 2 values, not 42 padded faer matrices), plus a fixed overhead
+    // (RNG substream, result slots, slot lock) and one value of the
+    // percentile buffer.
+    assert_eq!(per, 42 * 4 + 2 + 48 + 1);
     let n_max = (LONG_RUN_BANDS_BUDGET_VALUES - fixed) / per;
     let mut spec = bq_spec(40, 2);
     spec.n_boot = n_max;
@@ -635,7 +632,15 @@ fn bootstrap_budget_is_checked_at_its_boundary_before_allocating() {
     assert!(bootstrap_budget_values(&spec, 2).unwrap() > LONG_RUN_BANDS_BUDGET_VALUES);
     let msg = err_text(long_run_bootstrap_bands(data.as_ref(), &spec));
     assert!(
-        msg.contains("n_boot") && msg.contains("horizon") && msg.contains("2^28"),
+        msg.starts_with("n_boot and horizon:") && msg.contains("2^28"),
+        "{msg}"
+    );
+    // The refusal states the largest replication count that fits.
+    assert!(
+        msg.contains(&format!("got n_boot = {}", n_max + 1))
+            && msg.contains(&format!(
+                "the largest n_boot that fits at the other arguments is {n_max})"
+            )),
         "{msg}"
     );
     for (n_boot, horizon) in [(usize::MAX, 40), (1000, usize::MAX), (1 << 40, 1 << 40)] {
@@ -689,20 +694,29 @@ fn asymptotic_budget_is_checked_at_its_boundary_before_allocating() {
         ..spec.clone()
     };
     assert!(asymptotic_budget(&narrow, 2).unwrap().0 <= LONG_RUN_BANDS_BUDGET_VALUES);
-    // Absurd horizons and simulation counts are refused, never allocated.
-    for (horizon, n_sim) in [(usize::MAX, 100_000), (1 << 40, 100_000), (40, usize::MAX)] {
+    // Absurd horizons and simulation counts are refused, never allocated,
+    // and the refusal names the term that is over: an absurd horizon
+    // overflows the pointwise working set itself, an absurd band_n_sim only
+    // the simulation.
+    for horizon in [usize::MAX, 1 << 40] {
         let s = LongRunBandSpec {
             horizon,
-            band_n_sim: n_sim,
             band: Some((BandMethod::SupT, IrfBandScope::All)),
             ..bq_spec(0, 2)
         };
         let msg = err_text(long_run_asymptotic_bands(&res, &s));
-        assert!(
-            msg.contains("horizon") && msg.contains("band_scope"),
-            "{msg}"
-        );
+        assert!(msg.starts_with("horizon and lags:"), "{msg}");
+        assert!(msg.contains("the largest horizon that fits"), "{msg}");
     }
+    let s = LongRunBandSpec {
+        horizon: 40,
+        band_n_sim: usize::MAX,
+        band: Some((BandMethod::SupT, IrfBandScope::All)),
+        ..bq_spec(0, 2)
+    };
+    let msg = err_text(long_run_asymptotic_bands(&res, &s));
+    assert!(msg.starts_with("band_n_sim:"), "{msg}");
+    assert!(msg.contains("the largest band_n_sim that fits"), "{msg}");
 }
 
 /// The delta-method Jacobians are quadratic in `horizon`, so a horizon the
@@ -726,6 +740,67 @@ fn asymptotic_jacobian_work_is_capped_quadratically_in_horizon() {
     let msg = err_text(long_run_asymptotic_bands(&res, &spec));
     assert!(msg.contains("horizon") && msg.contains("2^28"), "{msg}");
     assert_eq!(at(usize::MAX), u128::MAX);
+}
+
+/// Audit round 16: the delta arm's refusal names the term that is over,
+/// with the largest value that fits, and a pointwise band is never told to
+/// change `band_scope` or `band_n_sim`, which it does not read.
+#[test]
+fn delta_refusals_name_the_term_that_is_over() {
+    use tsecon_var::VarError;
+    let max_of = |r: Result<(), VarError>, want: &str| match r {
+        Err(VarError::SizeBudget { name, max, .. }) => {
+            assert_eq!(name, want);
+            max
+        }
+        other => panic!("expected a SizeBudget naming {want}, got {other:?}"),
+    };
+    // Pointwise at a huge horizon: the storage term, naming horizon and lags;
+    // the largest horizon that passes every check is the Jacobian cap's.
+    let pointwise = bq_spec(1_000_000, 2);
+    let msg = err_text(check_asymptotic_budget(&pointwise, 2));
+    assert!(msg.starts_with("horizon and lags:"), "{msg}");
+    assert!(
+        !msg.contains("band_scope") && !msg.contains("band_n_sim"),
+        "{msg}"
+    );
+    let h = max_of(check_asymptotic_budget(&pointwise, 2), "horizon").unwrap();
+    assert!(check_asymptotic_budget(&bq_spec(h, 2), 2).is_ok());
+    assert!(check_asymptotic_budget(&bq_spec(h + 1, 2), 2).is_err());
+    // A wide, long VAR: the (lags k^2)^2 coefficient covariance alone
+    // exceeds the budget (k = 10, lags = 170: 17000^2 > 2^28), so no horizon
+    // fits and the refusal says to reduce lags.
+    let wide = LongRunBandSpec {
+        lags: 170,
+        ..bq_spec(1, 2)
+    };
+    let msg = err_text(check_asymptotic_budget(&wide, 10));
+    assert!(msg.starts_with("horizon and lags:"), "{msg}");
+    assert!(
+        msg.contains("no horizon fits") && msg.contains("reduce horizon or lags"),
+        "{msg}"
+    );
+    // Only band_n_sim is out of range (sup-t at the default scope and a
+    // Blanchard-Quah horizon): the refusal leads with band_n_sim.
+    let supt = |n: usize| LongRunBandSpec {
+        band: Some((BandMethod::SupT, IrfBandScope::Horizon)),
+        band_n_sim: n,
+        ..bq_spec(12, 2)
+    };
+    let msg = err_text(check_asymptotic_budget(&supt(1 << 31), 2));
+    assert!(msg.starts_with("band_n_sim:"), "{msg}");
+    let n = max_of(check_asymptotic_budget(&supt(1 << 31), 2), "band_n_sim").unwrap();
+    assert!(check_asymptotic_budget(&supt(n), 2).is_ok());
+    assert!(check_asymptotic_budget(&supt(n + 1), 2).is_err());
+    assert!(check_asymptotic_budget(&supt(100_000), 2).is_ok());
+    // The family covariance under band_scope="all" names horizon and
+    // band_scope, not band_n_sim, even under sup-t.
+    let all = LongRunBandSpec {
+        band: Some((BandMethod::SupT, IrfBandScope::All)),
+        ..bq_spec(10_000, 2)
+    };
+    let msg = err_text(check_asymptotic_budget(&all, 2));
+    assert!(msg.starts_with("horizon and band_scope:"), "{msg}");
 }
 
 // ------------------------------------------------------------ refusals
@@ -1047,13 +1122,7 @@ fn run_design(
         out.reps += 1;
         for (bc, b) in runs.iter() {
             let a = usize::from(*bc);
-            let summed: Vec<Vec<Mat<f64>>> = b
-                .irf_draws
-                .as_ref()
-                .unwrap()
-                .iter()
-                .map(|c| cumsum(c))
-                .collect();
+            let summed: Vec<Vec<Mat<f64>>> = draw_cubes(b).iter().map(|c| cumsum(c)).collect();
             let (clo, cup) = percentiles(&summed, spec.alpha);
             let hits = if a == 0 {
                 &mut out.efron

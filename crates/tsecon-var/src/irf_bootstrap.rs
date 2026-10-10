@@ -44,6 +44,9 @@
 //! Runkle (1987); Kilian (1998, *Review of Economics and Statistics*);
 //! Lütkepohl (2005, appendix D).
 
+use std::collections::VecDeque;
+use std::sync::Mutex;
+
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::{companion_from_var, spectral_radius};
 
@@ -110,6 +113,169 @@ pub struct IrfBands {
 /// matrices).
 pub(crate) type Cube = Vec<Mat<f64>>;
 
+/// Every bootstrap replication's matrices in ONE allocation, filled in
+/// place: replication `b` owns `data[b * width..(b + 1) * width]`, and block
+/// `j` of it (horizon `j`, then any trailing matrix such as the
+/// Blanchard-Quah long-run matrix) holds cell `(r, c)` at `j k^2 + r k + c`.
+///
+/// A faer matrix is a separate 64-byte-aligned allocation with padded
+/// columns (a 2 x 2 one costs 32 doubles for 4 values), and even one small
+/// kept allocation per replication, made while the replication's refit
+/// temporaries are alive, fragments the heap by about a refit's worth of
+/// memory per replication. One store sized up front keeps the draws at their
+/// real size, which is what the bootstrap budget counts. The values are
+/// copied, not recomputed, so every summary is bit-identical to one read off
+/// matrices.
+pub(crate) struct DrawStore {
+    data: Vec<f64>,
+    width: usize,
+}
+
+impl DrawStore {
+    /// A zeroed store for `n_draws` replications of `width` values each; the
+    /// caller has budgeted it.
+    pub(crate) fn new(n_draws: usize, width: usize) -> Self {
+        DrawStore {
+            data: vec![0.0; n_draws * width],
+            width,
+        }
+    }
+
+    /// Number of replications held.
+    pub(crate) fn n_draws(&self) -> usize {
+        self.data.len().checked_div(self.width).unwrap_or(0)
+    }
+
+    /// Replication `b`'s values.
+    pub(crate) fn draw(&self, b: usize) -> &[f64] {
+        &self.data[b * self.width..(b + 1) * self.width]
+    }
+
+    /// One lock per replication's slot, so the parallel replications can each
+    /// fill their own slot (every lock is taken exactly once, by one thread).
+    pub(crate) fn slots(&mut self) -> Vec<Mutex<&mut [f64]>> {
+        self.data
+            .chunks_mut(self.width.max(1))
+            .map(Mutex::new)
+            .collect()
+    }
+}
+
+/// Fills replication `rep`'s slot of `slots` with `fill`.
+pub(crate) fn fill_slot<T>(
+    slots: &[Mutex<&mut [f64]>],
+    rep: usize,
+    fill: impl FnOnce(&mut [f64]) -> T,
+) -> Result<T, VarError> {
+    let mut guard = slots
+        .get(rep)
+        .ok_or(VarError::InvalidArgument {
+            what: "a bootstrap replication has no storage slot (an internal invariant; \
+                   please report it)",
+        })?
+        .lock()
+        .map_err(|_| VarError::InvalidArgument {
+            what: "a bootstrap replication's storage slot was poisoned by a panic in \
+                   another worker thread (an internal invariant; please report it)",
+        })?;
+    Ok(fill(&mut guard))
+}
+
+/// Writes the `k x k` matrix `m` as block `block` of `out`, row-major (the
+/// [`DrawStore`] layout).
+pub(crate) fn write_block(out: &mut [f64], block: usize, m: MatRef<'_, f64>) {
+    let (rows, cols) = (m.nrows(), m.ncols());
+    let base = block * rows * cols;
+    for r in 0..rows {
+        for c in 0..cols {
+            out[base + r * cols + c] = m[(r, c)];
+        }
+    }
+}
+
+/// Values one bootstrap replication holds besides its slot of the
+/// [`DrawStore`]: its RNG substream (and, while the substreams are spawned,
+/// its `SeedSequence` child with two small heap buffers), its slot in the
+/// per-replication result vector (held up to three times while the results
+/// are collected) and its slot lock. 384 bytes; the type sizes it covers are
+/// asserted in the unit tests.
+pub(crate) const DRAW_OVERHEAD_VALUES: usize = 48;
+
+/// The subject of a bootstrap working-set refusal, shared by every residual
+/// bootstrap band.
+pub(crate) const BOOTSTRAP_WHAT: &str = "n_boot and horizon: the bootstrap working set (each \
+    of the n_boot replications holds its (horizon + 1) k x k responses as one flat array plus a \
+    fixed overhead for its RNG substream and result slots; with bias_correct also its inner \
+    Kilian estimate, with a simultaneous band its copy of the band family, with return_draws \
+    the kept draws; plus the reported bands, counted as real storage) exceeds the 2^28-value \
+    (2 GiB) budget, checked before anything is allocated; reduce n_boot or horizon";
+
+/// The refusal, if any, of a bootstrap whose working set at `(n_boot,
+/// horizon)` is `values(n_boot, horizon)` `f64` values: naming `n_boot` with
+/// the largest replication count that fits at this horizon, or, when not
+/// even 2 replications fit, `horizon` with the largest horizon that fits at
+/// this `n_boot`.
+pub(crate) fn bootstrap_refusal(
+    values: impl Fn(usize, usize) -> Option<usize>,
+    n_boot: usize,
+    horizon: usize,
+) -> Option<VarError> {
+    use crate::budget::{largest_fitting, BUDGET_VALUES};
+    let fits = |n: usize, h: usize| values(n, h).is_some_and(|v| v <= BUDGET_VALUES);
+    if fits(n_boot, horizon) {
+        return None;
+    }
+    Some(match largest_fitting(2, n_boot, |n| fits(n, horizon)) {
+        Some(max) => VarError::SizeBudget {
+            what: BOOTSTRAP_WHAT,
+            name: "n_boot",
+            value: n_boot,
+            max: Some(max),
+        },
+        None => VarError::SizeBudget {
+            what: BOOTSTRAP_WHAT,
+            name: "horizon",
+            value: horizon,
+            max: largest_fitting(0, horizon, |h| fits(n_boot, h)),
+        },
+    })
+}
+
+/// The working set of [`bootstrap_irf_bands`] /
+/// [`bootstrap_irf_bands_simultaneous`] in `f64` values, or `None` when the
+/// count overflows: per replication its flat cube, [`DRAW_OVERHEAD_VALUES`]
+/// and its slot in the percentile buffer, plus its inner Kilian estimate
+/// with `bias_correct` (`lags` k x k blocks of the inner store, counted at
+/// the padded-matrix size, and an inner overhead) and its copy of the band
+/// family (`K` values and a maximum) with a band; and the reported cubes
+/// ([`crate::budget::CUBE_COPIES`] copies).
+pub fn bootstrap_irf_budget_values(
+    k: usize,
+    lags: usize,
+    horizon: usize,
+    n_boot: usize,
+    bias_correct: bool,
+    band: Option<IrfBandScope>,
+) -> Option<usize> {
+    use crate::budget::{cube_values, mat_values, CUBE_COPIES};
+    let hp1 = horizon.checked_add(1)?;
+    let mut per_draw = hp1
+        .checked_mul(k.checked_mul(k)?)?
+        .checked_add(DRAW_OVERHEAD_VALUES + 1)?;
+    if bias_correct {
+        per_draw = per_draw
+            .checked_add(lags.checked_mul(mat_values(k)?)?)?
+            .checked_add(DRAW_OVERHEAD_VALUES)?;
+    }
+    if let Some(scope) = band {
+        let (_, kf) = crate::irf_asymptotic::family_dims(k, horizon, scope)?;
+        per_draw = per_draw.checked_add(kf.checked_add(1)?)?;
+    }
+    n_boot
+        .checked_mul(per_draw)?
+        .checked_add(cube_values(k, hp1, CUBE_COPIES)?)
+}
+
 /// The offset added to `seed` to key the inner bias-estimation bootstrap,
 /// so the bias draws and the outer band draws are independent given the
 /// user's seed (a fixed transform keeps the whole procedure reproducible).
@@ -139,6 +305,10 @@ pub(crate) const BIAS_SEED_OFFSET: u64 = 0x9E37_79B9_7F4A_7C15;
 ///
 /// * [`VarError::InvalidArgument`] if `lags == 0`, `horizon`'s implied
 ///   arrays would be empty, `n_boot < 2`, or `alpha` is not in `(0, 1)`;
+/// * [`VarError::SizeBudget`] naming `n_boot` (or `horizon`, when no
+///   replication count fits) when the working set
+///   ([`bootstrap_irf_budget_values`]) exceeds the shared 2^28-value budget,
+///   checked before anything is allocated;
 /// * any error from [`VarSpec::fit`] on the full sample;
 /// * [`VarError::Replication`] naming the first bootstrap replication (of
 ///   the outer bootstrap, or of the inner bias bootstrap under
@@ -284,6 +454,16 @@ fn run_bootstrap(
             requirement: "a value strictly inside (0, 1) — alpha = 0.1 gives 90% bands",
         });
     }
+    // The working set, sized before the fit or any draw is made.
+    let n_series = endog.ncols();
+    let scope = band.map(|(_, scope)| scope);
+    if let Some(refusal) = bootstrap_refusal(
+        |n, h| bootstrap_irf_budget_values(n_series, lags, h, n, bias_correct, scope),
+        n_boot,
+        horizon,
+    ) {
+        return Err(refusal);
+    }
 
     // The shared residual-bootstrap engine: full-sample fit, centred
     // residuals, observed initial rows, the optional Kilian bias term and the
@@ -302,12 +482,27 @@ fn run_bootstrap(
     )?;
 
     // Outer bootstrap: one reproducible substream per replication; the first
-    // failed replication, if any, is propagated.
-    let draws: Vec<Vec<Mat<f64>>> = engine.replicate(seed, n_boot, orth, |res_b, coefs_b| {
-        irf_cube(coefs_b, res_b.sigma_u.as_ref(), horizon, orth, cumulative)
-    })?;
+    // failed replication, if any, is propagated. Each replication fills its
+    // own slot of one store (bit-identical values, a fraction of the
+    // storage of a cube of matrices, and no per-replication allocation kept).
+    let mut draws = DrawStore::new(n_boot, (horizon + 1) * k * k);
+    {
+        let slots = draws.slots();
+        engine.replicate(seed, n_boot, orth, |rep, res_b, coefs_b| {
+            fill_slot(&slots, rep, |out| {
+                irf_into(
+                    coefs_b,
+                    res_b.sigma_u.as_ref(),
+                    horizon,
+                    orth,
+                    cumulative,
+                    out,
+                )
+            })?
+        })?;
+    }
 
-    let (se, lower, upper) = summarize(&draws, horizon, k, alpha);
+    let (se, lower, upper) = summarize(&draws, 0, horizon + 1, k, alpha);
 
     let (simultaneous, sim_lower, sim_upper) = match band {
         None => (None, None, None),
@@ -424,8 +619,8 @@ impl ResidualBootstrap {
     /// from substream `b` of `SeedSequence(seed).spawn(n_boot)`, rebuilds the
     /// pseudo-sample recursively from [`Self::dgp_coefs`], refits the VAR
     /// ([`refit`]: coefficients and `sigma_u` bit-identical to
-    /// [`VarSpec::fit`]'s), and hands `per_draw` the RAW refit plus the
-    /// coefficients to use (the Kilian-corrected refit coefficients under
+    /// [`VarSpec::fit`]'s), and hands `per_draw` the replication index `b`, the
+    /// RAW refit and the coefficients to use (the Kilian-corrected refit coefficients under
     /// `bias_correct`, the raw ones otherwise). Results come back in
     /// replication order; the first failed replication is propagated. A refit
     /// failure is reported as [`VarError::Replication`] with its index: the
@@ -452,7 +647,7 @@ impl ResidualBootstrap {
     ) -> Result<Vec<T>, VarError>
     where
         T: Send,
-        F: Fn(&Refit, &[Mat<f64>]) -> Result<T, VarError> + Send + Sync,
+        F: Fn(usize, &Refit, &[Mat<f64>]) -> Result<T, VarError> + Send + Sync,
     {
         let (te, k) = (self.uc.nrows(), self.uc.ncols());
         let (lags, trend) = (self.lags, self.trend);
@@ -471,9 +666,9 @@ impl ResidualBootstrap {
             let out = match &self.bias {
                 Some(b) => {
                     let coefs_b = correct_coefs(&res_b.coefs, b)?;
-                    per_draw(&res_b, &coefs_b)
+                    per_draw(rep, &res_b, &coefs_b)
                 }
-                None => per_draw(&res_b, &res_b.coefs),
+                None => per_draw(rep, &res_b, &res_b.coefs),
             };
             // A refit covariance with more than enough distinct rows can still
             // be numerically singular, which the statistic's orthogonalisation
@@ -523,7 +718,7 @@ fn resample_rank_bound(idx: &[usize], te: usize, trend: Trend) -> usize {
 /// zero-width band.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn draw_critical_values(
-    draws: &[Cube],
+    draws: &DrawStore,
     point: &[Mat<f64>],
     se: &[Mat<f64>],
     k: usize,
@@ -536,6 +731,7 @@ pub(crate) fn draw_critical_values(
     let z = simultaneous::pointwise_critical_value(alpha).map_err(VarError::Stats)?;
     let families = irf_families(k, horizon, scope);
     let n_cells = families[0].0.len();
+    let k2 = k * k;
     let mut values = vec![vec![z; k]; k];
     let mut used = vec![vec![0usize; k]; k];
 
@@ -543,7 +739,7 @@ pub(crate) fn draw_critical_values(
     // not from the requested `n_boot`: a stale tail would silently contribute
     // zeros to the maximum, which is the one failure mode this routine must
     // never have.
-    let n_draws = draws.len();
+    let n_draws = draws.n_draws();
     debug_assert_eq!(n_draws, n_boot);
     let mut flat = vec![0.0f64; n_draws * n_cells];
     for (cells, grid) in families.iter() {
@@ -557,9 +753,10 @@ pub(crate) fn draw_critical_values(
             match method {
                 BandMethod::Pointwise => z,
                 BandMethod::SupT => {
-                    for (b, d) in draws.iter().enumerate() {
+                    for b in 0..n_draws {
+                        let d = draws.draw(b);
                         for (c_idx, &(h, i, j)) in cells.iter().enumerate() {
-                            let v = d[h][(i, j)];
+                            let v = d[h * k2 + i * k + j];
                             if !v.is_finite() {
                                 return Err(VarError::NonFinite {
                                     what: "the bootstrap impulse-response draws (row = \
@@ -655,6 +852,56 @@ fn simulate_recursive(
     y
 }
 
+/// One replication's impulse responses written into `out` (`(horizon + 1)
+/// k^2` values, the [`DrawStore`] layout): bit for bit the matrices
+/// [`irf_cube`] returns, computed by the same recursion (`acc += Psi_{h-i}
+/// A_i`, then `Psi_h P` when `orth`, then the running sum when `cumulative`)
+/// but keeping only the last `p` moving-average matrices, so neither a
+/// replication nor a worker thread ever holds a horizon-long cube of
+/// matrices.
+fn irf_into(
+    coefs: &[Mat<f64>],
+    sigma_u: MatRef<'_, f64>,
+    horizon: usize,
+    orth: bool,
+    cumulative: bool,
+    out: &mut [f64],
+) -> Result<(), VarError> {
+    // `ma_rep` at horizon 0 runs its coefficient checks (non-empty, square,
+    // finite) and returns `Psi_0 = I` exactly as the full expansion does.
+    let mut window: VecDeque<Mat<f64>> = ma_rep(coefs, 0)?.into();
+    let pchol = if orth {
+        Some(chol_lower(sigma_u, "Sigma_u, the residual covariance")?)
+    } else {
+        None
+    };
+    let k = coefs[0].nrows();
+    let k2 = k * k;
+    let p = coefs.len();
+    let emit = |out: &mut [f64], h: usize, psi: &Mat<f64>| match &pchol {
+        Some(pc) => write_block(out, h, (psi * pc).as_ref()),
+        None => write_block(out, h, psi.as_ref()),
+    };
+    emit(out, 0, &window[0]);
+    for h in 1..=horizon {
+        let mut acc = Mat::<f64>::zeros(k, k);
+        for i in 1..=h.min(p) {
+            acc += &window[window.len() - i] * &coefs[i - 1];
+        }
+        emit(out, h, &acc);
+        window.push_back(acc);
+        if window.len() > p {
+            window.pop_front();
+        }
+    }
+    if cumulative {
+        for c in k2..(horizon + 1) * k2 {
+            out[c] += out[c - k2];
+        }
+    }
+    Ok(())
+}
+
 /// Impulse-response cube for coefficient matrices `coefs` and residual
 /// covariance `sigma_u`: `horizon + 1` matrices, orthogonalized through the
 /// lower Cholesky factor when `orth`, cumulated over the horizon when
@@ -684,15 +931,17 @@ fn irf_cube(
 }
 
 /// Per-cell bootstrap standard error (sample SD, divisor `n_boot - 1`) and
-/// the `alpha/2` / `1 - alpha/2` percentile bands.
+/// the `alpha/2` / `1 - alpha/2` percentile bands of blocks `first..first +
+/// hh` of every replication in the store (one output matrix per block).
 pub(crate) fn summarize(
-    draws: &[Cube],
-    horizon: usize,
+    draws: &DrawStore,
+    first: usize,
+    hh: usize,
     k: usize,
     alpha: f64,
 ) -> (Cube, Cube, Cube) {
-    let hh = horizon + 1;
-    let nb = draws.len();
+    let k2 = k * k;
+    let nb = draws.n_draws();
     let nbf = nb as f64;
     let ql = alpha / 2.0;
     let qu = 1.0 - alpha / 2.0;
@@ -705,8 +954,8 @@ pub(crate) fn summarize(
     for h in 0..hh {
         for i in 0..k {
             for j in 0..k {
-                for (b, d) in draws.iter().enumerate() {
-                    vals[b] = d[h][(i, j)];
+                for (b, v) in vals.iter_mut().enumerate() {
+                    *v = draws.draw(b)[(first + h) * k2 + i * k + j];
                 }
                 let mean = vals.iter().sum::<f64>() / nbf;
                 let ss = vals.iter().map(|v| (v - mean) * (v - mean)).sum::<f64>();
@@ -761,28 +1010,46 @@ fn estimate_bias(
     };
     let bias_seed = seed.wrapping_add(BIAS_SEED_OFFSET);
 
-    let raw = par_replicate(
-        bias_seed,
-        n_inner,
-        |rep, stream| -> Result<Vec<Mat<f64>>, VarError> {
+    // Each inner estimate is written into its slot of one store (block `i`
+    // is `A_{i+1}`), not cloned into matrices of its own: a small allocation
+    // kept per replication while its refit temporaries are alive fragments
+    // the heap, which measured 2.8x the budgeted count on three variables.
+    let k2 = k * k;
+    let mut estimates = DrawStore::new(n_inner, p * k2);
+    {
+        let slots = estimates.slots();
+        let raw = par_replicate(bias_seed, n_inner, |rep, stream| -> Result<(), VarError> {
             let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
             let ustar = gather_rows(uc, &idx);
             let ysim = simulate_recursive(coefs_hat, intercept, init, &ustar);
-            lag_coefs(ysim.as_ref(), lags, trend).map_err(|e| pseudo_sample_error(&e, rep, true))
-        },
-    )
-    .map_err(map_boot_err)?;
-    let estimates: Vec<Vec<Mat<f64>>> = raw.into_iter().collect::<Result<_, _>>()?;
+            let coefs_b = lag_coefs(ysim.as_ref(), lags, trend)
+                .map_err(|e| pseudo_sample_error(&e, rep, true))?;
+            fill_slot(&slots, rep, |out| {
+                for (i, a) in coefs_b.iter().enumerate() {
+                    write_block(out, i, a.as_ref());
+                }
+            })
+        })
+        .map_err(map_boot_err)?;
+        // The first failed replication, in replication order.
+        raw.into_iter().collect::<Result<Vec<()>, _>>()?;
+    }
 
-    // Mean of the inner estimates.
+    // Mean of the inner estimates, summed in replication order one cell at a
+    // time: the same IEEE additions as summing the matrices.
     let mut mean = vec![Mat::<f64>::zeros(k, k); p];
-    for est in &estimates {
-        for i in 0..p {
-            let acc = &mean[i] + &est[i];
-            mean[i] = acc;
+    for b in 0..n_inner {
+        let est = estimates.draw(b);
+        for (i, m) in mean.iter_mut().enumerate() {
+            for r in 0..k {
+                for c in 0..k {
+                    m[(r, c)] += est[i * k2 + r * k + c];
+                }
+            }
         }
     }
-    let nf = estimates.len() as f64;
+    drop(estimates);
+    let nf = n_inner as f64;
     // Raw bias E*[A*] - A_hat.
     let bias_raw: Vec<Mat<f64>> = (0..p)
         .map(|i| Mat::from_fn(k, k, |r, c| mean[i][(r, c)] / nf - coefs_hat[i][(r, c)]))
@@ -1005,7 +1272,7 @@ mod tests {
         assert!(distinct.len() <= 2, "{distinct:?}");
 
         let e = engine
-            .replicate(seed, n_boot, true, |_, _| Ok(()))
+            .replicate(seed, n_boot, true, |_, _, _| Ok(()))
             .unwrap_err();
         assert!(
             matches!(e, VarError::Replication { index, what }
@@ -1018,7 +1285,7 @@ mod tests {
         // Reduced-form responses do not read sigma_u: every draw is kept, and
         // the singular ones have finite slopes like the rest.
         let coefs = engine
-            .replicate(seed, n_boot, false, |res_b, _| Ok(res_b.coefs.clone()))
+            .replicate(seed, n_boot, false, |_, res_b, _| Ok(res_b.coefs.clone()))
             .unwrap();
         assert_eq!(coefs.len(), n_boot);
         for &b in &singular {
@@ -1042,6 +1309,136 @@ mod tests {
             let r = refit(y.as_ref(), 2, trend).unwrap();
             assert_eq!(r.coefs, full.coefs);
             assert_eq!(r.sigma_u, full.sigma_u);
+        }
+    }
+
+    /// The flat per-replication responses are the matrices of the full
+    /// `ma_rep` expansion, bit for bit, in every orth/cumulative mode and at
+    /// horizons on both sides of the lag order.
+    #[test]
+    fn irf_into_is_irf_cube_flattened_bit_for_bit() {
+        let k = 3usize;
+        let a1 = Mat::from_fn(k, k, |i, j| 0.3 * ((i * 7 + j * 3) % 5) as f64 / 5.0 - 0.05);
+        let a2 = Mat::from_fn(k, k, |i, j| 0.1 * ((i + 2 * j) % 4) as f64 / 4.0 - 0.02);
+        let coefs = vec![a1, a2];
+        let sigma = Mat::from_fn(k, k, |i, j| if i == j { 1.0 + 0.2 * i as f64 } else { 0.3 });
+        for orth in [false, true] {
+            for cumulative in [false, true] {
+                for horizon in [0usize, 1, 2, 3, 11] {
+                    let cube = irf_cube(&coefs, sigma.as_ref(), horizon, orth, cumulative).unwrap();
+                    let mut flat = vec![f64::NAN; (horizon + 1) * k * k];
+                    irf_into(&coefs, sigma.as_ref(), horizon, orth, cumulative, &mut flat).unwrap();
+                    for (h, m) in cube.iter().enumerate() {
+                        for i in 0..k {
+                            for j in 0..k {
+                                assert_eq!(
+                                    flat[h * k * k + i * k + j].to_bits(),
+                                    m[(i, j)].to_bits(),
+                                    "orth={orth} cum={cumulative} h={h} ({i},{j})"
+                                );
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        // The same coefficient checks as ma_rep: an empty lag list is refused.
+        assert!(irf_into(&[], sigma.as_ref(), 4, true, false, &mut [0.0; 9]).is_err());
+    }
+
+    /// The Kilian bias read off the inner store is the one the inner
+    /// estimates gave as cloned matrices summed as matrices (the computation
+    /// before the store), bit for bit.
+    #[test]
+    fn the_inner_bias_store_is_the_matrix_sum_bit_for_bit() {
+        let (k, p, n) = (3usize, 2usize, 160usize);
+        let a1 = Mat::from_fn(k, k, |i, j| {
+            if i == j {
+                0.6
+            } else {
+                0.04 * (i + 2 * j) as f64
+            }
+        });
+        let a2 = Mat::from_fn(k, k, |i, j| if i == j { 0.15 } else { -0.02 });
+        let mut state = 0x2545_F491_4F6C_DD1Du64;
+        let u = Mat::from_fn(n - p, k, |_, _| {
+            state ^= state << 13;
+            state ^= state >> 7;
+            state ^= state << 17;
+            (state >> 11) as f64 / (1u64 << 53) as f64 - 0.5
+        });
+        let init = Mat::from_fn(p, k, |t, j| 0.1 * (t + j) as f64);
+        let y = simulate_recursive(&[a1, a2], &[0.1, 0.0, -0.1], &init, &u);
+        let fit = VarSpec {
+            lags: p,
+            trend: Trend::Constant,
+        }
+        .fit(y.as_ref())
+        .unwrap();
+        let uc = center_columns(fit.resid.as_ref());
+        let init = Mat::from_fn(p, k, |t, j| y[(t, j)]);
+        let (seed, n_inner) = (5u64, 97usize);
+        let got = estimate_bias(
+            &fit.coefs,
+            &fit.intercept,
+            &init,
+            &uc,
+            fit.nobs,
+            seed,
+            n_inner,
+        )
+        .unwrap();
+
+        let te = fit.nobs;
+        let estimates: Vec<Vec<Mat<f64>>> = par_replicate(
+            seed.wrapping_add(BIAS_SEED_OFFSET),
+            n_inner,
+            |_rep, stream| {
+                let idx = indices(BlockScheme::Iid, te, stream).unwrap();
+                let ysim =
+                    simulate_recursive(&fit.coefs, &fit.intercept, &init, &gather_rows(&uc, &idx));
+                VarSpec {
+                    lags: p,
+                    trend: Trend::Constant,
+                }
+                .fit(ysim.as_ref())
+                .unwrap()
+                .coefs
+                .clone()
+            },
+        )
+        .unwrap();
+        let mut mean = vec![Mat::<f64>::zeros(k, k); p];
+        for est in &estimates {
+            for i in 0..p {
+                let acc = &mean[i] + &est[i];
+                mean[i] = acc;
+            }
+        }
+        let raw: Vec<Mat<f64>> = (0..p)
+            .map(|i| {
+                Mat::from_fn(k, k, |r, c| {
+                    mean[i][(r, c)] / n_inner as f64 - fit.coefs[i][(r, c)]
+                })
+            })
+            .collect();
+        let mut delta = 1.0_f64;
+        let want = loop {
+            if spectral_radius_of(&scale_subtract(&fit.coefs, &raw, delta)).unwrap() < 1.0 {
+                break scale(&raw, delta);
+            }
+            delta -= 0.01;
+            assert!(delta > 0.0, "the test VAR must admit a correction");
+        };
+        assert!(raw
+            .iter()
+            .any(|m| (0..k).any(|r| (0..k).any(|c| m[(r, c)] != 0.0))));
+        for (g, w) in got.iter().zip(&want) {
+            for r in 0..k {
+                for c in 0..k {
+                    assert_eq!(g[(r, c)].to_bits(), w[(r, c)].to_bits(), "({r},{c})");
+                }
+            }
         }
     }
 

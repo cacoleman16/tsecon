@@ -59,12 +59,17 @@
 //! Bootstrap IRF confidence bands are `// TODO(phase0)` and will consume
 //! `tsecon-bootstrap` (see `src/irf.rs`).
 //!
+//! Every allocation that scales with a user count is checked against the
+//! shared size budget of [`budget`] before it is made, so an absurd horizon,
+//! step, replication or simulation count is refused by name.
+//!
 //! All fallible routines return [`VarError`]; nothing in this crate
 //! panics on user input.
 
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod budget;
 pub mod causality;
 pub mod conditional;
 pub mod diagnostics;
