@@ -260,7 +260,63 @@ pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 /// `dfm_smooth` goldens of `tsecon-nowcast`). An idiosyncratic variance
 /// below `1e-14` of the variance the element could see is, at this
 /// precision, a zero one.
+///
+/// **When the pinning was itself nearly redundant.** "Roundoff of order
+/// `eps`" holds for a downdate that divides by an `F_*` of the size of its
+/// reference. An element that pins a direction an earlier one of the same
+/// period almost pinned — two zero-variance series whose loadings are at
+/// an angle `theta` — has `F_*` of order `theta^2` of its reference, and
+/// its downdate leaves dust of order `eps / theta`, which can pass the
+/// `1e-14` test: with two factors and pinning loadings `0.02` rad apart,
+/// the redundant third zero-variance series was taken in every period, and
+/// each of the 40 column orders that pin with that pair came out 115 to 839
+/// log-likelihood points high over 60 periods (the covariance form cannot
+/// tell that dust from a variance; `tests/scale.rs`). So an `F_*`
+/// that passes the test but sits within [`SUSPECT_DUST`] of the predicted
+/// reference, after an update of the same (non-diffuse) period, is read a
+/// second time off a square-root companion ([`StarRoot`]): a factor `S` of
+/// the predicted `P_*` on the states `Z_t` loads on, downdated by the
+/// period's updates in Potter's form `S <- S (I - g u u')`, `u = S' Z_k'`
+/// — for `H_kk = 0` the orthogonal projection that removes the pinned
+/// direction, dividing by nothing small — and `F = u'u + H_ii`, a sum of
+/// squares whose dust is of order `(eps / theta)^2`. The update is taken
+/// only when that `F` also clears `TOLERANCE_CANCEL` of the reference. The
+/// companion decides only; the update itself runs on the covariance form,
+/// as before, and the companion is built only in a period that has such an
+/// element, so the filter's other paths are bit-identical
+/// (`tests/scale.rs`,
+/// `nearly_collinear_pinning_does_not_let_the_redundant_element_in`).
 pub(crate) const TOLERANCE_CANCEL: f64 = 1e-14;
+
+/// Ceiling of the band, as a fraction of the predicted reference
+/// `|Z_i|' |P_{t|t-1}| |Z_i| + H_ii`, in which an `F_*` that passed both
+/// tests after an earlier update of the period is confirmed on the
+/// square-root companion (see [`TOLERANCE_CANCEL`], "When the pinning was
+/// itself nearly redundant").
+///
+/// A pin whose `F_*` is a fraction `r` of its reference leaves dust of
+/// order `eps / sqrt(r)` of the reference, so dust reaches this ceiling
+/// only behind a pin with `r` below about `1e-19`, which the tests refuse:
+/// the first update of a period must clear `TOLERANCE_RANK` (`1e-10`) of a
+/// reference that is still the predicted one, a later one the companion's
+/// `1e-14`. (Two consecutive pins each near that floor, whose own `F_*`
+/// carry about two correct digits, could compound past it.) Above the
+/// ceiling an `F_*` is taken as computed, so a model whose elements all
+/// carry real idiosyncratic variance never builds the companion: an
+/// element lands in the band only when its `H_ii` is below a millionth of
+/// the variance it could see.
+const SUSPECT_DUST: f64 = 1e-6;
+
+/// Verdict of the predicted-reference test on an `F_*` (see
+/// [`TOLERANCE_CANCEL`]).
+enum Dust {
+    /// Far above roundoff of the period's updates (or no update yet).
+    Clear,
+    /// At most `TOLERANCE_CANCEL` of the reference: roundoff, skipped.
+    Below,
+    /// In the [`SUSPECT_DUST`] band; the reference, for the companion.
+    Suspect(f64),
+}
 
 /// `ln(2 pi)`, the per-element likelihood constant.
 #[inline]
@@ -411,6 +467,127 @@ fn diffuse_root(p_inf: MatRef<'_, f64>) -> Mat<f64> {
     })
 }
 
+/// Square-root companion of a period's `P_*` for the informative-element
+/// decision only (see [`TOLERANCE_CANCEL`], "When the pinning was itself
+/// nearly redundant"): a factor `S` with `S S' = P_{t|t-1}` restricted to
+/// the states `Z_t` loads on — the only block a quadratic form `Z_i P Z_i'`
+/// reads — downdated in Potter's form by the period's standard updates.
+struct StarRoot {
+    /// The state indices with a nonzero entry in some row of `Z_t`.
+    support: Vec<usize>,
+    /// `|support| x rank` factor of `P_*` on `support`.
+    s: Mat<f64>,
+}
+
+impl StarRoot {
+    /// The factor of the period's predicted `p_pre` on the support of `z`,
+    /// replayed through the standard updates `done` (element indices of
+    /// `z` and `h`) the period has already taken.
+    fn replay(
+        p_pre: MatRef<'_, f64>,
+        z: MatRef<'_, f64>,
+        h: MatRef<'_, f64>,
+        done: &[usize],
+    ) -> Self {
+        let support: Vec<usize> = (0..z.ncols())
+            .filter(|&j| (0..z.nrows()).any(|i| z[(i, j)] != 0.0))
+            .collect();
+        let sub = Mat::from_fn(support.len(), support.len(), |a, b| {
+            p_pre[(support[a], support[b])]
+        });
+        let mut root = StarRoot {
+            s: pivoted_root(sub),
+            support,
+        };
+        for &k in done {
+            root.downdate(&row_to_vec(z, k), h[(k, k)]);
+        }
+        root
+    }
+
+    /// `u = S' Z_i'` and `F = u'u + H_ii`: the element's prediction variance
+    /// read as a sum of squares.
+    fn project(&self, zi: &[f64], h_ii: f64) -> (Vec<f64>, f64) {
+        let u: Vec<f64> = (0..self.s.ncols())
+            .map(|l| {
+                self.support
+                    .iter()
+                    .enumerate()
+                    .map(|(a, &j)| self.s[(a, l)] * zi[j])
+                    .sum()
+            })
+            .collect();
+        let f = dot(&u, &u) + h_ii;
+        (u, f)
+    }
+
+    /// Potter's update for the element `(zi, h_ii)`: `S <- S (I - g u u')`
+    /// with `g = 1 / (F + sqrt(H_ii F))`, so `S S'` becomes `P - M M' / F`
+    /// (`M = P Z_i' = S u`); for `H_ii = 0` it is the orthogonal projection
+    /// that removes the pinned direction.
+    fn downdate(&mut self, zi: &[f64], h_ii: f64) {
+        let (u, f) = self.project(zi, h_ii);
+        if f.is_nan() || f <= 0.0 {
+            return;
+        }
+        let g = 1.0 / (f + (h_ii * f).sqrt());
+        let w: Vec<f64> = (0..self.s.nrows())
+            .map(|a| {
+                u.iter()
+                    .enumerate()
+                    .map(|(l, ul)| self.s[(a, l)] * ul)
+                    .sum()
+            })
+            .collect();
+        for (l, ul) in u.iter().enumerate() {
+            for (a, wa) in w.iter().enumerate() {
+                self.s[(a, l)] -= g * wa * ul;
+            }
+        }
+    }
+}
+
+/// A factor `S` (`n x rank`) of the symmetric positive semidefinite `a`,
+/// `a = S S'` to roundoff, by Cholesky with diagonal pivoting: each step
+/// takes the largest remaining diagonal and the factorization stops when
+/// none is positive, so a singular (or roundoff-indefinite) matrix gets a
+/// factor of its numerical rank instead of a failure.
+fn pivoted_root(mut a: Mat<f64>) -> Mat<f64> {
+    let n = a.nrows();
+    let mut used = vec![false; n];
+    let mut cols: Vec<Vec<f64>> = Vec::new();
+    loop {
+        let mut pivot = None;
+        let mut best = 0.0;
+        for (j, &u) in used.iter().enumerate() {
+            if !u && a[(j, j)] > best {
+                best = a[(j, j)];
+                pivot = Some(j);
+            }
+        }
+        let Some(j) = pivot else { break };
+        used[j] = true;
+        let sd = best.sqrt();
+        // The rows pivoted before are exactly zero in exact arithmetic.
+        let col: Vec<f64> = (0..n)
+            .map(|i| {
+                if used[i] && i != j {
+                    0.0
+                } else {
+                    a[(i, j)] / sd
+                }
+            })
+            .collect();
+        for c in 0..n {
+            for r in 0..n {
+                a[(r, c)] -= col[r] * col[c];
+            }
+        }
+        cols.push(col);
+    }
+    Mat::from_fn(n, cols.len(), |i, k| cols[k][i])
+}
+
 /// Runs the univariate (sequential) Kalman filter with exact diffuse
 /// initialization — the primary filtering path (see the module docs for
 /// the recursions and references).
@@ -507,6 +684,11 @@ pub fn filter_univariate(
             .map(|j| p_star_pre[(j, j)].max(0.0).sqrt())
             .collect();
         let mut updated = false;
+        // The square-root companion, built only if an element of this
+        // period lands in the SUSPECT_DUST band (see TOLERANCE_CANCEL), and
+        // where this period's steps start in `out.steps`.
+        let mut star_root: Option<StarRoot> = None;
+        let step0 = out.steps.len();
 
         // Sequential scalar updates: (a, p_star, p_inf) morph in place
         // from predicted to filtered moments.
@@ -536,19 +718,30 @@ pub fn filter_univariate(
             // above are roundoff of that update (see TOLERANCE_CANCEL).
             // Until the period's first update the two coincide and the
             // first test implies this one; after it, the O(m) bound
-            // settles every F_* that is not dust and the exact form is
-            // read only for the rest.
-            let above_dust = |f: f64| {
+            // settles every F_* far above dust and the exact form is read
+            // only for the rest. An F_* that clears the test but stays
+            // within SUSPECT_DUST of the reference is confirmed on the
+            // square-root companion below.
+            let against_predicted = |f: f64| {
                 if !updated {
-                    return true;
+                    return Dust::Clear;
                 }
                 let bound: f64 = zi
                     .iter()
                     .zip(&p_star_pre_sd)
                     .map(|(zj, sd)| zj.abs() * sd)
                     .sum();
-                f > TOLERANCE_CANCEL * (bound * bound + h[(i, i)])
-                    || f > TOLERANCE_CANCEL * (abs_quad_form(&zi, p_star_pre) + h[(i, i)])
+                if f > SUSPECT_DUST * (bound * bound + h[(i, i)]) {
+                    return Dust::Clear;
+                }
+                let reference = abs_quad_form(&zi, p_star_pre) + h[(i, i)];
+                if f <= TOLERANCE_CANCEL * reference {
+                    Dust::Below
+                } else if f > SUSPECT_DUST * reference {
+                    Dust::Clear
+                } else {
+                    Dust::Suspect(reference)
+                }
             };
             let (f_inf, m_inf, f_inf_scale, u_root, f_root, f_inf_unres) = if diffuse {
                 let mi = mat_vec(p_inf.as_ref(), &zi);
@@ -611,11 +804,35 @@ pub fn filter_univariate(
                     m_star,
                     m_inf,
                 });
-            } else if f_star > TOLERANCE_RANK * f_star_scale && above_dust(f_star) {
+            } else if f_star > TOLERANCE_RANK * f_star_scale
+                && match against_predicted(f_star) {
+                    Dust::Clear => true,
+                    Dust::Below => false,
+                    // A diffuse period's updates are not Potter downdates
+                    // of P_*; the companion runs on standard periods only.
+                    Dust::Suspect(_) if diffuse => true,
+                    Dust::Suspect(reference) => {
+                        let root = star_root.get_or_insert_with(|| {
+                            // The standard updates this period has taken.
+                            let done: Vec<usize> = (0..i)
+                                .filter(|&k| {
+                                    let s = &out.steps[step0 + k];
+                                    s.observed && !s.diffuse
+                                })
+                                .collect();
+                            StarRoot::replay(p_star_pre, z, h, &done)
+                        });
+                        root.project(&zi, h[(i, i)]).1 > TOLERANCE_CANCEL * reference
+                    }
+                }
+            {
                 // Standard scalar update (Koopman & Durbin 2000).
                 let k0: Vec<f64> = m_star.iter().map(|x| x / f_star).collect();
                 axpy(&mut a, v, &k0);
                 outer_sub(&mut p_star, &m_star, &k0);
+                if let Some(root) = star_root.as_mut() {
+                    root.downdate(&zi, h[(i, i)]);
+                }
                 out.loglik -= 0.5 * (ln2pi + f_star.ln() + v * v / f_star);
                 n_informative += 1;
                 updated = true;
@@ -830,5 +1047,70 @@ impl LinearGaussianSSM {
     /// filter.
     pub fn loglike(&self, y: MatRef<'_, f64>) -> Result<f64, SsmError> {
         Ok(filter_univariate(self, y)?.loglik)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A rank-2 PSD 4 x 4 matrix, `B B'` of a 4 x 2 `B`.
+    fn rank_two() -> Mat<f64> {
+        let b = Mat::from_fn(4, 2, |i, j| {
+            [[1.0, 0.5], [-0.3, 2.0], [0.7, 0.0], [1.2, -0.4]][i][j]
+        });
+        Mat::from_fn(4, 4, |i, j| (0..2).map(|k| b[(i, k)] * b[(j, k)]).sum())
+    }
+
+    #[test]
+    fn the_pivoted_root_factors_a_singular_psd_matrix_to_its_rank() {
+        let a = rank_two();
+        let s = pivoted_root(a.clone());
+        assert!(s.ncols() <= 4);
+        for i in 0..4 {
+            for j in 0..4 {
+                let ss: f64 = (0..s.ncols()).map(|k| s[(i, k)] * s[(j, k)]).sum();
+                assert!(
+                    (ss - a[(i, j)]).abs() <= 1e-14 * 4.0,
+                    "({i}, {j}): {ss} vs {}",
+                    a[(i, j)]
+                );
+            }
+        }
+        // A zero matrix has an empty factor, not a failure.
+        assert_eq!(pivoted_root(Mat::zeros(3, 3)).ncols(), 0);
+    }
+
+    #[test]
+    fn the_potter_downdate_is_the_covariance_downdate() {
+        // S S' after the update by (z, h) is P - M M' / F, M = P z', F = z P z' + h,
+        // for h > 0 and for the projection h = 0.
+        let p = Mat::from_fn(3, 3, |i, j| {
+            [[2.0, 0.3, -0.4], [0.3, 1.0, 0.2], [-0.4, 0.2, 1.5]][i][j]
+        });
+        let z = Mat::from_fn(1, 3, |_, j| [0.5, -1.0, 0.25][j]);
+        for h_ii in [0.7, 0.0] {
+            let h = Mat::from_fn(1, 1, |_, _| h_ii);
+            let root = StarRoot::replay(p.as_ref(), z.as_ref(), h.as_ref(), &[0]);
+            let zi = row_to_vec(z.as_ref(), 0);
+            let m = mat_vec(p.as_ref(), &zi);
+            let f = dot(&zi, &m) + h_ii;
+            for i in 0..3 {
+                for j in 0..3 {
+                    let ss: f64 = (0..root.s.ncols())
+                        .map(|k| root.s[(i, k)] * root.s[(j, k)])
+                        .sum();
+                    let want = p[(i, j)] - m[i] * m[j] / f;
+                    assert!(
+                        (ss - want).abs() <= 1e-14,
+                        "h = {h_ii}, ({i}, {j}): {ss} vs {want}"
+                    );
+                }
+            }
+            // With h = 0 the pinned direction is gone: z S S' z' is roundoff.
+            if h_ii == 0.0 {
+                assert!(root.project(&zi, 0.0).1 <= 1e-28);
+            }
+        }
     }
 }
