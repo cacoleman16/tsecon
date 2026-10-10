@@ -4,7 +4,7 @@ Correctness is the contract. Where a reference value can exist, nothing lands in
 `tsecon` without a **golden fixture** it has to reproduce to a stated tolerance
 — a JSON file of reference values (in [`fixtures/`](../../fixtures/README.md))
 that the Rust crate tests must hit on every run, and that the Python binding
-tests reload for 90 of the 123 files. This page is the map: for each method
+tests reload for 92 of the 126 files. This page is the map: for each method
 family it names the *reference* the golden is measured against, the fixture
 file, the test that enforces the match, and the tolerance it is held to.
 
@@ -222,7 +222,7 @@ The primitives every estimator above leans on are held to the same standard.
 
 Most fixtures record, in a `_meta` block, the reference-library versions used to
 produce them. **There is no single pinned version set, and the record is not
-complete**: the 104 fixtures with a `_meta` block, of the 123 JSON files in
+complete**: the 107 fixtures with a `_meta` block, of the 126 JSON files in
 [`fixtures/`](../../fixtures/README.md), were generated over four venv
 generations. A regeneration reproduces a fixture's values only under the versions
 that fixture itself names. The table below is counted directly over the shipped
@@ -231,7 +231,7 @@ files by `scripts/fixture_provenance.py`:
 | Reference | Versions recorded | Fixtures recording it |
 |---|---|---|
 | statsmodels | 0.14.6 (36), 0.15.0 (21) | 57 |
-| NumPy | 2.5.1 (37), 2.4.6 (32), 2.5.3 (15), 1.26.4 (11) | 95 |
+| NumPy | 2.5.1 (37), 2.4.6 (32), 2.5.3 (18), 1.26.4 (11) | 98 |
 | SciPy | 1.17.1 (20), 1.18.0 (16), 1.18.1 (14) | 50 |
 | arch | 8.0.0 | 6 |
 | linearmodels | 7.0 | 7 |
@@ -240,8 +240,9 @@ files by `scripts/fixture_provenance.py`:
 | pandas | 3.0.6 (4), 3.0.5 (3) | 7 |
 | statsforecast | 2.1.1 | 1 |
 | mapie | 1.5.0 | 1 |
+| mpmath | 1.4.1 | 2 |
 | R | 4.3.3 (prose strings; `lpdid` names `fixest 0.14.2` alongside) | 2 |
-| Python | 3.12.7 (28), 3.11.15 (18), 3.13.16 (14) | 60 |
+| Python | 3.12.7 (28), 3.11.15 (18), 3.13.16 (17) | 63 |
 
 **The 0.11 generation.** The 0.11.0 fixtures open a fourth generation:
 `variance_ratio.json`, `serial_corr.json`, `panel_static.json`,
@@ -253,7 +254,10 @@ statsmodels 0.15.0 and Python 3.13.16 (with arch 8.0.0, linearmodels 7.0 or
 pandas 3.0.6 where those are the reference), a combination no earlier fixture
 names (the repository has no pinned `.venv`; the generators ran in a fresh
 reference venv). The regenerated `spa.json` records only arch 8.0.0 and
-NumPy 2.5.3. Those fifteen are the table's NumPy 2.5.3 count. What is new is
+NumPy 2.5.3, and audit round 16's three fixtures (`companion_roots.json`,
+`var_normality_graded.json`, `rng_substreams.json`) record NumPy 2.5.3 and
+Python 3.13.16, the first two with the 60-digit mpmath 1.4.1 reference they
+are computed in. Those eighteen are the table's NumPy 2.5.3 count. What is new is
 the NumPy/SciPy/Python triple, not statsmodels 0.15.0: fixtures committed
 before the wave already record it beside NumPy 2.4.6 — `ets`, `fmols`, `girf`,
 `jsz`, `kernel`, `panel_unbalanced` and `var_cf` in `_meta`, and `uc` in its
@@ -296,7 +300,7 @@ Two things this table makes visible that a single pinned list hid:
 The goldens gate the **Rust** crate tests directly; that is the guarantee that
 holds for every fixture. The **Python** layer is a partial second pass, not a
 mirror: the binding suite in
-[`bindings/python/tests/`](../../bindings/python/tests) reloads **90 of the 123**
+[`bindings/python/tests/`](../../bindings/python/tests) reloads **92 of the 126**
 fixture files. The other **33 are never opened from Python**: `advisors`,
 `arima_bse`, `auto_arima`, `bvar_hierarchical`, `distributions`, `engle_granger`,
 `fry_pagan_svar`, `gmm_first_stage`, `hc_robust`, `hetero_svar`,

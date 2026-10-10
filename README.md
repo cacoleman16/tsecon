@@ -22,7 +22,7 @@ just present.
 ## Status
 
 Phases 0–1 complete; Phases 2–4 substantially landed. **44 Rust crates,
-2000+ Rust and 3000+ Python tests — all green and golden-fixture-gated**
+2000+ Rust and 4000+ Python tests — all green and golden-fixture-gated**
 (exact counts move with development and are measured in
 [testing.md](docs/reference/testing.md)). The whole
 library builds and tests from a clean checkout on every push (CI matrix on

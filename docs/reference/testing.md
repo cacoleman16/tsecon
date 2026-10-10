@@ -24,13 +24,13 @@ command needs the `--exclude tsecon-python` caveat described
 
 | Tier | Count | Command |
 |---|---|---|
-| Rust tests (total) | **2176 passed, 0 failed, 12 ignored** | `cargo test --workspace`, result lines summed |
-| — integration tests in `crates/*/tests/` | 1846 | |
-| — unit tests in `src/` (`#[cfg(test)]`) | 273 | |
+| Rust tests (total) | **2307 passed, 0 failed, 12 ignored** | `cargo test --workspace`, result lines summed |
+| — integration tests in `crates/*/tests/` | 1943 | |
+| — unit tests in `src/` (`#[cfg(test)]`) | 307 | |
 | — documentation tests | 57 | |
-| Python binding tests | **3361 passed, 0 failed, 1 skipped** in 1385 s (a 4-core machine shared with other jobs) with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
+| Python binding tests | **4022 passed, 0 failed, 1 skipped** in 979 s (a 4-core machine shared with other jobs) with the full extras venv (statsmodels/arch/scikit-learn/linearmodels/matplotlib/mapie present; extras-gated files skip collection or at runtime without them) | `.venv/bin/python -m pytest bindings/python/tests -q` |
 | Crates | 44, **every one** with a `tests/` directory | |
-| Golden fixtures | 123 JSON files, produced by 104 Python generator scripts (plus two R scripts) | `fixtures/` |
+| Golden fixtures | 126 JSON files, produced by 107 Python generator scripts (plus two R scripts) | `fixtures/` |
 | Public Python functions | 206, **all 206** exercised through `tsecon.<name>(…)` in the binding suite | [Tier 4](#tier-4-python-binding-tests) shows the check |
 
 Of the 12 ignored tests, 9 are in `tsecon-var` (four stored-bit-pattern
@@ -40,13 +40,13 @@ timing test, and one that emits a fixture snapshot), 2 are in `tsecon-panel`
 (the 600-replication post-double-selection coverage measurement); each
 `#[ignore]` states its reason.
 
-Of the 1858 integration tests — the 1846 that pass plus the 12 `#[ignore]`d —
-**463 are golden tests** and **830 are property tests**. The goldens live in
+Of the 1955 integration tests — the 1943 that pass plus the 12 `#[ignore]`d —
+**469 are golden tests** and **842 are property tests**. The goldens live in
 97 `*golden*.rs` files across 40 crates (`golden.rs` in most, with additional
 per-surface files such as `engle_granger_golden.rs`, `irf_bands_golden.rs`,
 `proxy_bands_golden.rs`, `ou_golden.rs`, and `star_golden.rs`); the property
 tests live in 77 `*propert*.rs` files across 40 crates. The remainder are
-validation (120 tests in 12 `*validation*.rs` files), cross-check, and
+validation (127 tests in 12 `*validation*.rs` files), cross-check, and
 reproducibility suites described below.
 
 Those three splits are counted **statically**, and the reason is a trap worth
@@ -257,7 +257,7 @@ There are also targeted cross-check and reproducibility suites —
 **What it proves:** the *shipped* module reproduces the same goldens the Rust
 core hits, and that nothing is lost or corrupted crossing the PyO3 boundary.
 
-3362 tests in 127 files. 90 of the 123 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
+4023 tests in 136 files. 92 of the 126 fixture JSONs are named by file in the tests and reloaded there (the count is the set of `*.json` literals in `bindings/python/tests/*.py` that name an existing file under `fixtures/`, deduplicated across the suite), checked
 a second time through the Python API, so the guarantee is end-to-end rather
 than core-only. But the suite adds four things the Rust tests structurally
 cannot cover:
@@ -711,7 +711,7 @@ across all binaries — cargo prints one per test target, not one total.
 ```sh
 cargo test --workspace --exclude tsecon-python > /tmp/rust.txt 2>&1
 grep "test result" /tmp/rust.txt | awk '{p+=$4; f+=$6} END {print p, "passed,", f, "failed"}'
-# 2176 passed, 0 failed
+# 2307 passed, 0 failed
 ```
 
 ### Build a release extension before timing anything

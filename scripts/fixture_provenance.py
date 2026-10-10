@@ -14,7 +14,7 @@ REFS = {
     "statsmodels": r"statsmodels", "NumPy": r"numpy", "SciPy": r"scipy", "arch": r"arch",
     "linearmodels": r"linearmodels", "scikit-learn": r"scikit[-_]learn|sklearn",
     "ArviZ": r"arviz", "pandas": r"pandas", "statsforecast": r"statsforecast",
-    "mapie": r"mapie", "Python": r"python", "R": r"^r$|r_version",
+    "mapie": r"mapie", "mpmath": r"mpmath", "Python": r"python", "R": r"^r$|r_version",
 }
 VER = re.compile(r"\d+\.\d+(?:\.\d+)?")
 
