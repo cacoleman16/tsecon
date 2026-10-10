@@ -124,6 +124,10 @@ fn predability_guardrails_teach() {
         }
     ));
     assert!(format!("{err}").contains("lag truncation"));
+    // The refusal names the argument and the largest admissible value
+    // (audit round 16: it used to read "lag truncation 40 is invalid").
+    assert!(format!("{err}").contains("lrv_lags = 40"), "{err}");
+    assert!(format!("{err}").ends_with("pass lrv_lags <= 39"), "{err}");
 
     // Clark-West with identical forecasts => constant differential, zero LRV.
     assert!(matches!(
