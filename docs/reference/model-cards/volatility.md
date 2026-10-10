@@ -113,7 +113,11 @@ observations — cannot evaluate its starting gradient and falls back to the
 Nelder-Mead stage from the same point), so an optimizer *error* from
 `garch_fit` signals genuinely degenerate input: a (near-)constant series, a
 scale that overflows, or no admissible starting value with a finite
-likelihood.
+likelihood. `forecast_horizon` is capped at 1,000,000 steps, as `arima_fit`'s
+and `ets_fit`'s horizons are: the variance path is materialised step by step
+(and has converged to `omega / (1 - persistence)` long before), so a larger
+value is refused by name before anything is fitted — `2**31` used to request
+16 GiB and abort the interpreter.
 
 **Validated against.** Kevin Sheppard's [`arch`](https://arch.readthedocs.io)
 package — GARCH/GJR/EGARCH QMLE point estimates, log-likelihood, and robust
@@ -169,7 +173,8 @@ flag can read `False` at a good optimum; on Gaussian data `nu` drifts huge.
 **Failure modes.** Symmetric (no leverage) — pair with GJR/EGARCH for equities.
 `converged=False` is often benign near `b≈1`; huge `nu` signals Gaussian data
 (past `nu > 1e3` the flag is `False` *by rule* on every platform — there is no
-interior optimum out there for a certificate to certify).
+interior optimum out there for a certificate to certify). `horizon` is capped
+at 1,000,000 steps and refused past that, by name, before the fit.
 
 **Validated against.** Hand-derived analytic score/density references (no
 external Python GAS library in the venv); the Gaussian recursion is
@@ -435,8 +440,15 @@ variance forecasts (`E[DRD] ≈ E[D]E[R]E[D]`, also standard).
 **Failure modes.** A stage-one univariate GARCH fit can fail on a series with
 no ARCH effect (the error names the offending series); DCC on near-constant
 correlations collapses toward the CCC special case; `"adcc"` on symmetric
-data estimates `g ≈ 0` (correct, not a bug); `dcc_test` with `lags` ≥ T is an
-insufficient-data error.
+data estimates `g ≈ 0` (correct, not a bug). `dcc_test` refuses a `lags` that
+leaves fewer than `lags + 2` observations, or that would push its pooled
+regression past 2^26 normal-equation entries or 2^34 multiply-adds
+(`T * k(k-1)/2 * (lags + 1)^2`), naming `lags` and the largest that fits.
+`forecast_horizon` in `ccc_garch`/`dcc_garch` is capped at 1,000,000 steps and
+at a 2^28-value (2 GiB) working set for the forecast matrices and the nested
+lists they are returned as, so the largest admissible horizon shrinks with the
+number of series — 164,987 steps for a ten-series `dcc_garch` — and is refused
+past that, naming it, before anything is fitted.
 
 **Validated against.** No runnable third-party DCC reference exists in this
 project — grades are property-MC + internal nesting + literature formulas,

@@ -2746,7 +2746,8 @@ fn accuracy<'py>(
 /// weakly- or non-seasonal data declared with `period > 1` the two
 /// defaults diverge; pass `use_test=False` on the statsmodels side to
 /// compare. `period=1` skips deseasonalization entirely and the pre-test
-/// difference vanishes.
+/// difference vanishes. `steps` is capped at 1,000,000 (as in `arima_fit`
+/// and `ets_fit`: every step is materialised) and refused past that.
 #[pyfunction]
 #[pyo3(signature = (y, steps, period = 1))]
 fn theta_forecast<'py>(
@@ -2898,6 +2899,9 @@ fn resolve_garch_o(vol: &str, o: Option<usize>) -> PyResult<usize> {
 /// only `forecast_horizon` 0 or 1 is accepted, and `forecast_horizon >= 2`
 /// raises a teaching ValueError (simulation-based EGARCH forecasts are not
 /// shipped; GARCH and GJR forecast analytically at every horizon).
+/// `forecast_horizon` is capped at 1,000,000 steps (as in `arima_fit` and
+/// `ets_fit`: every step is materialised) and refused past that, by name,
+/// before anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = None, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
@@ -2915,6 +2919,10 @@ fn garch_fit<'py>(
     use tsecon_garch::GarchModel;
     let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, dist, p, o, q, "dist")?;
+    // The forecast path is materialised: refuse an absurd horizon by name
+    // before anything is fitted (audit round 16; it used to abort the
+    // process on the failed allocation).
+    tsecon_garch::check_forecast_horizon(forecast_horizon).map_err(to_py)?;
     let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
     let d = garch_results_dict(py, &r)?;
@@ -3463,6 +3471,21 @@ fn mcmc_diagnostics<'py>(
 /// Reduced-Hessian interior standard errors over the free directions only
 /// (the garch treatment) are a documented follow-up. `se_valid` is all
 /// False when `cov_ok` is False.
+///
+/// **Absurd orders are refused before anything is allocated.** The exact
+/// likelihood's Kalman filter runs on a state of dimension
+/// `m = max(p + s*P, q + s*Q + 1)`: one evaluation costs about
+/// `(4 n + 200) m^3` multiply-adds and holds `3 (n + 1) m^2` values, and
+/// every fit evaluates it at least `2k(k + 2) + 1` times (one gradient and
+/// the observed-information Hessian behind `bse`; `k` free parameters).
+/// A specification whose guaranteed work passes 2^37 multiply-adds (under
+/// `"css"`: its recursion plus one exact filter pass for the residuals) or
+/// whose filter would hold more than 2^28 values (2 GiB) raises a ValueError
+/// naming p, q and seasonal and the largest state dimension that fits — it
+/// used to run for hours or exhaust memory. Ordinary models are far inside:
+/// an AR(30) on 200 observations took 123 s and a weekly
+/// SARMA(1,1)(1,1)_52 on 520 observations 227 s on a shared 4-core machine
+/// (`lab/arima_budget/out/arima_cost.txt`), both within the budget.
 #[pyfunction]
 #[pyo3(signature = (y, p = 1, d = 0, q = 0, seasonal = None, constant = true,
                     forecast_steps = 0, conf_alpha = None, drift_uncertainty = false,
@@ -3724,7 +3747,14 @@ fn arima_results_dict<'py>(
 /// selected order with `arima_fit(..., drift_uncertainty=True)` — the
 /// option needs the constant to be a modeling choice, not a search
 /// outcome. `forecast_steps` is capped at 1,000,000, as in `arima_fit`,
-/// and refused past that before the search starts.
+/// and refused past that before the search starts. `max_P` / `max_Q` above
+/// 6 are refused naming the keyword. A `seasonal_period` longer than half
+/// the series (when `D` comes from the seasonal-strength rule, whose STL fit
+/// needs two full cycles) and a fixed `D` whose `D * seasonal_period`
+/// differences consume the series are refused before the search, naming the
+/// option and its largest admissible value; a candidate past `arima_fit`'s
+/// estimation budget is recorded as `fit_failed` and steers the search like
+/// any failed fit.
 ///
 /// Further arguments, with defaults: `seasonal_period` (0), `max_p` (5),
 /// `max_q` (5), `max_P` (2), `max_Q` (2), `max_d` (2), `max_D` (1), `alpha`
@@ -3777,6 +3807,20 @@ fn auto_arima<'py>(
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
         ));
+    }
+    // The engine's seasonal-cap refusal names its own fields
+    // (max_seasonal_p / max_seasonal_q); refuse here in the Python keywords,
+    // with the value (audit round 16).
+    let cap = tsecon_arima::auto::MAX_SEASONAL_CAP;
+    for (name, value) in [("max_P", max_P), ("max_Q", max_Q)] {
+        if value > cap {
+            return Err(PyValueError::new_err(format!(
+                "{name} = {value} is beyond the cap of {cap} on the seasonal orders the \
+                 search may visit: each seasonal order multiplies the state dimension by the \
+                 period, and R's own default caps (max.P, max.Q) are 2; {name} can be at most \
+                 {cap}"
+            )));
+        }
     }
     let opts = tsecon_arima::AutoArimaOptions {
         seasonal_period,
@@ -7913,6 +7957,11 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
 /// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
 /// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
 /// the simulation route is not shipped).
+/// `forecast_horizon` is capped at 1,000,000 steps and at a working set of
+/// 2^28 values (2 GiB) for the forecast matrices and their nested lists, so
+/// the largest admissible horizon shrinks with the number of series `k`;
+/// past that it is refused, naming the largest horizon for `k`, before
+/// anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -7929,6 +7978,17 @@ fn ccc_garch<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
+    // The (forecast_horizon, k, k) forecast is materialised (and converted
+    // to nested lists): refuse a horizon past the size budget for k series
+    // by name before anything is fitted (audit round 16).
+    if forecast_horizon > 0 {
+        tsecon_mgarch::check_forecast_horizon(
+            tsecon_mgarch::ForecastKind::Ccc,
+            returns.as_array().ncols(),
+            forecast_horizon,
+        )
+        .map_err(to_py)?;
+    }
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::CccGarch::new(spec)
         .fit(&series)
@@ -8054,6 +8114,11 @@ fn ccc_garch<'py>(
 /// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
 /// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
 /// the simulation route is not shipped).
+/// `forecast_horizon` is capped at 1,000,000 steps and at a working set of
+/// 2^28 values (2 GiB) for the two forecast paths of `k x k` matrices and
+/// their nested lists, so the largest admissible horizon shrinks with the
+/// number of series `k`; past that it is refused, naming the largest
+/// horizon for `k`, before anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -8095,6 +8160,17 @@ fn dcc_garch<'py>(
             )))
         }
     };
+    // The two (forecast_horizon, k, k) forecast paths are materialised (and
+    // converted to nested lists): refuse a horizon past the size budget for
+    // k series by name before anything is fitted (audit round 16).
+    if forecast_horizon > 0 {
+        tsecon_mgarch::check_forecast_horizon(
+            tsecon_mgarch::ForecastKind::Dcc,
+            returns.as_array().ncols(),
+            forecast_horizon,
+        )
+        .map_err(to_py)?;
+    }
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::DccGarch::new(spec)
         .with_variant(v)
@@ -8193,7 +8269,10 @@ fn dcc_garch<'py>(
 /// `lags`, `nobs`, and `n_stacked` (`(T - lags) * k(k-1)/2` pooled
 /// regression observations). The diagonal outer products are excluded on
 /// purpose, so univariate GARCH misfit does not masquerade as correlation
-/// dynamics.
+/// dynamics. `lags` must leave `T >= lags + 2` observations and keep the
+/// pooled regression within 2^26 normal-equation entries and 2^34
+/// multiply-adds (`T * k(k-1)/2 * (lags + 1)^2`); a longer lag length is
+/// refused naming `lags` and the largest that fits.
 #[pyfunction]
 #[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -8906,6 +8985,10 @@ fn reraise_stashed<T, E: std::fmt::Display>(
 /// and `targets`, and an `accuracy` table (ME/MSE/RMSE/MAE/MdAE, plus
 /// MAPE/sMAPE/MASE/RMSSE where defined) whose scaled measures use the
 /// first training window at `insample_period` — never the test sample.
+/// That window must hold `insample_period + 1` observations
+/// (`1 <= insample_period <= train - 1`); the period is checked before the
+/// forecaster runs and refused naming `insample_period` and its largest
+/// admissible value.
 ///
 /// Returned keys: `accuracy`, `forecasts`, `horizon`, `n_origins`, `origins`,
 /// `targets`.
@@ -8976,6 +9059,11 @@ fn backtest<'py>(
         }
     };
     let bt = Backtest::new(win, horizon, refit_every).map_err(to_py)?;
+    // The MASE/RMSSE scale period is checked against the first training
+    // window before the forecaster runs over every origin (audit round 16:
+    // the refusal used to come from the accuracy table at the end, naming
+    // an internal `period`).
+    bt.check_insample_period(insample_period).map_err(to_py)?;
     let res = match &forecaster {
         ForecasterArg::Name(fc_name) => {
             // Dispatch the forecaster string to a built-in point forecaster.
@@ -9320,6 +9408,18 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// runs the bootstrap ensemble with seed 0, so two default calls are
 /// bit-identical; pass an explicit `seed` for a different ensemble draw
 /// (`n_boot=None` likewise means 25).
+///
+/// **Sizes are checked before anything runs.** `horizon` is capped at
+/// 1,000,000 steps. A calibration grid that does not fit the series
+/// (`horizon + calib + 1` observations, plus `n_eval` for ACI) is refused
+/// naming the largest of those keywords and the largest value it may take;
+/// `lags` likewise when the AR design's `2 * lags + 2` observations do not
+/// fit (for split/aci the first training window holds
+/// `n - horizon - calib + 1` of them). Under `method="enbpi"` the bootstrap
+/// ensemble is sized before any random stream is drawn: past a work budget
+/// of 2^34 multiply-adds or a memory budget of 2^28 values, `n_boot` is
+/// refused with the largest that fits (or `horizon`, when not even two
+/// models fit).
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = None,
@@ -9538,6 +9638,14 @@ fn conformal_forecast<'py>(
 /// runs the bootstrap ensemble with seed 0, so two default calls are
 /// bit-identical; pass an explicit `seed` for a different ensemble draw
 /// (`n_boot=None` likewise means 25).
+///
+/// Sizes are checked before anything runs, as in `conformal_forecast`: the
+/// evaluation grid `horizon + calib + n_eval + 1` (refused naming the
+/// largest of those keywords and its largest admissible value), the AR
+/// design's `2 * lags + 2` observations, and — under `method="enbpi"`, where
+/// the ensemble trains on the observations before the `n_eval` evaluation
+/// points — the bootstrap ensemble's 2^34 multiply-add / 2^28-value budget,
+/// refused naming `n_boot` (or `n_eval`) with the largest that fits.
 ///
 /// Further arguments, with defaults: `mode` ("symmetric").
 #[pyfunction]
@@ -10306,7 +10414,8 @@ fn realized_range(
 /// `bic`, the one-step-ahead `next_variance`, convergence info, and — if
 /// `horizon > 0` — an `h`-step variance `forecast`.
 /// The convergence info is `converged` (the optimizer's certificate) and
-/// `iterations`.
+/// `iterations`. `horizon` is capped at 1,000,000 steps (every step is
+/// materialised) and refused past that, by name, before anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (y, density = "gaussian", horizon = 0))]
 fn gas_volatility<'py>(
@@ -10324,6 +10433,9 @@ fn gas_volatility<'py>(
             )))
         }
     };
+    // The forecast path is materialised: refuse an absurd horizon by name
+    // before anything is fitted (audit round 16).
+    tsecon_gas::check_forecast_horizon(horizon).map_err(to_py)?;
     let yv = vec1(&y);
     let model = tsecon_gas::GasModel::new(&yv, dens).map_err(to_py)?;
     let res = model.fit().map_err(to_py)?;

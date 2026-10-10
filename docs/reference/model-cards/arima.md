@@ -217,7 +217,22 @@ constant (measured 90.2% → 94.5% at `h = 24`, `T = 60`); uncertainty in the AR
 MA, and `sigma^2` estimates and all model-selection uncertainty remain omitted,
 so a nominal 95% band is still optimistic in short samples. A `cov_ok=False`
 result means the standard errors were refused, not that the fit failed — but it
-is a strong hint that the orders are too rich for the data.
+is a strong hint that the orders are too rich for the data. Absurd orders are
+refused before anything is allocated: the exact likelihood runs a Kalman
+filter on a state of dimension `m = max(p + s*P, q + s*Q + 1)`, one evaluation
+costs about `(4 n + 200) m^3` multiply-adds and holds `3 (n + 1) m^2` values,
+and every fit evaluates it at least `2k(k + 2) + 1` times (one gradient and the
+observed-information Hessian behind `bse`). A specification whose guaranteed
+work passes 2^37 multiply-adds or whose filter would hold more than 2^28
+values is refused naming `p`, `q` and `seasonal` and the largest state
+dimension that fits — `seasonal=(1, 0, 0, 199)` on 200 observations used to
+run past 40 seconds without finishing, and `p=1000` on 2,000 observations would have
+held 48 GB per likelihood evaluation. Ordinary models are far inside: an
+AR(30) on 200 observations took 123 s and a weekly SARMA(1,1)(1,1)_52 on 520
+observations 227 s on a shared 4-core machine
+(`lab/arima_budget/arima_cost.py`). When the seasonal part is what leaves
+too few observations, the refusal names `seasonal=(P, D, Q, s)` rather than
+the regular orders.
 
 **Validated against.** `statsmodels` 0.14.6 `SARIMAX`, on documented fixtures
 (`fixtures/arima.json`, `fixtures/sarima.json`) and live tests. The Rust golden
@@ -485,7 +500,11 @@ dict carries have no stationary model to run on, so that fit is refused with
 the remedy — difference the series (raise `d` or `D`), or use the default
 `method="mle"` (`arima_fit(np.arange(200.0), p=1, method="css")` is the
 minimal case). A series too short for `p + s*P` conditioning values plus the
-free parameters is refused, naming the CSS estimation.
+free parameters and one residual degree of freedom is refused, naming the CSS
+estimation — and, when `s*P` is the binding term, `seasonal=(P, D, Q, s)`
+(`seasonal=(1, 0, 0, 199)` on 200 observations needs 205). The estimation
+budget of the exact fit applies too, counting the CSS recursion plus the exact
+filter pass behind the residuals.
 
 **Validated against.** Three legs, in `fixtures/arima_css.json` and
 `crates/tsecon-arima/tests/css_golden.rs`:
@@ -664,7 +683,12 @@ root the admissibility guard has to police. Automatic selection on very short
 series is order-of-magnitude guessing regardless of implementation — the AICc
 correction helps but cannot rescue `n < 50` seasonal searches. And a
 `budget_exhausted=True` result is the best of 94 candidates, not a certified
-local optimum.
+local optimum. A `seasonal_period` longer than half a non-constant series
+(when `D` comes from the seasonal-strength rule, whose STL fit needs two full
+cycles) and a fixed `D` whose `D * seasonal_period` differences consume the
+series are refused before the search, naming the option and its largest
+admissible value; `max_P` / `max_Q` past 6 are refused under those names. A
+candidate past `arima_fit`'s estimation budget is recorded as `fit_failed`.
 
 **References.** Hyndman & Khandakar (2008, *JSS* 27(3), the algorithm and the
 stepwise move set); Hurvich & Tsai (1989, *Biometrika* 76:297–307, AICc);
