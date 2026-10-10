@@ -1502,7 +1502,10 @@ pub fn check_ar_sets_budget(
             let memory = |v: &[usize]| point(v[1]).saturating_add(delta_values(n, v[0], v[1]));
             let work = |v: &[usize]| delta_work(n, v[0], v[1]);
             budget::check_budgets(
-                &[SizeArg::new("lags", p, 1), SizeArg::new("horizon", horizon, 0)],
+                &[
+                    SizeArg::new("lags", p, 1),
+                    SizeArg::new("horizon", horizon, 0),
+                ],
                 &[
                     Budget {
                         what: "the moving-average path, its returned lists and the \
