@@ -82,7 +82,7 @@ Augmented Dickey-Fuller test with MacKinnon p-values.
 
     A `maxlag` past the statsmodels bound n//2 - ntrend - 1 (one less for
     regression "n" on an even n), or whose lag design exceeds 2^26 entries
-    (512 MiB) or lag search 2^35 multiply-adds (under a minute), is refused
+    (512 MiB) or lag search 2^35 multiply-adds (about a minute), is refused
     before any lag column is built, naming `maxlag` and the largest that
     fits. Orders up to the default cap ceil(12*(n/100)^(1/4)) are exempt
     from the work budget, so a default call is refused only when its design
@@ -113,6 +113,11 @@ def check_stationarity(y: _ArrayLike, alpha: float = ...) -> dict[str, Any]:
 ```
 
 The ADF + KPSS confirmatory-quadrant workflow with a recommendation.
+
+    The ADF leg runs the default lag search, so a series whose default lag
+    design exceeds the lag budget of `adf` (2^26 entries, above about
+    610,000 observations) is refused; run `adf` with an explicit `maxlag`
+    there.
 
     Returned keys: `adf_p_value`, `adf_statistic`, `alpha`,
     `interpretation`, `kpss_p_value`, `kpss_statistic`, `quadrant`,
@@ -250,7 +255,13 @@ Zivot-Andrews unit-root test with one endogenous break.
     Pass either `lags` or `autolag`, not both. P-values and critical values
     interpolate the statsmodels-simulated null table. A `max_lags` past the
     base ADF's bound n//2 - 3 or its size budgets (see `adf`) is refused
-    naming `max_lags`; a fixed `lags` past int(n*trim) - 1 naming `lags`.
+    naming `max_lags`. The lag the break regressions use must satisfy
+    lags <= int(n*trim) - 1, refused naming `lags` when fixed and `max_lags`
+    when searched. The break-date scan refits a (n - 1 - lags) x (k + lags)
+    design at each of the n - 2*int(n*trim) candidate breaks and shares the
+    lag budgets of `adf` (lags up to the default cap are exempt from the
+    work budget): a lag past them is refused before the design is built,
+    naming `lags` or the `max_lags` that admitted it.
     Returns dict keys: `stat`, `pvalue`, `crit` {"1%","5%","10%"},
     `break_index`, `lags`, `nobs`, `trim`, `regression`. Matches
     statsmodels `zivot_andrews`.
@@ -322,6 +333,10 @@ def ndiffs(
 ```
 
 How many differences a series needs, with the per-order test evidence.
+
+    With `test="adf"` a series whose default lag design exceeds the lag
+    budget of `adf` (2^26 entries, above about 610,000 observations) is
+    refused.
 
     Returned keys: `alpha`, `d`, `interpretation`, `max_d`, `steps`, `stop`,
     `test`.
@@ -4462,7 +4477,9 @@ Ramsey RESET functional-form F-test; x is T x k.
     `max_power` must leave T > k + max_power - 1 and the augmented design
     within the Breusch-Godfrey auxiliary-regression budgets (2^26 entries,
     2^34 multiply-adds); a larger one is refused before any power column is
-    built, naming `max_power` and the largest that fits.
+    built, naming `max_power` and the largest that fits. A power of a large
+    fitted value that overflows to infinity is refused naming `max_power`
+    (RESET is invariant to the scale of `y`, so rescaling it also helps).
 
     Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
 

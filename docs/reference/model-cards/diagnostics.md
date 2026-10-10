@@ -129,22 +129,26 @@ about avoiding those.
 - **Jarque-Bera in large samples** rejects on economically trivial fat tails —
   inspect skewness and kurtosis, do not stop at the p-value.
 - **A lag order the series cannot carry, or no machine can hold, is refused
-  by name.** `arch_lm`, `adf` (and `dfgls`, `ng_perron`, the `zivot_andrews`
-  lag search) size the lag design before building it: past the sample bound
-  (`n >= 2·nlags + 2` for `arch_lm`, `n//2 − ntrend − 1` for `adf`), past
-  2^26 design entries (512 MiB), or past 2^35 multiply-adds of regression or
-  lag search, the call raises naming the keyword and the largest order that
-  fits. Measured at 1.1–1.7 ns per multiply-add, the work budget is under a
-  minute: the largest admissible `adf` search at n = 20,000 (`maxlag = 168`,
-  `"ct"`) ran in 36 s and the largest `arch_lm` order at n = 30,000
-  (`nlags = 1477`) in 57 s. At n = 10^6, `arch_lm(nlags=400000)` and
-  `adf(maxlag=400000, autolag=None)` used to abort the interpreter in the
+  by name.** `arch_lm`, `adf` (and `dfgls`, `ng_perron`, and `zivot_andrews`
+  — its lag search and its break-date scan) size the lag design before
+  building it: past the sample bound (`n >= 2·nlags + 2` for `arch_lm`,
+  `n//2 − ntrend − 1` for `adf`), past 2^26 design entries (512 MiB), or
+  past 2^35 multiply-adds of regression, lag search or break-date scan, the
+  call raises naming the keyword and the largest order that fits. Measured
+  at 1.1–1.7 ns per multiply-add, the work budget is about a minute: the
+  largest admissible `adf` search at n = 20,000 (`maxlag = 168`, `"ct"`) ran
+  in 36 s, the largest `arch_lm` order at n = 30,000 (`nlags = 1477`) in
+  57 s, and the largest fixed `zivot_andrews` lag at n = 3,000 (`lags = 70`;
+  the trimmed window admits 449) in 37 s. At n = 10^6, `arch_lm(nlags=400000)`
+  and `adf(maxlag=400000, autolag=None)` used to abort the interpreter in the
   allocator; they are refused in about 10 ms and 3 ms, quoting
-  `nlags <= 67` and `maxlag <= 65` (`lab/unitroot_cost/lag_cost.py`).
-  Orders up to the default cap are exempt from the work budget, so a default
-  call — and `check_stationarity`, which cannot take a `maxlag` — is refused
+  `nlags <= 67` and `maxlag <= 65`, and `zivot_andrews(autolag=None,
+  lags=14000)` at n = 10^5 (a 9.6 GB scan design) in under a millisecond,
+  quoting `lags <= 68` (`lab/unitroot_cost/lag_cost.py`). Orders up to the
+  default cap are exempt from the work budget, so a default call is refused
   only when its design would not fit in memory, above about 610,000
-  observations.
+  observations; `check_stationarity` and `ndiffs(test="adf")`, which take no
+  lag keyword, say so and point to `adf` with an explicit `maxlag`.
 
 ## Validated against
 
@@ -335,7 +339,9 @@ fits, `n // 2`) and `period >= 2`.
   request of more than 32 inner passes (`inner_iter·(outer_iter + 1)`, the
   robust default's count) whose work exceeds 2^32 units — about half a
   minute — is refused before any smoothing, naming the count and its
-  largest admissible value; the default counts are never refused. On the
+  largest admissible value (or, when no single count fits with the others
+  held fixed, the pass count to reduce them to together); the default
+  counts are never refused. On the
   96-observation monthly series of the audit that is `inner_iter <= 770397`
   (which ran in 29.8 s); `inner_iter=2**31`, which used to run for about a
   day holding the interpreter, is refused in under a millisecond.

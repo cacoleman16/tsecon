@@ -8,10 +8,12 @@ Each test pins one confirmed cell of the round-16 house sweep:
 * A9 — `reset_test(max_power=2**31)` built power columns until the allocator
   aborted; it is refused at once, naming `max_power`.
 * The pre-existing `arch_lm`/`adf` allocation aborts at lag orders the sample
-  admits but no machine holds; refused by name before any lag column.
+  admits but no machine holds (and the same in `zivot_andrews`' break-date
+  scan); refused by name before any lag column.
 * B1/B2 — refusals that named no keyword or an engine-internal one now name
   the Python keyword (`nlags`, `lags`, `max_lags`, `maxlag`, `period`,
-  `lrv_bandwidth`, `lrv_lags`).
+  `lrv_bandwidth`, `lrv_lags`), including the stationarity workflows that
+  take no lag keyword.
 * B5 — `check_series` validates `lags` and `max_breaks` up front.
 * C1 — `dsge_solve`'s docstring no longer promises an indeterminate verdict.
 
@@ -132,6 +134,45 @@ def test_mstl_iterate_is_budgeted_with_several_periods():
     assert r["iterate"] == 1
 
 
+def test_stl_boundary_overshoot_names_the_raised_count():
+    # One step past the largest admissible outer_iter: inner_iter = 2 also
+    # "overshoots" by one step (2 > 1), but the refusal names the count the
+    # caller raised, not its small companion.
+    y = _seasonal()
+    units = _stl_pass_units(96, 12, 7, 13, 23)
+    best = STL_BUDGET // (2 * units) - 1
+    kw = dict(period=12, seasonal=7, trend=23, low_pass=13, inner_iter=2)
+    msg, _ = _quick(tsecon.stl, y, outer_iter=best + 1, **kw)
+    assert msg.startswith(f"stl: outer_iter = {best + 1} is past"), msg
+    assert msg.endswith(f"pass outer_iter <= {best}"), msg
+    # MSTL: one round past the largest admissible iterate names iterate,
+    # not the default inner_iter = 5.
+    t = np.arange(240)
+    y2 = 5 + np.sin(2 * np.pi * t / 7) + 0.5 * np.cos(2 * np.pi * t / 30) + 0.01 * t
+    msg, _ = _quick(tsecon.mstl, y2, periods=[7, 30], iterate=2**31)
+    top = int(re.search(r"pass iterate <= (\d+)$", msg).group(1))
+    msg, _ = _quick(tsecon.mstl, y2, periods=[7, 30], iterate=top + 1)
+    assert msg.startswith(f"mstl: iterate = {top + 1} is past"), msg
+    assert msg.endswith(f"pass iterate <= {top}"), msg
+
+
+def test_stl_counts_that_only_fit_together_quote_the_pass_budget():
+    # No single count fits with the other held fixed: the refusal says to
+    # reduce them together (never a "<= 0" no count can take).
+    y = _seasonal()
+    units = _stl_pass_units(96, 12, 7, 13, 23)
+    msg, _ = _quick(
+        tsecon.stl, y, period=12, seasonal=7, trend=23, low_pass=13,
+        inner_iter=2**20, outer_iter=2**20,
+    )
+    assert msg.endswith(
+        "no single count fits with the others held fixed, so reduce them together "
+        f"to inner_iter * (outer_iter + 1) <= {STL_BUDGET // units}, or to the default "
+        "region of at most 32 inner passes per fit over at most two rounds"
+    ), msg
+    assert "<= 0" not in msg
+
+
 def test_stl_counts_within_the_budget_still_run():
     y = _seasonal()
     base = tsecon.stl(y, period=12)
@@ -157,6 +198,25 @@ def test_reset_max_power_is_refused_before_any_power_column(max_power):
     # n > k + max_power - 1 with n = 200, k = 2.
     assert msg.endswith("pass max_power <= 198"), msg
     assert dt < 5.0
+
+
+def test_reset_power_overflow_names_max_power():
+    # |yhat| about 1e40: yhat^8 overflows. It used to reach the OLS engine as
+    # an inf "in the design column", blaming the data.
+    rng = np.random.default_rng(0)
+    x = np.column_stack([np.ones(60), rng.standard_normal(60)])
+    y = (2.0 + x[:, 1] + 0.1 * rng.standard_normal(60)) * 1e40
+    msg, _ = _quick(tsecon.reset_test, y, x, max_power=12)
+    m = re.match(r"max_power = 12: the fitted-value power yhat\^(\d+) overflows to infinity", msg)
+    assert m, msg
+    power = int(m.group(1))
+    assert msg.endswith(
+        f"pass max_power <= {power - 1}, or rescale y (RESET is invariant to the scale of y)"
+    ), msg
+    # Rescaled, the same test runs and gives the same statistic.
+    a = tsecon.reset_test(y, x, max_power=3)["fstat"]
+    b = tsecon.reset_test(y / 1e40, x, max_power=3)["fstat"]
+    assert a == pytest.approx(b, rel=1e-8)
 
 
 def test_reset_max_power_past_the_auxiliary_budget_is_refused_by_name():
@@ -223,6 +283,89 @@ def test_adf_search_past_the_work_budget_is_refused_by_name():
         return rows * sum(j * j for j in range(3, k + 1)) + (n - 1) * k * k
 
     assert work(best) <= LAG_WORK < work(best + 1)
+    assert dt < 5.0
+
+
+def _za_scan(n, s, cands, lag):
+    """The documented Zivot-Andrews break-date scan: one (n-1-lag) x (s+lag)
+    design refit at each of `cands` candidate breaks."""
+    rows, k = n - 1 - lag, s + lag
+    return rows * k, cands * rows * k * k
+
+
+def test_zivot_andrews_fixed_lag_past_the_design_budget_is_refused_by_name():
+    # lags = 14000 is inside the trimmed window (int(n*trim) - 1 = 14999) on
+    # 1e5 observations, but the scan's design is 1.2e9 entries (9.6 GB): it
+    # used to abort the interpreter in the allocator.
+    n = 100_000
+    y = _walk(n, 21)
+    msg, dt = _quick(tsecon.zivot_andrews, y, autolag=None, lags=14_000)
+    assert msg.startswith("zivot_andrews: lags = 14000 needs a lag design of"), msg
+    assert "past both the memory budget" in msg, msg
+    best = int(re.search(r"pass lags <= (\d+), or a shorter series$", msg).group(1))
+    cands, free = n - 2 * 15_000, math.ceil(12 * (n / 100) ** 0.25)
+
+    def admissible(p):  # lags up to the default cap are exempt from the work budget
+        cells, work = _za_scan(n, 4, cands, p)
+        return cells <= LAG_CELLS and (p <= free or work <= LAG_WORK)
+
+    # At this length the scan past the default lag (68) is over the work
+    # budget, so the default cap is the longest lag that fits.
+    assert admissible(best) and not admissible(best + 1)
+    assert best == free == 68
+    assert dt < 5.0
+
+
+def test_zivot_andrews_scan_work_is_budgeted_past_the_default_lag():
+    # n = 3000: lags = 400 fits the window and memory, but the scan would
+    # take about 20 minutes. Lags up to the default cap (29) are exempt.
+    n = 3000
+    y = _walk(n, 23)
+    msg, dt = _quick(tsecon.zivot_andrews, y, regression="ct", autolag=None, lags=400)
+    assert msg.startswith("zivot_andrews: lags = 400 needs a lag design of"), msg
+    assert "past the work budget of 2^35 multiply-adds" in msg, msg
+    best = int(re.search(r"pass lags <= (\d+), or a shorter series$", msg).group(1))
+    assert best > math.ceil(12 * (n / 100) ** 0.25)
+    assert _za_scan(n, 5, 2100, best)[1] <= LAG_WORK < _za_scan(n, 5, 2100, best + 1)[1]
+    assert dt < 5.0
+
+
+def test_zivot_andrews_names_the_keyword_that_set_an_out_of_window_lag():
+    # n = 50, trim 0.15: the break regressions need lags <= int(7.5) - 1 = 6.
+    y = _walk(50, 3)
+    msg, _ = _quick(tsecon.zivot_andrews, y, autolag=None, lags=7)
+    assert msg.startswith("zivot_andrews: lags = 7 is invalid for a series of length 50"), msg
+    assert msg.endswith("; pass lags <= 6"), msg
+    # The truncated-Schwert default int(12 (0.5)^(1/4)) = 10 names the default.
+    msg, _ = _quick(tsecon.zivot_andrews, y, autolag=None)
+    assert msg.startswith("zivot_andrews: the default lags = 10"), msg
+    assert msg.endswith("; pass lags <= 6"), msg
+    # A searched lag outside the window names max_lags, the keyword that
+    # admitted it: an AR(12) in the differences makes the t-stat search keep
+    # its cap.
+    e = np.random.default_rng(0).standard_normal(400)
+    d = np.zeros(400)
+    for t in range(12, 400):
+        d[t] = 0.85 * d[t - 12] + e[t]
+    msg, _ = _quick(tsecon.zivot_andrews, np.cumsum(d)[:80], autolag="t-stat", max_lags=12)
+    assert msg.startswith(
+        "zivot_andrews: lags = 12, chosen by the lag search capped at max_lags = 12, "
+        "is invalid for a series of length 80"
+    ), msg
+    assert msg.endswith("; pass max_lags <= 11"), msg
+
+
+@pytest.mark.parametrize("call, kw", [("check_stationarity", {}), ("ndiffs", {"test": "adf"})])
+def test_stationarity_workflows_explain_a_default_lag_refusal(call, kw):
+    # Their ADF leg runs the default search and they take no lag keyword:
+    # past the memory budget (n = 7e5) the refusal says so.
+    y = _walk(700_000, 25)
+    msg, dt = _quick(getattr(tsecon, call), y, **kw)
+    assert msg.startswith(f"{call}: adf: the default maxlag = "), msg
+    assert msg.endswith(
+        f"{call} itself takes no lag keyword (its ADF leg runs the default lag "
+        "search), so supply a shorter series, or call tsecon.adf with an explicit maxlag"
+    ), msg
     assert dt < 5.0
 
 

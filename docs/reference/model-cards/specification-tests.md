@@ -191,7 +191,11 @@ design exceeds the Breusch-Godfrey auxiliary-regression budgets (2^26
 entries, 2^34 multiply-adds), is refused before any power column is built,
 naming `max_power` and the largest that fits; `max_power = 2**31` used to
 build power columns until the allocator aborted the interpreter (about 50 s).
-As with every test here, a missing constant column raises `MissingConstant`.
+High powers of large fitted values overflow: a power that reaches infinity is
+refused naming `max_power` and the largest finite power
+(`ResetPowerOverflow`); RESET is invariant to the scale of `y`, so rescaling
+`y` also avoids it. As with every test here, a missing constant column raises
+`MissingConstant`.
 
 **Validated against.** The `fixtures/tsecon-spectest.json` golden pins the RESET
 F statistic and p-value to statsmodels' `linear_reset(power=3, use_f=True)`,

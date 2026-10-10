@@ -5,14 +5,17 @@ work counts, the numbers behind the shared lag budget of `tsecon-diag`
 Work counts (multiply-adds, `tsecon_diag::budget`): a Householder QR of a
 `rows x k` design costs `rows k^2`; an ADF lag search over `0..=L` from `s`
 fixed columns costs `rows (s^2 + ... + (s+L)^2) + (n - 1)(s+L)^2`; the
-ARCH-LM normal equations cost `rows p^2 / 2 + p^3`. An order is refused when
+ARCH-LM normal equations cost `rows p^2 / 2 + p^3`; the Zivot-Andrews
+break-date scan refits one `rows x k` design at each of `c` candidate breaks,
+`c rows k^2`. An order is refused when
 its design exceeds 2^26 entries or its work 2^35 multiply-adds; orders up to
 the default (Schwert's `ceil(12 (n/100)^(1/4))`) are exempt from the work
 budget. This script times `adf` (default searches and an explicit search at
-the work cap), `arch_lm` (at a work-bound cap), and the refusals of the orders
-that used to abort the interpreter.
+the work cap), `arch_lm` (at a work-bound cap), the `zivot_andrews` scan (at
+a work-bound fixed lag), and the refusals of the orders that used to abort
+the interpreter.
 
-Run:  python lab/unitroot_cost/lag_cost.py [adf|adf_cap|arch_cap|refusals|thresholds]
+Run:  python lab/unitroot_cost/lag_cost.py [adf|adf_cap|arch_cap|za|refusals|thresholds]
       (the built wheel on the path; each part writes out/lag_cost_<part>.txt)
 """
 from __future__ import annotations
@@ -46,6 +49,11 @@ def adf_work(n, s, lag, search=True):
 
 def arch_work(n, p):
     return (n - p) * p * p // 2 + p ** 3
+
+
+def za_work(n, s, cands, lag):
+    rows, k = n - 1 - lag, s + lag
+    return cands * rows * k * k
 
 
 def walk(n, seed=0):
@@ -121,6 +129,38 @@ def part_arch_cap():
     return lines
 
 
+def part_za():
+    """The Zivot-Andrews break-date scan: the largest admissible fixed lag
+    where the work budget binds (n = 3000, regression "c": 4 base columns,
+    2100 candidate breaks), run once; and a fixed lag inside the trimmed
+    window whose design no machine holds (n = 1e5), refused."""
+    n = 3000
+    trimcnt = int(n * 0.15)
+    cands = n - 2 * trimcnt
+    y = walk(n, 11)
+    cost = lambda p: ((n - 1 - p) * (4 + p), za_work(n, 4, cands, p))  # noqa: E731
+    best = largest(n, cost, 0, trimcnt - 1, free=schwert(n))
+    s = timed(lambda: tsecon.zivot_andrews(y, autolag=None, lags=best))
+    w = za_work(n, 4, cands, best)
+    lines = [header(), "",
+             f"zivot_andrews(n = {n}, regression 'c', fixed lags): largest admissible "
+             f"lags = {best} (the work budget binds; int(n*trim) - 1 = {trimcnt - 1})",
+             f"  work {w:.2e} multiply-adds, ran in {s:.1f} s ({s / w * 1e9:.2f} ns/madd)"]
+    big = walk(100_000, 13)
+    t0 = time.perf_counter()
+    try:
+        tsecon.zivot_andrews(big, autolag=None, lags=14_000)
+        raise AssertionError("zivot_andrews(lags=14000) was not refused")
+    except ValueError as exc:
+        msg = str(exc)
+    dt = time.perf_counter() - t0
+    remedy = re.search(r"pass (\w+ <= \d+)", msg).group(1)
+    lines.append(f"zivot_andrews(n = 1e5, lags = 14000, autolag=None): refused in "
+                 f"{dt * 1e3:.1f} ms, quoting {remedy}")
+    print("\n".join(lines), flush=True)
+    return lines
+
+
 def part_refusals():
     lines = [header(), ""]
     big = walk(1_000_000, 5)
@@ -177,7 +217,7 @@ def part_thresholds():
 def main():
     part = sys.argv[1] if len(sys.argv) > 1 else "adf"
     fn = {"adf": part_adf, "adf_cap": part_adf_cap, "arch_cap": part_arch_cap,
-          "refusals": part_refusals, "thresholds": part_thresholds}[part]
+          "za": part_za, "refusals": part_refusals, "thresholds": part_thresholds}[part]
     lines = fn()
     OUT.mkdir(parents=True, exist_ok=True)
     (OUT / f"lag_cost_{part}.txt").write_text("\n".join(lines) + "\n", encoding="utf-8")

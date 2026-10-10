@@ -467,9 +467,15 @@ the clamps (1e-05, 0.999) as "off the table", not as exact probabilities.
 **Failure modes.** Rejecting because of a break under the *null* (broken random
 walk — the Lee-Strazicich critique); reading `break_index` as a dated,
 confidence-bounded break (use `bai_perron`); a `trim` too small for the lag
-order (the break dummy needs a pre-break regime — the error explains, naming
-`lags`); a `max_lags` past the base ADF's bound `n//2 − 3` or its lag budget
-(refused naming `max_lags`); treating
+order (the break dummy needs a pre-break regime, `lags <= int(n·trim) − 1` —
+the error explains, naming `lags` when the lag is fixed and `max_lags` when the
+search chose it); a `max_lags` past the base ADF's bound `n//2 − 3` or its lag
+budget (refused naming `max_lags`); a lag whose break-date scan — a
+`(n − 1 − lags) × (k + lags)` design refit at each of the `n − 2·int(n·trim)`
+candidate breaks — exceeds the lag budget shared with `adf` (2^26 design
+entries, 2^35 multiply-adds; lags up to the default cap are exempt from the
+work budget), refused before the design is built, naming `lags` or the
+`max_lags` that admitted it (see the diagnostics card); treating
 the `"t"` model's dating convention as identical to `"ct"`'s (the reference
 starts the `"t"` ramp one observation earlier; tsecon replicates it exactly and
 documents it in the module).
