@@ -84,7 +84,7 @@
 //!
 //! ## When the leverage correction runs out of digits
 //!
-//! `h_t` is accumulated from `(X'X)^{-1}` with an absolute error of a few
+//! `h_t = ||R^{-T} x_t||^2` is accumulated with an absolute error of a few
 //! ulp, so forming `1 - h_t` is catastrophic cancellation once `h_t` is
 //! close to 1: the complement's *relative* error is of order
 //! `eps_mach / (1 - h_t)`, and HC2's weight inherits it once, HC3's twice.
@@ -95,8 +95,8 @@
 //! Consequence, measured in
 //! `golden.rs::hc2_hc3_parity_degrades_as_the_leverage_complement_approaches_noise`:
 //! HC2/HC3 hold the 1e-10 spec tolerance while `1 - h_t` stays above roughly
-//! `1e-5`, and degrade smoothly below it — about 7e-10 at `1 - h_t = 1e-6`
-//! and about 9e-6 at `1 - h_t = 1e-10`, with no error and no warning.
+//! `1e-5`, and degrade smoothly below it — about 4e-10 at `1 - h_t = 1e-6`
+//! and about 1e-5 at `1 - h_t = 1e-10`, with no error and no warning.
 //! `LEVERAGE_FLOOR` stops the slide at `1 - h_t = 1e-12`. Everything else in
 //! this module — including HC0/HC1 on the very same fits — stays at 1e-10.
 //! Near-singleton controls are ordinary in dummy-heavy and fixed-effects
@@ -182,7 +182,7 @@ pub enum SeType {
 
 /// How much of the leverage correction a heteroskedasticity-robust meat
 /// carries — the only thing HC0, HC2 and HC3 disagree about, which is why
-/// they share one accumulation in [`OlsFit::hc_meat`]. (HC1 is HC0 with a
+/// they share one accumulation in [`OlsFit::hc_cov`]. (HC1 is HC0 with a
 /// scalar applied afterwards, so it needs no variant of its own.)
 #[derive(Debug, Clone, Copy)]
 enum HcFlavor {
@@ -215,7 +215,7 @@ impl HcFlavor {
 /// Smallest `1 - h_t` HC2/HC3 will divide by.
 ///
 /// This is an absolute floor on the *complement*, deliberately, and it is
-/// not scaled by anything. `h_t` is accumulated from `(X'X)^{-1}` with an
+/// not scaled by anything. `h_t = ||R^{-T} x_t||^2` is accumulated with an
 /// absolute error of a few ulp of 1, so `1 - h_t` retains roughly
 /// `eps_mach / (1 - h_t)` relative error — a cancellation law in the
 /// complement itself, independent of how well conditioned `X'X` is. (The
