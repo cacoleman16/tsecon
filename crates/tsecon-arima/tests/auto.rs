@@ -267,6 +267,34 @@ fn error_paths() {
     .unwrap_err();
     assert!(err.to_string().contains("seasonal_period"), "{err}");
 
+    // A fixed D = 0 with a period the 60 observations never complete is
+    // refused before any candidate is fitted (audit round 16: each
+    // candidate's state of dimension >= s + 1 kept the search running past
+    // 290 s), naming seasonal_period and its largest admissible value.
+    for s in [60usize, 61, 1000] {
+        let err = auto_arima(
+            &y,
+            &AutoArimaOptions {
+                seasonal_period: s,
+                fixed_seasonal_d: Some(0),
+                ..AutoArimaOptions::default()
+            },
+        )
+        .unwrap_err();
+        assert!(matches!(err, ArimaError::Selection { .. }), "{err}");
+        let msg = err.to_string();
+        assert!(
+            msg.contains(&format!(
+                "seasonal_period = {s} is not shorter than the series"
+            )),
+            "{msg}"
+        );
+        assert!(
+            msg.contains("seasonal_period can be at most 59 here"),
+            "{msg}"
+        );
+    }
+
     // NaN input names the index.
     let mut bad = y.clone();
     bad[7] = f64::NAN;

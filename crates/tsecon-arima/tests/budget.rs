@@ -156,7 +156,7 @@ fn absurd_specifications_are_refused_by_name() {
     assert!(matches!(err, ArimaError::TooLarge { .. }), "{err:?}");
 }
 
-/// Ordinary specifications are far inside the budgets: the airline model,
+/// Ordinary specifications fit inside the budgets: the airline model,
 /// the auto_arima stepwise start on monthly data, a weekly SARMA with a
 /// constant, and an AR(30) on 200 observations (measured at about two
 /// minutes in `lab/arima_budget/out/arima_cost.txt`).

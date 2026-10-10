@@ -627,6 +627,12 @@ fn validate_options(opts: &AutoArimaOptions) -> Result<(), ArimaError> {
 ///   the whole series (`y.len() <= D * s`), naming `D` — or
 ///   `seasonal_period` when even one difference at that period leaves
 ///   nothing;
+/// * a fixed `D = 0` with a `seasonal_period` the series never completes
+///   (`y.len() <= s`), naming `seasonal_period`: no observation has a
+///   seasonal lag in sample, so every seasonal AR/MA coefficient is
+///   unidentified, and each candidate's Kalman state of dimension at least
+///   `s + 1` kept the search running (`seasonal_period = 97` on 96
+///   observations was still running after 290 s; audit round 16);
 /// * with `D` chosen by the seasonal-strength rule, a `seasonal_period`
 ///   longer than half the (non-constant) series: the STL fit behind the
 ///   rule needs two full cycles, `y.len() >= 2 * s` ([`tsecon_diag::nsdiffs`]
@@ -660,7 +666,20 @@ fn check_seasonal_fit(y: &[f64], s: usize, fixed_d: Option<usize>) -> Result<(),
                 return Err(ArimaError::Selection { what });
             }
         }
-        Some(_) => {}
+        Some(_) => {
+            if s >= n {
+                return Err(ArimaError::Selection {
+                    what: format!(
+                        "seasonal_period = {s} is not shorter than the series ({n} \
+                         observations), so no observation has a seasonal lag in sample and \
+                         every seasonal AR/MA coefficient would be unidentified (D = 0 was \
+                         fixed); seasonal_period can be at most {} here — pass the true \
+                         period (12 monthly, 4 quarterly), or 0 for a non-seasonal search",
+                        n.saturating_sub(1)
+                    ),
+                });
+            }
+        }
         None => {
             let constant = y.iter().all(|&v| v == y[0]);
             if n >= 4 && !constant && (n as u128) < 2 * (s as u128) {
@@ -740,9 +759,10 @@ fn check_seasonal_fit(y: &[f64], s: usize, fixed_d: Option<usize>) -> Result<(),
 /// * [`ArimaError::NonFinite`] when `y` contains NaN/infinity;
 /// * [`ArimaError::Selection`] when the `d`/`D` advisors cannot run
 ///   (most often: too few observations for KPSS or for an STL fit at
-///   the given period — a `seasonal_period` past half the series, or a
-///   fixed `D` whose seasonal differences consume it, is refused up front
-///   naming the option and its largest admissible value), or when **no**
+///   the given period — a `seasonal_period` past half the series, a fixed
+///   `D` whose seasonal differences consume it, or with `D = 0` fixed a
+///   period the series never completes, is refused up front naming the
+///   option and its largest admissible value), or when **no**
 ///   candidate produced an admissible fit (the error names how many were
 ///   tried and why the last one failed).
 pub fn auto_arima(y: &[f64], opts: &AutoArimaOptions) -> Result<AutoArimaResult, ArimaError> {
