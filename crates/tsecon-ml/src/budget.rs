@@ -69,7 +69,9 @@ pub(crate) fn check_count(
     let need = need.map_or_else(|| "more than 2^64".to_string(), |v| format!("{v}"));
     let largest = match largest_fitting(min, value, &values) {
         Some(m) => format!("{keyword} can be at most {m} here"),
-        None => format!("not even {keyword} = {min} fits for this data"),
+        None => format!(
+            "not even {keyword} = {min} fits with this data and the other arguments as given"
+        ),
     };
     Err(MlError::InvalidValue {
         what: format!(

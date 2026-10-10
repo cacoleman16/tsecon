@@ -436,11 +436,15 @@ fn quantile_predictions(outputs: &[TreeOutput], y: &[f64], quantiles: &[f64]) ->
 /// per tree and abort the process).
 ///
 /// Per tree the forest keeps a substream (9 words), its row weights and
-/// training predictions (`2 n`), its test predictions and, for a quantile
-/// forest, its test leaves (`m` each), its raw importance (`p`) and at
-/// least one node with its `Vec` headers (20 words); the design copy and
-/// the aggregates are fixed. The node count is data-dependent and enters
-/// at that minimum, so the count is never above what the call holds.
+/// training predictions (`2 n`), its test predictions (`m`), for a
+/// quantile forest its leaf index (the test leaves, the training rows by
+/// leaf and at least two offsets, `m + n + 2` and three `Vec` headers), its
+/// raw importance (`p`) and at least one node with its `Vec` headers (20
+/// words); the design copy and the aggregates are fixed. The node count is
+/// data-dependent and enters at that minimum, so the count is never above
+/// what the call holds (a grown tree's nodes, ten words each, and the
+/// out-of-bag lists come on top: a forest of depth-4 trees at the largest
+/// admitted `n_trees` holds about twice the budget).
 /// Block-permutation importance then materializes `n_units x
 /// n_permutations` permutations of the `n` rows (`n + 4` values each, with
 /// the header and the replicate's MSE).
@@ -454,7 +458,7 @@ fn check_forest_budget(
 ) -> Result<(), MlError> {
     let m = x_test.map_or(0, |xt| xt.nrows());
     let n_q = opts.quantiles.as_ref().map_or(0, Vec::len);
-    let leaves = if n_q > 0 { m } else { 0 };
+    let leaves = if n_q > 0 { m + n + 11 } else { 0 };
     let forest = |trees: usize| -> Option<usize> {
         let per_tree = n
             .checked_mul(2)?

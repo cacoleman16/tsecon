@@ -143,6 +143,11 @@ def test_mlp_hidden_list_beyond_2_48_is_refused_not_a_panic(hidden):
         ((-1,), r"hidden\[0\] = -1 is not a non-negative integer"),
         ([4, -2], r"hidden\[1\] = -2 is not a non-negative integer"),
         ([1e300], r"hidden\[0\] = 1e\+300 is at or beyond 2\*\*48"),
+        # A bare negative int used to get "must be a tuple or list ... got int".
+        (-1, r"hidden = -1 is not a non-negative integer"),
+        (np.int64(-3), r"hidden = -3 is not a non-negative integer"),
+        (np.ones((2, 2), dtype=np.int64), r"got a 2-D array"),
+        (np.ones(10**6), r"hidden lists 1000000 layers"),
     ],
 )
 def test_mlp_bad_hidden_elements_are_named(hidden, msg):
@@ -181,6 +186,19 @@ def test_mlp_max_epochs_runs_until_early_stopping_and_is_budgeted_without_it():
             tsecon.mlp_regression(
                 x, y, hidden=(4,), max_epochs=e, validation_fraction=0.0, n_seeds=1
             )
+
+
+@pytest.mark.parametrize("v", HUGE)
+def test_mlp_patience_that_cannot_stop_an_unreachable_max_epochs_is_refused(v):
+    # Early stopping fires at the earliest after patience + 1 epochs, so a
+    # member records at least min(max_epochs, patience + 1) of them. With
+    # patience = max_epochs = 2**31 the call used to train for hours and
+    # then abort on the growing loss paths.
+    x, y = _design(60, 2)
+    with pytest.raises(ValueError, match=rf"max_epochs = {v} is too large.*patience = {v} leaves early stopping no room"):
+        tsecon.mlp_regression(x, y, hidden=(4,), max_epochs=v, patience=v, n_seeds=1)
+    with pytest.raises(ValueError, match=rf"patience = {v} is too large.*patience can be at most \d+ here"):
+        tsecon.mlp_regression(x, y, hidden=(4,), max_epochs=2 * v, patience=v, n_seeds=1)
 
 
 # ------------------------------------------------ A6: paths, grids, features
@@ -235,10 +253,36 @@ def test_cv_splits_n_is_budgeted(v, kwargs):
         tsecon.cv_splits(n=v, **kwargs)
 
 
-def test_cv_splits_purged_kfold_largest_n_closed_form():
-    # k (n + 6) + k + 1 values: n <= (2**28 - 6) // 5 - 6 for k = 5.
-    with pytest.raises(ValueError, match=rf"n can be at most {(2**28 - 6) // 5 - 6} here"):
+def test_cv_splits_largest_n_counts_the_returned_lists():
+    # Every index costs 6 values (its Rust usize, and the int object and list
+    # slot it is returned as: 40 bytes) and every fold 80 (its dict and two
+    # lists). Counting the usize alone admitted n = 51806 below, whose lists
+    # needed about 10 GB, and that call aborted the interpreter under a 4 GB
+    # cap. Purged k-fold: k (6 n + 80) + k + 1 values.
+    with pytest.raises(ValueError, match=rf"n can be at most {(2**28 - 406) // 30} here"):
         tsecon.cv_splits(n=2**31, scheme="purged_kfold", k=5)
+    # Expanding (train 50, horizon 2, step 5): F folds hold
+    # 6 (52 F + 5 F (F - 1) / 2) + 80 F values.
+    folds = 1
+    while 6 * (52 * (folds + 1) + 5 * (folds + 1) * folds // 2) + 80 * (folds + 1) <= 2**28:
+        folds += 1
+    largest = 52 + (folds - 1) * 5 + 4
+    assert largest == 21136
+    with pytest.raises(ValueError, match=rf"n = 51806 is too large.*n can be at most {largest} here"):
+        tsecon.cv_splits(n=51806, train=50, horizon=2, step=5)
+    assert len(tsecon.cv_splits(n=2000, train=50, horizon=2, step=5)) == 390
+
+
+@pytest.mark.parametrize("v", HUGE)
+def test_cv_splits_names_the_window_or_k_when_no_n_fits(v):
+    # One fold at n = train + horizon holds 6 (train + horizon) + 80 values:
+    # once train alone is past that, no n can help, so train is named.
+    with pytest.raises(ValueError, match=rf"train = {v} is too large.*train can be at most {(2**28 - 80) // 6 - 2} here"):
+        tsecon.cv_splits(n=2 * v, train=v, horizon=2)
+    with pytest.raises(ValueError, match=rf"horizon = {v} is too large"):
+        tsecon.cv_splits(n=2 * v, scheme="rolling", train=50, horizon=v)
+    with pytest.raises(ValueError, match=rf"k = {v} is too large.*k can be at most \d+ here"):
+        tsecon.cv_splits(n=v, scheme="purged_kfold", k=v)
 
 
 # -------------------------------------------- B3: refusals with the wrong cause

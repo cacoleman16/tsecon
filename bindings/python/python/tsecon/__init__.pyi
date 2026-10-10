@@ -3113,9 +3113,11 @@ def cv_splits(
 
     Further arguments, with defaults: `k` (5).
 
-    An `n` whose splits would materialize more than 2**28 indices (2
-    GiB) is refused by name, with the largest `n` that fits, before any
-    fold is built.
+    Splits whose returned lists would hold more than 2**28 values (2 GiB; an
+    index counts 6, its int object and list slot included, and a fold 80)
+    are refused before any fold is built, naming `n` with the largest `n`
+    that fits, or `train`, `horizon` or `k` when not even one fold of that
+    size fits.
     """
 
 # ------------------------------------------------------ penalized ML (paths)
@@ -4873,13 +4875,15 @@ def mlp_regression(
     and report `insufficient data: {got} observations, at least {needed}
     required` with the validation split counted.
 
-    `hidden` may also be a 1-D array of widths. A layer width, an
-    `n_seeds`, or (under Adam with `validation_fraction=0`, when every
-    epoch runs and is recorded) a `max_epochs` whose working set exceeds
-    the 2**28-value (2 GiB) memory budget is refused by name
-    (`hidden[i]`, `n_seeds`, `max_epochs`), with the largest value that
-    fits, before anything is allocated; with a validation split a large
-    `max_epochs` simply runs until early stopping.
+    `hidden` may also be a 1-D array of widths. A layer width, an `n_seeds`,
+    or (under Adam) a `max_epochs` or `patience` whose working set exceeds
+    the 2**28-value (2 GiB) memory budget is refused by name (`hidden[i]`,
+    `n_seeds`, `max_epochs`, `patience`), with the largest value that fits,
+    before anything is allocated. The loss paths count the epochs every
+    member is certain to record: all `max_epochs` with
+    `validation_fraction=0`, and `min(max_epochs, patience + 1)` with a
+    validation split, so a large `max_epochs` with the default `patience`
+    runs until early stopping.
     """
 
 def echo_state_network(

@@ -291,6 +291,29 @@ fn mlp_hidden_n_seeds_and_max_epochs_are_budgeted() {
     .unwrap();
     assert!(fit.converged[0]);
     assert!(fit.train_loss_path[0].len() < 100_000);
+    // But every member records at least min(max_epochs, patience + 1)
+    // epochs: a patience that leaves the rule no room to fire before an
+    // unreachable max_epochs is refused by name (it used to run for hours
+    // and then abort on the growing paths).
+    for (max_epochs, patience, keyword, value, max) in [
+        (
+            1usize << 31,
+            1usize << 31,
+            "max_epochs",
+            1usize << 31,
+            max_e,
+        ),
+        (1 << 40, 1 << 31, "patience", 1 << 31, max_e - 1),
+        (usize::MAX, 1 << 40, "patience", 1 << 40, max_e - 1),
+    ] {
+        let opts = MlpOptions {
+            max_epochs,
+            patience: Some(patience),
+            ..base.clone()
+        };
+        let e = mlp_regression(x.as_ref(), &y, None, &opts).unwrap_err();
+        assert_named(&e, keyword, value, max);
+    }
 
     // Overflowing layer widths are an error, not a wrapped offset.
     assert!(MlpWeights::from_flat(&[usize::MAX, 4, 1], &[]).is_err());
@@ -400,30 +423,63 @@ fn kernel_regression_block_refusal_names_block() {
 
 #[test]
 fn cv_splits_are_budgeted_on_n() {
+    // Every index costs 6 values (its usize and the boxed integer and list
+    // slot the Python binding returns it as) and every fold 80 (two Vec
+    // headers, its dict and two lists).
+    let budget = ML_MAX_VALUES as u128;
     // Expanding (train 50, horizon 2, step 5): F folds hold
-    // F (50 + 2 + 6) + 5 F (F - 1) / 2 values; the largest n has the most
+    // 6 (52 F + 5 F (F - 1) / 2) + 80 F values; the largest n has the most
     // folds that fit, plus step - 1 rows that start no new fold.
+    let expanding = |f: u128| 6 * (52 * f + 5 * f * (f - 1) / 2) + 80 * f;
     let mut folds = 1u128;
-    while (folds + 1) * 58 + 5 * (folds + 1) * folds / 2 <= ML_MAX_VALUES as u128 {
+    while expanding(folds + 1) <= budget {
         folds += 1;
     }
     let max_n = 52 + (folds as usize - 1) * 5 + 4;
+    assert_eq!(max_n, 21_136);
     for n in HUGE {
         let e = expanding_origin_splits(n, 50, 2, 5, 0).unwrap_err();
         assert_named(&e, "n", n, max_n);
     }
-    // Rolling (window 50, horizon 2, step 5): 58 values per fold.
-    let max_r = 52 + ((ML_MAX_VALUES / 58) - 1) * 5 + 4;
+    assert!(expanding_origin_splits(max_n + 1, 50, 2, 5, 0).is_err());
+    // Rolling (window 50, horizon 2, step 5): 6 * 52 + 80 = 392 values per
+    // fold.
+    let max_r = 52 + ((ML_MAX_VALUES / 392) - 1) * 5 + 4;
     for n in HUGE {
         let e = rolling_origin_splits(n, 50, 2, 5, 0).unwrap_err();
         assert_named(&e, "n", n, max_r);
     }
-    // Purged k-fold: k (n + 6) + k + 1 values.
-    let max_k = (ML_MAX_VALUES - 6) / 5 - 6;
+    // Purged k-fold: k (6 n + 80) + k + 1 values.
+    let max_k = (ML_MAX_VALUES - 5 * 80 - 6) / 30;
     for n in HUGE {
         let e = purged_kfold_splits(n, 5, 0, 0).unwrap_err();
         assert_named(&e, "n", n, max_k);
     }
     assert_eq!(expanding_origin_splits(100, 50, 2, 5, 0).unwrap().len(), 10);
     assert_eq!(purged_kfold_splits(100, 5, 2, 1).unwrap().len(), 5);
+}
+
+#[test]
+fn cv_splits_name_the_window_or_k_when_no_n_can_fit() {
+    // One fold at n = train + horizon holds 6 (train + horizon) + 80 values,
+    // so no n helps once train alone is past (2^28 - 80) / 6 - horizon.
+    let max_train = (ML_MAX_VALUES - 80) / 6 - 2;
+    for (train, n) in [(1usize << 31, 1usize << 32), (1 << 40, 1 << 41)] {
+        let e = expanding_origin_splits(n, train, 2, 1, 0).unwrap_err();
+        assert_named(&e, "train", train, max_train);
+        let e = rolling_origin_splits(n, train, 2, 1, 0).unwrap_err();
+        assert_named(&e, "train", train, max_train);
+    }
+    // A horizon wider than the training window is the one named.
+    let e = rolling_origin_splits(1 << 32, 50, 1 << 31, 1, 0).unwrap_err();
+    assert_named(&e, "horizon", 1 << 31, (ML_MAX_VALUES - 80) / 6 - 50);
+    // Purged k-fold at n = k: k (6 k + 80) + k + 1 values.
+    let mut max_folds = 2usize;
+    while (max_folds + 1) * (6 * (max_folds + 1) + 80) + max_folds + 2 <= ML_MAX_VALUES {
+        max_folds += 1;
+    }
+    for k in [1usize << 31, 1 << 40] {
+        let e = purged_kfold_splits(k, k, 0, 0).unwrap_err();
+        assert_named(&e, "k", k, max_folds);
+    }
 }

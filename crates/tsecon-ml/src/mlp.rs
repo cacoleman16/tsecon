@@ -927,21 +927,29 @@ fn mlp_values(
         .checked_add(n.checked_mul(3)?)
 }
 
-/// Refuses a network, an ensemble or (with no validation split to stop it
-/// early) an epoch count whose working set exceeds the crate's
-/// [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, naming `hidden[i]`,
-/// `n_seeds` or `max_epochs`, before anything is allocated. A width or an
-/// ensemble of `2^31` used to reach the allocator and abort the process.
+/// Refuses a network, an ensemble or an epoch count whose working set
+/// exceeds the crate's [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget,
+/// naming `hidden[i]`, `n_seeds`, `max_epochs` or `patience`, before
+/// anything is allocated. A width or an ensemble of `2^31` used to reach the
+/// allocator and abort the process.
+///
+/// Under Adam the loss paths enter at the length every member is certain to
+/// record: all `max_epochs` epochs without a validation split, and with one
+/// at least `min(max_epochs, patience + 1)`, because early stopping fires at
+/// the earliest once `patience` epochs without improvement follow the first.
+/// So `max_epochs = 2^31` with the default patience runs until the rule
+/// fires, while a `patience` that leaves the rule no room to fire before an
+/// unreachable `max_epochs` is refused instead of running for hours and
+/// then aborting.
 fn check_mlp_budget(
     n: usize,
     p: usize,
     m: usize,
     n_val: usize,
+    patience: usize,
     opts: &MlpOptions,
 ) -> Result<(), MlError> {
-    // The loss paths are bounded in advance only when every epoch must run:
-    // Adam with no validation split (L-BFGS records two entries).
-    let all_epochs = opts.solver == Solver::Adam && n_val == 0;
+    // L-BFGS records two entries per path.
     let short_path = if opts.solver == Solver::Lbfgs { 2 } else { 0 };
     // The network alone, one member: blame the widest layer.
     let hidden = &opts.hidden;
@@ -971,15 +979,40 @@ fn check_mlp_budget(
         "the seed ensemble (per member: its kept weights, test predictions and substream)",
         |s| mlp_values(n, p, m, hidden, s, short_path),
     )?;
-    if all_epochs {
-        check_count(
-            "max_epochs",
-            opts.max_epochs,
-            1,
-            "the loss paths, which record every one of max_epochs epochs per member when \
-             there is no validation split to stop early (validation_fraction = 0)",
-            |e| mlp_values(n, p, m, hidden, opts.n_seeds, e),
-        )?;
+    if opts.solver == Solver::Adam {
+        let paths = |len: usize| mlp_values(n, p, m, hidden, opts.n_seeds, len);
+        let stop_floor = patience.saturating_add(1);
+        if n_val == 0 {
+            check_count(
+                "max_epochs",
+                opts.max_epochs,
+                1,
+                "the loss paths, which record every one of max_epochs epochs per member \
+                 when there is no validation split to stop early (validation_fraction = 0),",
+                paths,
+            )?;
+        } else if opts.max_epochs <= stop_floor {
+            check_count(
+                "max_epochs",
+                opts.max_epochs,
+                1,
+                &format!(
+                    "the loss paths, which record every one of max_epochs epochs per member \
+                     because patience = {patience} leaves early stopping no room to fire \
+                     before the last epoch,"
+                ),
+                paths,
+            )?;
+        } else {
+            check_count(
+                "patience",
+                patience,
+                1,
+                "the loss paths, which record at least patience + 1 epochs per member \
+                 before early stopping can fire,",
+                |pt| paths(pt.saturating_add(1)),
+            )?;
+        }
     }
     Ok(())
 }
@@ -1351,11 +1384,14 @@ fn train_member(
 ///   argument passed under `solver = Lbfgs`;
 /// * [`MlError::InvalidArgument`] for a bad `alpha`, `learning_rate`,
 ///   `validation_fraction`, `max_epochs`, `patience`, or `n_seeds`;
-/// * [`MlError::InvalidValue`] naming `hidden[i]`, `n_seeds` or (under Adam
-///   with `validation_fraction = 0`, when every epoch runs) `max_epochs`
-///   when the working set it sizes exceeds the crate's
-///   [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, checked before
-///   anything is allocated;
+/// * [`MlError::InvalidValue`] naming `hidden[i]`, `n_seeds`, or (under
+///   Adam) `max_epochs` or `patience` when the working set it sizes exceeds
+///   the crate's [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, checked
+///   before anything is allocated. The loss paths count at the length every
+///   member records for certain: `max_epochs` epochs with
+///   `validation_fraction = 0`, and with a validation split
+///   `min(max_epochs, patience + 1)`, so a large `max_epochs` alone runs
+///   until early stopping fires;
 /// * [`MlError::Diverged`] if a member's loss became non-finite.
 pub fn mlp_regression(
     x: MatRef<'_, f64>,
@@ -1386,7 +1422,14 @@ pub fn mlp_regression(
     }
     let (n_train, n_val) = split_counts(n, opts.validation_fraction)?;
     let res = resolve_solver_args(opts, n_train)?;
-    check_mlp_budget(n, p, x_test.map_or(0, |xt| xt.nrows()), n_val, opts)?;
+    check_mlp_budget(
+        n,
+        p,
+        x_test.map_or(0, |xt| xt.nrows()),
+        n_val,
+        res.patience,
+        opts,
+    )?;
 
     // --- standardization, fit on the training rows only ---------------
     let (x_all, x_test_rows, x_mean, x_scale) = if opts.standardize {

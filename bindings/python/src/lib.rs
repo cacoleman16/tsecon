@@ -8594,9 +8594,11 @@ fn iv_gmm<'py>(
 /// walk-forward training windows never do; a nonzero `embargo` therefore
 /// raises on `"expanding"`/`"rolling"` instead of being silently ignored.
 ///
-/// An `n` whose splits would materialize more than 2**28 indices (2 GiB)
-/// is refused by name, with the largest `n` that fits, before any fold is
-/// built.
+/// Splits whose returned lists would hold more than 2**28 values (2 GiB; an
+/// index counts 6, its int object and list slot included, and a fold 80)
+/// are refused before any fold is built, naming `n` with the largest `n`
+/// that fits, or `train`, `horizon` or `k` when not even one fold of that
+/// size fits.
 #[pyfunction]
 #[pyo3(signature = (n, scheme = "expanding", train = 0, horizon = 1, step = 1,
                     k = 5, purge = 0, embargo = 0))]
