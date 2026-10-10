@@ -428,6 +428,12 @@ def bootstrap_indices(
 ) -> npt.NDArray[np.uint64]:
     """Bootstrap resampling indices (iid/moving/circular/stationary).
 
+    `n` is at most 2^28 = 268435456 (a 2 GiB index vector), refused by name
+    before anything is allocated. `seed` is an unsigned 64-bit integer,
+    0 <= seed <= 2**64 - 1; every seed-like keyword of the API (`seed`,
+    `band_seed`, `rf_seed`) takes that range and refuses a value outside it
+    by name.
+
     Further arguments, with defaults: `scheme` ("stationary"), `seed` (0),
     `block_length` (None), `p` (None).
     """
@@ -439,7 +445,11 @@ def optimal_block_length(y: _ArrayLike) -> dict[str, float]:
     """
 
 def philox_uniforms(seed: int, n: int) -> _F64:
-    """Uniform draws from the Philox stream; bit-identical to NumPy."""
+    """Uniform draws from the Philox stream; bit-identical to NumPy.
+
+    `n` is at most 2^28 = 268435456 (a 2 GiB array), refused by name before
+    anything is allocated; `seed` is 0 <= seed <= 2**64 - 1.
+    """
 
 # ------------------------------------------------------------ state space
 def local_level_smooth(
@@ -2728,7 +2738,10 @@ def threshold_vecm(
     Johansen estimate); for k > 2 pass ``beta=`` explicitly. With ``beta=``
     supplied the beta grid search never runs (``beta_grid`` comes back
     empty), so passing ``n_grid_beta``/``beta_span`` explicitly alongside
-    it raises (they default to 50/10.0 when None).
+    it raises (they default to 50/10.0 when None). The searched grid is
+    budgeted at n_grid_beta * min(n_grid_gamma, n) <= 2^20 cells (n the
+    usable rows); a larger n_grid_beta is refused by name, with its largest
+    admissible value, before the grid is allocated.
 
     Keys: beta, threshold, params_low/params_high (k x n_regressors, rows
     = equations, columns [const, ect, lagged diffs]) with EICKER-WHITE
@@ -2757,7 +2770,9 @@ def hansen_seo_test(
     series ARE cointegrated (test that first: johansen/engle_granger).
     Unlike threshold_vecm — whose beta=None grid SEARCH is bivariate-only
     — the null beta here is the linear Johansen ML estimate, defined for
-    any k, so k > 2 with an estimated (null) beta is accepted.
+    any k, so k > 2 with an estimated (null) beta is accepted. n_boot is at
+    most 1000000 (the p-value's Monte Carlo standard error is at most
+    0.0005 there), refused by name before any replication runs.
 
     Keys: stat, p_value, threshold, beta, n_boot, nobs, thresholds,
     lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff.
@@ -2827,7 +2842,9 @@ def markov_switching_ar(
     n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0 scalar
     path (= smoothed_prob[:, -1]). The EM run reports converged and
     iterations (EM steps actually run — converged=False with
-    iterations == max_iter means the cap bound).
+    iterations == max_iter means the cap bound). k_regimes >= 2, and the
+    filter's expanded state space k_regimes^(order + 1) is at most 4096
+    (refused by name, stating the largest admissible k_regimes and order).
 
     Returned keys: `ar`, `converged`, `expected_durations`, `filtered_prob`,
     `iterations`, `loglik`, `means`, `regimes`, `smoothed_prob`,
@@ -2879,7 +2896,9 @@ def setar_test(
     problem), so NO chi-squared p-value exists; p_value = (1 + #{F* >= F}) /
     (n_boot + 1) from the fixed-regressor wild bootstrap (y* = resid * eta,
     eta iid N(0,1), same fixed regressors, same grid) — seeded, parallel,
-    bit-identical at any thread count.
+    bit-identical at any thread count. n_boot is at most 1000000 (the
+    p-value's Monte Carlo standard error is at most 0.0005 there), refused
+    by name before any replication runs.
 
     Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
     ssr_setar, thresholds, f_path, boot_stats.
@@ -2905,7 +2924,10 @@ def star(
     gamma*sd(s) (lstar) / gamma*var(s) (estar). Concentrated NLS:
     (gamma, c) grid (standardized gamma log-spaced [0.5, 100]; c on
     trimmed order statistics) + Nelder-Mead refinement. Run star_test
-    first — STAR on linear data happily "finds" a transition.
+    first — STAR on linear data happily "finds" a transition. The grid is
+    budgeted at n_gamma * n_c <= 2^20 cells per candidate delay (the
+    default is 25 x 25); a larger grid is refused by name, with the
+    largest admissible n_gamma and n_c, before it is allocated.
 
     Keys: model, gamma, gamma_standardized, c, delay, s_sd, converged,
     gamma_at_boundary (standardized gamma at the searchable range's edge:
@@ -3005,7 +3027,9 @@ def threshold_var_test(
     bootstrap p-value. The threshold is unidentified under the null
     (Davies problem), so NO chi-squared p-value exists; p_value =
     (1 + #{W* >= W})/(n_boot + 1) — seeded, parallel, bit-identical at
-    any thread count.
+    any thread count. n_boot is at most 1000000 (the p-value's Monte Carlo
+    standard error is at most 0.0005 there), refused by name before any
+    replication runs.
 
     Keys: stat, p_value, threshold, delay, threshold_index, n_boot, nobs,
     thresholds, wald_path, boot_stats, min_regime, neqs, n_regressors.
@@ -3016,7 +3040,11 @@ def threshold_var_test(
 
 # ------------------------------------------------------------------ MIDAS
 def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
-    """MIDAS weights (sum to 1); scheme "exp_almon" or "beta"."""
+    """MIDAS weights (sum to 1); scheme "exp_almon" or "beta".
+
+    `k` (the number of high-frequency lags) is at most 2^27 = 134217728,
+    refused by name before anything is allocated.
+    """
 
 def umidas(
     y: _ArrayLike, hf_lags: _ArrayLike, se_type: str = ..., maxlags: int | None = ...
@@ -4208,7 +4236,10 @@ def acm_term_premium(
     `maturities` are integer PERIODS (months for monthly data), ascending,
     containing 1; excess returns need n - 1 in the grid for each return
     maturity n (contiguous grid or pairs; interpolate the curve first if
-    needed). Returns factors, factor_loadings, mu/phi/sigma, rx_maturities,
+    needed). Each maturity is at most 120000 periods (the jsz_fit cap: the
+    price recursions are tabulated at every integer period up to the
+    longest), refused by index before anything is allocated. Returns
+    factors, factor_loadings, mu/phi/sigma, rx_maturities,
     a/beta/c, sigma2, lambda0/lambda1, delta0/delta1, A/B, A_rn/B_rn,
     fitted / risk_neutral / term_premium (T x M, fitted = risk_neutral +
     term_premium), var/rx/short_rate/yield R-squareds, and the echoed

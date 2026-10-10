@@ -560,6 +560,45 @@ def _is_seed_name(name: str) -> bool:
     return name == "seed" or name.endswith("_seed")
 
 
+# Every seed-like keyword of the compiled API (`seed`, `band_seed`,
+# `rf_seed`, ... — the `_is_seed_name` rule) is a Rust `u64` (or
+# `Option<u64>`), so its valid range is 0 <= seed <= 2**64 - 1. PyO3 refuses a
+# value past either end as a bare ``OverflowError`` that names no argument
+# ("int too big to convert", or the negative-unsigned message rebuilt as a
+# generic "counts something" error) — audit round 16. The pre-flight in
+# `_call` refuses it by name with the range instead, before the call.
+_SEED_MAX = 2**64 - 1
+
+
+def _is_out_of_seed_range(v: object) -> bool:
+    return (
+        isinstance(v, (int, np.integer))
+        and not isinstance(v, bool)
+        and not 0 <= int(v) <= _SEED_MAX
+    )
+
+
+def _seed_range_offenders(fn, args, kwargs) -> list[tuple[str, int]]:
+    """``(name, value)`` for every seed-like argument outside
+    ``[0, 2**64 - 1]``, positional ones named through the signature."""
+    return [
+        (label, int(v))
+        for label, v in _labeled_ints(fn, args, kwargs)
+        if _is_seed_name(label) and _is_out_of_seed_range(v)
+    ]
+
+
+def _seed_range_error(fn, offenders: list[tuple[str, int]]) -> ValueError:
+    what = " and ".join(f"{label}={v}" for label, v in offenders)
+    verb = "are" if len(offenders) > 1 else "is"
+    name = offenders[0][0] if len(offenders) == 1 else "seed"
+    return ValueError(
+        f"{fn.__name__}: {what} {verb} outside the valid range "
+        f"0 <= {name} <= 2**64 - 1 = {_SEED_MAX}: a seed is an unsigned 64-bit "
+        f"integer, and every value in that range is accepted."
+    )
+
+
 def _is_huge_int(v: object) -> bool:
     return isinstance(v, (int, np.integer)) and not isinstance(v, bool) and v >= _ABSURD_COUNT
 
@@ -1048,6 +1087,14 @@ def _rebuild_type_error(fn, args, kwargs, exc: TypeError) -> TypeError | None:
 def _call(fn, args, kwargs):
     """Invoke the compiled function, upgrading rank errors to teaching errors."""
     args, kwargs = _guard_callbacks(fn, args, kwargs)
+    # Fast path: no integer argument is outside [0, 2**64 - 1], so no seed
+    # can be; labels are resolved only to name an offender.
+    if any(_is_out_of_seed_range(v) for v in args) or any(
+        _is_out_of_seed_range(v) for v in kwargs.values()
+    ):
+        seeds = _seed_range_offenders(fn, args, kwargs)
+        if seeds:
+            raise _seed_range_error(fn, seeds)
     offenders = _huge_int_offenders(fn, args, kwargs)
     if offenders:
         raise _absurd_count_error(fn, offenders)

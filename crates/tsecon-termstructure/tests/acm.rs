@@ -672,3 +672,42 @@ fn acm_rejects_degenerate_inputs_with_teaching_errors() {
         Err(TermStructureError::SingularDesign { .. })
     ));
 }
+
+/// Audit round 16 (A7): the ACM price recursion tabulates every integer
+/// period up to the longest maturity, like the JSZ recursions, so it takes
+/// the same `MAX_MATURITY` cap — refused by index before the table is
+/// allocated (a maturity of 2^31 used to request 16 GiB and abort). The
+/// cap itself is admissible and still prices the curve.
+#[test]
+fn acm_refuses_a_maturity_beyond_the_jsz_cap_before_allocating() {
+    use tsecon_termstructure::MAX_MATURITY;
+    let yields: Vec<Vec<f64>> = (0..40)
+        .map(|t| {
+            (1..=8)
+                .map(|n| 0.03 + 0.001 * n as f64 + 1e-4 * ((t * 8 + n) as f64).sin())
+                .collect()
+        })
+        .collect();
+    let mut mats: Vec<usize> = (1..=7).collect();
+    for (huge, idx) in [(MAX_MATURITY + 1, 7), (1usize << 31, 7), (1usize << 40, 7)] {
+        mats.push(huge);
+        let err = acm_term_premium(&yields, &mats, 2, 12.0).unwrap_err();
+        assert_eq!(
+            err,
+            TermStructureError::MaturityTooLarge {
+                index: idx,
+                value: huge,
+                max: MAX_MATURITY,
+            }
+        );
+        let msg = err.to_string();
+        assert!(
+            msg.contains("maturities[7]") && msg.contains("120000"),
+            "{msg}"
+        );
+        mats.pop();
+    }
+    mats.push(MAX_MATURITY);
+    let fit = acm_term_premium(&yields, &mats, 2, 12.0).expect("the cap itself is admissible");
+    assert_eq!(fit.maturities, mats);
+}

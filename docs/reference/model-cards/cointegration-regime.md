@@ -853,7 +853,10 @@ them).
 
 **Failure modes.** EM converges to local optima — try multiple starts; regime
 labels are arbitrary across runs; too many regimes on a short sample gives empty
-or degenerate states.
+or degenerate states. The Hamilton filter tracks the last `order + 1` regimes
+jointly, so `k_regimes^(order + 1)` is capped at 4096 states; a larger request
+is refused naming `k_regimes` and `order` with the largest admissible value of
+each (64 regimes at `order = 1`; order 11 at two regimes).
 
 **Validated against.** statsmodels `MarkovAutoregression` (`k_regimes=2`,
 `order=1`, `switching_variance=True`) — fixed-parameter log-likelihood and
@@ -975,6 +978,11 @@ against `stat`).
 choose *which* nonlinear model — STAR or Markov-switching may fit better;
 power falls when the true delay is not the one tested (search delays in
 `setar` but test at the chosen delay honestly: pre-testing distorts size).
+At the other end, `n_boot` is capped at 1,000,000: the p-value's Monte Carlo
+standard error is `sqrt(p(1 - p)/B) <= 0.5/sqrt(B)`, at most 0.0005 there,
+while the run time grows linearly in `B`; a larger `n_boot` is refused by name
+before any replication runs (the same cap applies to `threshold_var_test` and
+`hansen_seo_test`).
 
 **Validated against.** The sup-F statistic is pinned at 1e-10 against the
 independent NumPy transcription (four cases, `fixtures/setar.json`); the
@@ -1247,7 +1255,10 @@ mean bias/RMSE tables over MC replications look alarming while medians over
 identified fits are clean — see the numbers below. `c` and γ trade off when
 the transition is smooth, spreading `c`. ESTAR at large γ *and* ESTAR at
 tiny γ both degenerate (to inner/outer indicators and to quadratic drift);
-the same flag covers both edges.
+the same flag covers both edges. The `(γ, c)` grid is capped at
+`n_gamma * n_c <= 2^20` cells per candidate delay (the default is 25 × 25);
+a larger grid is refused by name, with the largest admissible `n_gamma` and
+`n_c`, before it is allocated.
 
 **Validated against.** No third-party STAR is reachable from the test
 environment (R/tsDyn needs CRAN, which the sandbox egress policy denies —
@@ -1425,7 +1436,10 @@ improvement over the linear VECM; `beta_grid` is the region actually searched
 nonstandard — the SEs are for coefficients, not `γ` or `beta`; a `beta` grid
 too narrow silently truncates the estimate to its edge; near-empty regimes
 make the per-regime SEs meaningless; with `k > 2` and a *wrong* fixed `beta`
-the "equilibrium error" is not stationary and the regimes are fiction.
+the "equilibrium error" is not stationary and the regimes are fiction. The
+searched grid is capped at `n_grid_beta * min(n_grid_gamma, n) <= 2^20` cells
+(`n` the usable rows; the default 50 × 300 is 15,000), so a larger
+`n_grid_beta` is refused by name with its largest admissible value.
 
 **Validated how (honest grade).** **No reference implementation was runnable**:
 R installs in the build container but CRAN is unreachable through its egress

@@ -41,6 +41,17 @@ pub enum MidasError {
         /// Human-readable statement of the violated constraint.
         requirement: &'static str,
     },
+    /// The number of high-frequency lags `K` exceeds the most a weight
+    /// profile is built for ([`crate::MAX_WEIGHT_LAGS`]), refused before
+    /// anything is allocated.
+    TooManyLags {
+        /// Which construction rejected the lag count.
+        what: &'static str,
+        /// The lag count supplied.
+        k: usize,
+        /// The largest admissible lag count.
+        max: usize,
+    },
     /// The requested Almon polynomial-distributed-lag degree is not usable:
     /// the `K x (degree + 1)` basis must have at least as many lags as basis
     /// columns (`degree + 1 <= K`) or the restricted design is rank-deficient.
@@ -118,6 +129,13 @@ impl fmt::Display for MidasError {
                 f,
                 "{what}: weight hyperparameter `{name}` = {value} is invalid; \
                  requires {requirement}"
+            ),
+            MidasError::TooManyLags { what, k, max } => write!(
+                f,
+                "{what}: k = {k} high-frequency lags exceeds the largest admissible \
+                 k = {max} (2^27): the profile holds two k-long buffers, a 2 GiB \
+                 working set at the cap, and is refused before anything is \
+                 allocated; a MIDAS lag window is tens to a few thousand lags"
             ),
             MidasError::InvalidPolynomialDegree { degree, k } => write!(
                 f,

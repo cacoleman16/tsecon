@@ -15,8 +15,11 @@
 //!   so valid dependent-data inference is the default, not a tuning
 //!   exercise.
 //! - [`par_replicate`] / [`replicate`]: the replication driver — one
-//!   SeedSequence-spawned [`tsecon_rng::Stream`] per replication, results
-//!   collected in replication order.
+//!   SeedSequence-spawned [`tsecon_rng::Stream`] per replication, derived
+//!   inside its task (no vector of streams), results collected in
+//!   replication order; the result vector is budgeted by
+//!   [`MAX_REPLICATION_BYTES`] and a bootstrap p-value's `n_boot` by
+//!   [`MAX_TEST_REPLICATIONS`], both refused before anything runs.
 //!
 //! ## Reproducibility contract
 //!
@@ -46,6 +49,8 @@ mod wild;
 
 pub use blocklength::{optimal_block_length, OptimalBlockLength};
 pub use error::BootstrapError;
-pub use replicate::{par_replicate, replicate};
-pub use schemes::{indices, BlockScheme};
+pub use replicate::{
+    check_test_replications, par_replicate, replicate, MAX_REPLICATION_BYTES, MAX_TEST_REPLICATIONS,
+};
+pub use schemes::{indices, BlockScheme, MAX_RESAMPLE_LEN};
 pub use wild::WildWeights;

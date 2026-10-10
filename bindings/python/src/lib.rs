@@ -163,11 +163,27 @@ fn arch_lm<'py>(
     Ok(d)
 }
 
+/// Largest `n` `philox_uniforms` returns: 2^28 draws, a 2 GiB array (the
+/// house 2^28-value working-set convention). The output array is allocated
+/// before the first draw, so `n = 2**31` used to request 16 GiB and abort
+/// the process; refused by name before allocating instead.
+const PHILOX_MAX_UNIFORMS: usize = 1 << 28;
+
 /// Uniform draws from the tsecon Philox stream.
 ///
 /// Bit-identical to `np.random.Generator(np.random.Philox(seed)).random(n)`.
+/// `n` is at most 2^28 = 268435456 (a 2 GiB array), refused by name before
+/// anything is allocated.
 #[pyfunction]
 fn philox_uniforms(py: Python<'_>, seed: u64, n: usize) -> PyResult<Bound<'_, PyArray1<f64>>> {
+    if n > PHILOX_MAX_UNIFORMS {
+        return Err(PyValueError::new_err(format!(
+            "n = {n} exceeds the largest admissible n = {PHILOX_MAX_UNIFORMS} (2^28 draws, \
+             a 2 GiB array), checked before anything is allocated; request fewer draws \
+             (np.random.Generator(np.random.Philox(seed)).random is bit-identical and \
+             can continue the same stream in chunks)"
+        )));
+    }
     let mut stream = tsecon_rng::Stream::new(seed);
     let mut buf = vec![0.0_f64; n];
     stream.fill_uniform_f64(&mut buf);
@@ -178,7 +194,9 @@ fn philox_uniforms(py: Python<'_>, seed: u64, n: usize) -> PyResult<Bound<'_, Py
 ///
 /// `scheme`: "iid", "moving" or "circular" (require `block_length`), or
 /// "stationary" (requires `p`, the restart probability; expected block
-/// length is 1/p). Same seed always yields the same indices.
+/// length is 1/p). Same seed always yields the same indices. `n` is at most
+/// 2^28 = 268435456 (a 2 GiB index vector), refused by name before anything
+/// is allocated.
 #[pyfunction]
 #[pyo3(signature = (n, scheme = "stationary", seed = 0, block_length = None, p = None))]
 fn bootstrap_indices<'py>(
@@ -6983,7 +7001,10 @@ fn vecm<'py>(
 /// the beta grid search never runs (`beta_grid` is returned empty), so
 /// passing `n_grid_beta`/`beta_span` explicitly alongside it **raises**
 /// rather than being silently ignored (they default to 50/10.0 when
-/// `None`).
+/// `None`). The searched grid is budgeted at
+/// `n_grid_beta * min(n_grid_gamma, n) <= 2^20` cells (`n` the usable
+/// rows): a larger `n_grid_beta` is refused by name, with its largest
+/// admissible value, before the grid is allocated.
 ///
 /// Returns `beta`, `threshold`, per-regime coefficients
 /// (`params_low`/`params_high`, k x n_regressors) with EICKER-WHITE
@@ -7099,7 +7120,9 @@ fn threshold_vecm<'py>(
 /// `engle_granger`). Unlike `threshold_vecm` — whose `beta=None` grid
 /// SEARCH is bivariate-only — the null beta here is the linear Johansen
 /// ML estimate, defined for any k, so k > 2 with an estimated (null)
-/// beta is accepted.
+/// beta is accepted. `n_boot` is at most 1000000 (the p-value's Monte
+/// Carlo standard error is at most 0.0005 there), refused by name before
+/// any replication runs.
 ///
 /// Returns `stat`, `p_value`, `threshold` (the sup's location), `beta`
 /// (the vector used), `n_boot`, `nobs`, the candidate grid `thresholds`
@@ -7407,7 +7430,9 @@ fn spread_zscore<'py>(
 /// reports `converged` (whether the log-likelihood improvement fell below
 /// `tol`) and `iterations` (EM steps actually run — `converged = False`
 /// with `iterations == max_iter` means the cap bound, so raise `max_iter`
-/// or loosen `tol`).
+/// or loosen `tol`). `k_regimes >= 2`, and the filter's expanded state
+/// space `k_regimes^(order + 1)` is at most 4096 (refused by name, stating
+/// the largest admissible `k_regimes` and `order`).
 /// `smoothed_prob_last_regime` (= `smoothed_prob[:, -1]`) is kept for
 /// back-compatibility with 0.2.0, which returned only that column.
 ///
@@ -7604,7 +7629,9 @@ fn setar<'py>(
 /// `eta` iid standard normal) on the same fixed regressors and recomputes
 /// the sup; `p_value = (1 + #{F* >= F}) / (n_boot + 1)`. Replications run
 /// in parallel with one seeded RNG substream each, so the p-value is
-/// bit-identical for a given `seed` at any thread count.
+/// bit-identical for a given `seed` at any thread count. `n_boot` is at
+/// most 1000000 (the p-value's Monte Carlo standard error is at most
+/// 0.0005 there), refused by name before any replication runs.
 ///
 /// Returns stat, p_value, the threshold attaining the sup, delay, n_boot,
 /// nobs, ssr_linear, ssr_setar, the candidate grid (`thresholds`) with the
@@ -7716,7 +7743,10 @@ fn star_eval_into_dict<'py>(
 /// (`grid_gamma` raw, `grid_c`, `ssr_grid` shaped (n_gamma, n_c) with NaN
 /// for singular cells, `best_cell`, `fevals`). Validated against an
 /// independent NumPy transcription (fixtures/star.json) plus seeded MC
-/// recovery; see `star_test` for the modeling-cycle battery.
+/// recovery; see `star_test` for the modeling-cycle battery. The grid is
+/// budgeted at `n_gamma * n_c <= 2^20` cells per candidate delay (the
+/// default is 25 x 25): a larger grid is refused by name, with the largest
+/// admissible `n_gamma` and `n_c`, before it is allocated.
 ///
 /// Further arguments, with defaults: `constant` (True).
 #[pyfunction]
@@ -7973,7 +8003,9 @@ fn threshold_var<'py>(
 /// replications draws y*_t = u_t * eta_t (eta iid N(0,1)),
 /// re-residualizes on the same fixed regressors, and recomputes the same
 /// sup; `p_value` = (1 + #{W* >= W}) / (n_boot + 1) — seeded, parallel,
-/// bit-identical at any thread count. (R tsDyn's TVAR.LRtest is a
+/// bit-identical at any thread count; `n_boot` is at most 1000000 (the
+/// p-value's Monte Carlo standard error is at most 0.0005 there), refused
+/// by name before any replication runs. (R tsDyn's TVAR.LRtest is a
 /// DIFFERENT convention — sup-LR with a residual bootstrap; same
 /// question, non-comparable statistic values.)
 ///
@@ -8036,7 +8068,8 @@ fn threshold_var_test<'py>(
 
 /// MIDAS weight function (normalized to sum 1). `scheme`: "exp_almon"
 /// (uses theta1, theta2) or "beta" (uses theta1, theta2 as the two shape
-/// parameters). `k` is the number of high-frequency lags.
+/// parameters). `k` is the number of high-frequency lags, at most
+/// 2^27 = 134217728 (refused by name before anything is allocated).
 #[pyfunction]
 #[pyo3(signature = (scheme, theta1, theta2, k))]
 fn midas_weights<'py>(
@@ -11979,6 +12012,9 @@ fn afns_adjustment<'py>(
 /// whose neighbour n - 1 is also in the grid (supply a contiguous grid or
 /// pairs around the return maturities, interpolating the curve first if
 /// needed — ACM interpolate the GSW curve to monthly maturities 1..120).
+/// The price recursions are tabulated at every integer period up to the
+/// longest maturity, so each maturity is at most 120000 periods (the
+/// `jsz_fit` cap), refused by index before anything is allocated.
 ///
 /// Returns factors (T x K), factor_loadings, mu, phi, sigma, rx_maturities,
 /// a/beta/c (the excess-return regression), sigma2, lambda0, lambda1,
