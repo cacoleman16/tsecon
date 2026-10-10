@@ -2,6 +2,7 @@
 
 use tsecon_stats::chi2_sf;
 
+use crate::budget::{arch_cost, check_lag_order};
 use crate::error::DiagError;
 use crate::report::{check_alpha, DiagnosticReport};
 use crate::validate::check_series;
@@ -42,8 +43,12 @@ pub struct ArchLmResult {
 ///
 /// * [`DiagError::NonFinite`] if the residuals contain NaN or infinities.
 /// * [`DiagError::InvalidLags`] if `nlags == 0`.
-/// * [`DiagError::SeriesTooShort`] unless `n >= 2 * nlags + 2` (the
-///   auxiliary regression needs more rows than coefficients).
+/// * [`DiagError::LagOrderTooLong`] unless `n >= 2 * nlags + 2` (the
+///   auxiliary regression needs more rows than coefficients), or when its
+///   `(n - nlags) x nlags` design or the normal equations exceed the size
+///   budgets ([`crate::LAG_DESIGN_MAX_CELLS`], [`crate::LAG_WORK_BUDGET`]);
+///   checked before any lag column is built, naming `nlags` and the
+///   largest order that fits.
 /// * [`DiagError::ConstantSeries`] /
 ///   [`DiagError::SingularDesign`] for degenerate squared residuals.
 pub fn arch_lm(resid: &[f64], nlags: usize) -> Result<ArchLmResult, DiagError> {
@@ -57,14 +62,21 @@ pub fn arch_lm(resid: &[f64], nlags: usize) -> Result<ArchLmResult, DiagError> {
         });
     }
     // The auxiliary regression has n - nlags rows and nlags + 1
-    // coefficients; require at least one residual degree of freedom.
-    if n < 2 * nlags + 2 {
-        return Err(DiagError::SeriesTooShort {
-            what: "arch_lm",
-            n,
-            needed: 2 * nlags + 2,
-        });
-    }
+    // coefficients; require at least one residual degree of freedom, and
+    // size the design against the budgets before building any column.
+    check_lag_order(
+        "arch_lm",
+        "nlags",
+        nlags,
+        false,
+        n,
+        1,
+        n.checked_sub(2).map(|m| m / 2),
+        "the auxiliary regression of the squared residuals on p of their own lags has \
+         n - p rows and p + 1 coefficients and needs a residual degree of freedom \
+         (n >= 2p + 2)",
+        |p| arch_cost(n, p),
+    )?;
 
     let e2: Vec<f64> = resid.iter().map(|&e| e * e).collect();
     // Rows t = nlags..n-1; column j holds e2_{t-j} for j = 1..=nlags.

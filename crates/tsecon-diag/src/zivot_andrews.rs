@@ -425,6 +425,23 @@ fn reattribute(err: DiagError) -> DiagError {
             n,
             requirement,
         },
+        DiagError::LagOrderTooLong {
+            param,
+            value,
+            defaulted,
+            n,
+            max,
+            limit,
+            ..
+        } => DiagError::LagOrderTooLong {
+            what: WHAT,
+            param,
+            value,
+            defaulted,
+            n,
+            max,
+            limit,
+        },
         DiagError::ConstantSeries { .. } => DiagError::ConstantSeries { what: WHAT },
         DiagError::SingularDesign { .. } => DiagError::SingularDesign { what: WHAT },
         DiagError::NumericalBreakdown { .. } => DiagError::NumericalBreakdown { what: WHAT },
@@ -464,6 +481,10 @@ fn reattribute(err: DiagError) -> DiagError {
 ///   design collinear (the reference raises an opaque rank error here, or
 ///   silently degrades for `lags > trimcnt`; this library refuses with an
 ///   explanation instead — increase `trim` or reduce the lag).
+/// * [`DiagError::LagOrderTooLong`] from the automatic lag search (the base
+///   [`crate::adf`] on the `"ct"` regression, re-attributed to this test):
+///   a search cap past `n/2 - 3`, or one whose search exceeds the size
+///   budgets, naming `maxlag` and the largest cap that fits.
 /// * [`DiagError::SingularDesign`] / [`DiagError::NumericalBreakdown`]
 ///   if any candidate design is collinear or fits exactly (the reference
 ///   rank-checks only the first candidate; this library checks all).

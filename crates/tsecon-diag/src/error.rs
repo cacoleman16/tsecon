@@ -78,9 +78,51 @@ pub enum DiagError {
         /// The full message: what was wrong and what to do instead.
         what: &'static str,
     },
+    /// A lag order — fixed, or the cap of an automatic search, supplied or
+    /// defaulted — that the series cannot carry, or whose lag design would
+    /// exceed the size budgets ([`crate::LAG_DESIGN_MAX_CELLS`],
+    /// [`crate::LAG_WORK_BUDGET`]). Refused before any lag column is built.
+    LagOrderTooLong {
+        /// Which diagnostic refused the order.
+        what: &'static str,
+        /// The name of the order (`"nlags"`, `"maxlag"`, `"lags"`); the
+        /// Python bindings rename it to the keyword the caller passed.
+        param: &'static str,
+        /// The order asked for.
+        value: usize,
+        /// `true` when the order came from the default rule, not the caller.
+        defaulted: bool,
+        /// The number of observations supplied.
+        n: usize,
+        /// The largest admissible order, or `None` when no order fits.
+        max: Option<usize>,
+        /// Which limit binds.
+        limit: LagLimit,
+    },
     /// An error propagated from the `tsecon-stats` special functions (e.g.
     /// the chi-squared survival function used for p-values).
     Stats(StatsError),
+}
+
+/// The limit a [`DiagError::LagOrderTooLong`] order runs into.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum LagLimit {
+    /// The sample-length bound.
+    Sample {
+        /// The bound's statement, in terms of the order `p`.
+        rule: &'static str,
+        /// The longest order the sample admits (before the size budgets),
+        /// or `None` when none does.
+        sample_max: Option<usize>,
+    },
+    /// The size budgets: the lag design's entries and the multiply-adds of
+    /// its regression (or lag search) that the order asks for.
+    Budget {
+        /// Entries of the lag design.
+        cells: u128,
+        /// Multiply-adds of the regression or lag search.
+        work: u128,
+    },
 }
 
 impl fmt::Display for DiagError {
@@ -139,6 +181,75 @@ impl fmt::Display for DiagError {
                  (the conventional choice is 0.15)"
             ),
             DiagError::InvalidArgument { what } => write!(f, "{what}"),
+            DiagError::LagOrderTooLong {
+                what,
+                param,
+                value,
+                defaulted,
+                n,
+                max,
+                limit,
+            } => {
+                let order = if *defaulted {
+                    format!("the default {param} = {value}")
+                } else {
+                    format!("{param} = {value}")
+                };
+                match limit {
+                    LagLimit::Sample { rule, .. } => write!(
+                        f,
+                        "{what}: {order} is too long for a series of length {n}: {rule}"
+                    )?,
+                    LagLimit::Budget { cells, work } => write!(
+                        f,
+                        "{what}: {order} needs a lag design of {cells} entries and about \
+                         {:.2e} multiply-adds for a series of length {n}, past {} \
+                         (checked before any lag column is built)",
+                        *work as f64,
+                        crate::budget::lag_budget_exceeded(*cells, *work).unwrap_or("the budget"),
+                    )?,
+                }
+                match (max, limit) {
+                    (Some(m), LagLimit::Sample { sample_max, .. }) => {
+                        write!(f, "; pass {param} <= {m}")?;
+                        match sample_max {
+                            Some(s) if s > m => write!(
+                                f,
+                                " (orders {} to {s} fit the sample but exceed the size \
+                                 budgets of 2^26 design entries and 2^35 multiply-adds)",
+                                m + 1
+                            ),
+                            _ => Ok(()),
+                        }
+                    }
+                    (Some(m), LagLimit::Budget { .. }) => {
+                        write!(f, "; pass {param} <= {m}, or a shorter series")
+                    }
+                    (
+                        None,
+                        LagLimit::Sample {
+                            sample_max: Some(_),
+                            ..
+                        },
+                    ) => write!(
+                        f,
+                        "; not even the shortest {param} fits the size budgets of 2^26 \
+                         design entries and 2^35 multiply-adds at this sample length, so \
+                         supply a shorter series"
+                    ),
+                    (
+                        None,
+                        LagLimit::Sample {
+                            sample_max: None, ..
+                        },
+                    ) => write!(f, "; no {param} fits this series, so supply a longer one"),
+                    (None, LagLimit::Budget { .. }) => write!(
+                        f,
+                        "; not even the shortest {param} fits at this sample length, so \
+                         supply a shorter series"
+                    ),
+                }
+            }
             DiagError::Stats(e) => write!(f, "special-function error: {e}"),
         }
     }
