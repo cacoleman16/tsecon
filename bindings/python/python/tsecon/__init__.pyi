@@ -2546,8 +2546,8 @@ def hansen_seo_test(
     Unlike threshold_vecm — whose beta=None grid SEARCH is bivariate-only
     — the null beta here is the linear Johansen ML estimate, defined for
     any k, so k > 2 with an estimated (null) beta is accepted. n_boot is at
-    most 1000000 (the p-value's Monte Carlo standard error is below 0.0005
-    there), refused by name before any replication runs.
+    most 1000000 (the p-value's Monte Carlo standard error is at most
+    0.0005 there), refused by name before any replication runs.
 
     Keys: stat, p_value, threshold, beta, n_boot, nobs, thresholds,
     lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff.
@@ -2672,8 +2672,8 @@ def setar_test(
     (n_boot + 1) from the fixed-regressor wild bootstrap (y* = resid * eta,
     eta iid N(0,1), same fixed regressors, same grid) — seeded, parallel,
     bit-identical at any thread count. n_boot is at most 1000000 (the
-    p-value's Monte Carlo standard error is below 0.0005 there), refused by
-    name before any replication runs.
+    p-value's Monte Carlo standard error is at most 0.0005 there), refused
+    by name before any replication runs.
 
     Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
     ssr_setar, thresholds, f_path, boot_stats.
@@ -2803,7 +2803,7 @@ def threshold_var_test(
     (Davies problem), so NO chi-squared p-value exists; p_value =
     (1 + #{W* >= W})/(n_boot + 1) — seeded, parallel, bit-identical at
     any thread count. n_boot is at most 1000000 (the p-value's Monte Carlo
-    standard error is below 0.0005 there), refused by name before any
+    standard error is at most 0.0005 there), refused by name before any
     replication runs.
 
     Keys: stat, p_value, threshold, delay, threshold_index, n_boot, nobs,

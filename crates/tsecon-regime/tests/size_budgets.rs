@@ -153,7 +153,16 @@ fn markov_refusals_name_k_regimes_and_order_with_the_largest_admissible_values()
             65,
             1,
             "at order = 1 the largest admissible k_regimes is 64",
-            "at k_regimes = 65 the largest admissible order is 0",
+            // order = 0 fits 65 states, but `fit` refuses order = 0, so it
+            // is not offered.
+            "no order >= 1 is admissible at k_regimes = 65",
+        ),
+        (
+            100,
+            2,
+            "at order = 2 the largest admissible k_regimes is 16",
+            "no order >= 1 is admissible at k_regimes = 100 (order = 1 admits at most 64 \
+             regimes)",
         ),
         (
             2,
@@ -171,7 +180,7 @@ fn markov_refusals_name_k_regimes_and_order_with_the_largest_admissible_values()
             1 << 31,
             1,
             "at order = 1 the largest admissible k_regimes is 64",
-            "k_regimes itself must be at most 4096",
+            "no order >= 1 is admissible at k_regimes = 2147483648",
         ),
     ];
     for (k, p, a, b) in cases {
@@ -191,4 +200,72 @@ fn markov_refusals_name_k_regimes_and_order_with_the_largest_admissible_values()
         );
         assert!(msg.contains(a) && msg.contains(b), "{msg}");
     }
+}
+
+/// Every bound the state-space refusal offers is exact, checked against
+/// `expanded_states` itself over a grid that crosses the cap on both axes:
+/// the quoted largest `k_regimes` fits at that `order` and one more does
+/// not, the quoted largest `order` (never 0, which `fit` refuses) fits at
+/// that `k_regimes` and one more does not, and "no order >= 1" is said
+/// exactly when `k_regimes^2 > 4096`.
+#[test]
+fn markov_state_space_bounds_quoted_in_the_refusal_are_exact() {
+    let fits = |k_regimes: usize, order: usize| {
+        MsarSpec {
+            k_regimes,
+            order,
+            switching_ar: false,
+            switching_variance: true,
+        }
+        .expanded_states()
+        .is_ok()
+    };
+    let number_after = |msg: &str, key: &str| -> Option<usize> {
+        let rest = &msg[msg.find(key)? + key.len()..];
+        let digits: String = rest.chars().take_while(char::is_ascii_digit).collect();
+        digits.parse().ok()
+    };
+    let mut refused = 0;
+    for k in (2..=70).chain([4095, 4096, 4097, 1 << 20]) {
+        for order in 0..=13 {
+            if fits(k, order) {
+                continue;
+            }
+            refused += 1;
+            let msg = MsarSpec {
+                k_regimes: k,
+                order,
+                switching_ar: false,
+                switching_variance: true,
+            }
+            .expanded_states()
+            .unwrap_err()
+            .to_string();
+            match number_after(
+                &msg,
+                &format!("at order = {order} the largest admissible k_regimes is "),
+            ) {
+                Some(km) => assert!(fits(km, order) && !fits(km + 1, order), "{msg}"),
+                None => assert!(
+                    !fits(2, order) && msg.contains("no k_regimes >= 2 is admissible"),
+                    "{msg}"
+                ),
+            }
+            match number_after(
+                &msg,
+                &format!("at k_regimes = {k} the largest admissible order is "),
+            ) {
+                Some(pm) => assert!(pm >= 1 && fits(k, pm) && !fits(k, pm + 1), "{msg}"),
+                None => assert!(
+                    !fits(k, 1)
+                        && msg.contains(&format!("no order >= 1 is admissible at k_regimes = {k}")),
+                    "{msg}"
+                ),
+            }
+        }
+    }
+    assert!(
+        refused > 500,
+        "the grid crosses the cap ({refused} refusals)"
+    );
 }

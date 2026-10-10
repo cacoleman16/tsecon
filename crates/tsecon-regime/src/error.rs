@@ -216,12 +216,29 @@ impl fmt::Display for RegimeError {
                 } else {
                     write!(f, "no k_regimes >= 2 is admissible at order = {order}")?;
                 }
+                // Only an order >= 1 is offered: `fit` (and so
+                // markov_switching_ar) refuses order = 0.
                 match max_order_at_regimes(*k_regimes, *max_states) {
-                    Some(p) => write!(
+                    Some(p) if p >= 1 => write!(
                         f,
                         ", and at k_regimes = {k_regimes} the largest admissible order is {p}"
                     ),
-                    None => write!(f, ", and k_regimes itself must be at most {max_states}"),
+                    _ => {
+                        write!(
+                            f,
+                            ", and no order >= 1 is admissible at k_regimes = {k_regimes}"
+                        )?;
+                        // The bound at order = 1 is already stated when
+                        // order = 1 is the order requested.
+                        if *order != 1 {
+                            write!(
+                                f,
+                                " (order = 1 admits at most {} regimes)",
+                                max_regimes_at_order(1, *max_states)
+                            )?;
+                        }
+                        Ok(())
+                    }
                 }
             }
             Self::GridTooLarge {

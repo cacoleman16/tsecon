@@ -39,11 +39,10 @@ pub const MAX_REPLICATION_BYTES: usize = 1 << 31;
 /// replication) accepts: 1 000 000.
 ///
 /// The Monte Carlo standard error of a bootstrap p-value from `B`
-/// replications is `sqrt(p (1 - p) / B) <= 0.5 / sqrt(B)`, which is 0.0005
-/// at the cap — already below the third decimal a p-value is reported to —
-/// so a larger `B` cannot change a reported p-value; it only multiplies the
-/// run time (a request of 2^31 used to abort the process allocating its RNG
-/// streams). Shared by the fixed-regressor bootstrap tests (`setar_test`,
+/// replications is `sqrt(p (1 - p) / B) <= 0.5 / sqrt(B)`, at most 0.0005
+/// at the cap, so a larger `B` buys precision past the third decimal at a
+/// run time that grows linearly (a request of 2^31 used to abort the process
+/// allocating its RNG streams). Shared by the fixed-regressor bootstrap tests (`setar_test`,
 /// `threshold_var_test`, `hansen_seo_test`), which refuse a larger `n_boot`
 /// by name before any work through [`check_test_replications`].
 pub const MAX_TEST_REPLICATIONS: usize = 1_000_000;

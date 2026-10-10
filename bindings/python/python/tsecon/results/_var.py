@@ -39,6 +39,17 @@ def _compiled():
     return _core
 
 
+def _checked_irf_bands():
+    """``tsecon.var_irf_bands`` behind the package's argument pre-flight (the
+    coercion layer), so the facade refuses what the public function refuses
+    and by the same name — e.g. a ``seed`` or ``band_seed`` outside
+    ``[0, 2**64 - 1]``, which the raw compiled call reports as a bare
+    ``OverflowError``. Imported lazily to dodge import cycles."""
+    from .. import var_irf_bands
+
+    return var_irf_bands
+
+
 def _default_names(data: Any, k: int, names: Sequence[str] | None) -> list[str]:
     """Column names: explicit, else a DataFrame's columns, else ``y1..yk``."""
     if names is not None:
@@ -207,7 +218,7 @@ class VARResults(Results):
                 "this VARResults was not built by VARResults.fit(), so the original "
                 "data is unavailable; call tsecon.var_irf_bands(data, ...) instead"
             )
-        return _compiled().var_irf_bands(
+        return _checked_irf_bands()(
             self._data,
             lags=self.lags,
             horizon=horizon,

@@ -15,7 +15,9 @@ pub enum TermStructureError {
     EmptyMaturities,
     /// A maturity was non-finite or non-positive. Nelson-Siegel loadings are
     /// defined for `t > 0` (the `t -> 0` limit is handled internally only for
-    /// the loadings themselves, never as a data maturity).
+    /// the loadings themselves, never as a data maturity), and the JSZ / ACM
+    /// recursions start at the one-period maturity. The message names
+    /// `maturities[i]`, the Python keyword.
     InvalidMaturity {
         /// Zero-based index of the offending maturity.
         index: usize,
@@ -198,8 +200,9 @@ impl fmt::Display for TermStructureError {
             ),
             TermStructureError::InvalidMaturity { index, value } => write!(
                 f,
-                "maturity[{index}] = {value} is invalid: Nelson-Siegel loadings \
-                 require strictly positive, finite maturities"
+                "maturities[{index}] = {value} is invalid: every maturity must be \
+                 strictly positive and finite (the yield-curve loadings and affine \
+                 recursions are defined only at positive maturities)"
             ),
             TermStructureError::InvalidLambda { what, value } => write!(
                 f,

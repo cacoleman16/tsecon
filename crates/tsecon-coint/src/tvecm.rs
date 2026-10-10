@@ -1257,9 +1257,8 @@ fn regime_ols(design: &Design, rows: &[usize]) -> Result<RegimeOlsParts, CointEr
 /// replication, and a merely huge one runs for hours.
 const N_BOOT_CAP: CointError = CointError::InvalidArgument {
     what: "n_boot must be at most 1000000: the bootstrap p-value's Monte Carlo \
-           standard error is already below 0.0005 there, so more replications \
-           cannot change the reported p-value (checked before any replication \
-           runs); pass n_boot <= 1000000",
+           standard error, at most 0.5 / sqrt(n_boot), is at most 0.0005 there \
+           (checked before any replication runs); pass n_boot <= 1000000",
 };
 
 /// The Hansen-Seo (2002) sup-LM test of linear cointegration against

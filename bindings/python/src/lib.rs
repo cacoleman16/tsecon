@@ -6829,8 +6829,8 @@ fn threshold_vecm<'py>(
 /// SEARCH is bivariate-only — the null beta here is the linear Johansen
 /// ML estimate, defined for any k, so k > 2 with an estimated (null)
 /// beta is accepted. `n_boot` is at most 1000000 (the p-value's Monte
-/// Carlo standard error is below 0.0005 there), refused by name before any
-/// replication runs.
+/// Carlo standard error is at most 0.0005 there), refused by name before
+/// any replication runs.
 ///
 /// Returns `stat`, `p_value`, `threshold` (the sup's location), `beta`
 /// (the vector used), `n_boot`, `nobs`, the candidate grid `thresholds`
@@ -7338,8 +7338,8 @@ fn setar<'py>(
 /// the sup; `p_value = (1 + #{F* >= F}) / (n_boot + 1)`. Replications run
 /// in parallel with one seeded RNG substream each, so the p-value is
 /// bit-identical for a given `seed` at any thread count. `n_boot` is at
-/// most 1000000 (the p-value's Monte Carlo standard error is below 0.0005
-/// there), refused by name before any replication runs.
+/// most 1000000 (the p-value's Monte Carlo standard error is at most
+/// 0.0005 there), refused by name before any replication runs.
 ///
 /// Returns stat, p_value, the threshold attaining the sup, delay, n_boot,
 /// nobs, ssr_linear, ssr_setar, the candidate grid (`thresholds`) with the
@@ -7712,8 +7712,8 @@ fn threshold_var<'py>(
 /// re-residualizes on the same fixed regressors, and recomputes the same
 /// sup; `p_value` = (1 + #{W* >= W}) / (n_boot + 1) — seeded, parallel,
 /// bit-identical at any thread count; `n_boot` is at most 1000000 (the
-/// p-value's Monte Carlo standard error is below 0.0005 there), refused by
-/// name before any replication runs. (R tsDyn's TVAR.LRtest is a
+/// p-value's Monte Carlo standard error is at most 0.0005 there), refused
+/// by name before any replication runs. (R tsDyn's TVAR.LRtest is a
 /// DIFFERENT convention — sup-LR with a residual bootstrap; same
 /// question, non-comparable statistic values.)
 ///

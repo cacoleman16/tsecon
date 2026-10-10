@@ -465,8 +465,8 @@ fn validate_common(y: &[f64], p: usize, trim: f64) -> Result<(), RegimeError> {
 /// What a refused bootstrap replication count must satisfy (the shared
 /// [`MAX_TEST_REPLICATIONS`] cap of the fixed-regressor bootstrap tests).
 const N_BOOT_CAP: &str = "n_boot <= 1000000 (the bootstrap p-value's Monte Carlo standard \
-                          error is already below 0.0005 there, so more replications cannot \
-                          change the reported p-value; checked before any replication runs)";
+                          error, at most 0.5 / sqrt(n_boot), is at most 0.0005 there; checked \
+                          before any replication runs)";
 
 /// The refusal of a bootstrap replication count, naming `n_boot` and the
 /// largest admissible value.

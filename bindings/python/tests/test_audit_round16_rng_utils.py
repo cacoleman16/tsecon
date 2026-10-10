@@ -206,6 +206,15 @@ def test_acm_term_premium_applies_the_jsz_maturity_cap(huge):
         tsecon.acm_term_premium(_yields(), mats, n_factors=2)
 
 
+def test_acm_term_premium_zero_maturity_names_the_keyword():
+    # The sibling refusal of the same validator: it read "maturity[7] ...
+    # Nelson-Siegel loadings require ..." for an ACM grid.
+    mats = list(range(1, 8)) + [0]
+    with pytest.raises(ValueError, match=r"^maturities\[7\] = 0 is invalid") as exc:
+        tsecon.acm_term_premium(_yields(), mats, n_factors=2)
+    assert "Nelson-Siegel" not in str(exc.value)
+
+
 def test_acm_term_premium_cap_itself_is_admissible():
     mats = list(range(1, 8)) + [120_000]
     r = tsecon.acm_term_premium(_yields(), mats, n_factors=2)
@@ -220,7 +229,10 @@ def test_acm_term_premium_cap_itself_is_admissible():
         (1, 1, ["k_regimes = 1", "k_regimes >= 2"]),
         (65, 1, ["k_regimes = 65 and order = 1", "largest admissible k_regimes is 64"]),
         (3, 20, ["k_regimes = 3 and order = 20", "at k_regimes = 3 the largest admissible order is 6"]),
-        (2**31, 1, ["k_regimes = 2147483648 and order = 1", "k_regimes itself must be at most 4096"]),
+        (100, 1, ["at order = 1 the largest admissible k_regimes is 64",
+                  "no order >= 1 is admissible at k_regimes = 100"]),
+        (2**31, 1, ["k_regimes = 2147483648 and order = 1",
+                    "no order >= 1 is admissible at k_regimes = 2147483648"]),
     ],
 )
 def test_markov_switching_ar_refusals_name_k_regimes_and_order(k_regimes, order, needles):
@@ -229,6 +241,8 @@ def test_markov_switching_ar_refusals_name_k_regimes_and_order(k_regimes, order,
     msg = str(exc.value)
     assert all(n in msg for n in needles), msg
     assert "k^(order+1)" not in msg and "invalid model specification" not in msg, msg
+    # order = 0 is refused by the fit, so the refusal never offers it.
+    assert "largest admissible order is 0" not in msg, msg
 
 
 # --------------------------------------------------------------------- seeds
@@ -284,3 +298,32 @@ def test_every_in_range_seed_is_still_accepted():
     assert r["n_boot"] == 5
     doc = _stub_doc("bootstrap_indices")
     assert "0 <= seed <= 2**64 - 1" in doc and "268435456" in doc
+
+
+def test_var_results_irf_bands_refuses_out_of_range_seeds_by_name():
+    # The VARResults facade forwarded to the raw compiled function, past the
+    # seed pre-flight, so seed=2**64 there was still a bare OverflowError.
+    from tsecon.results import VARResults
+
+    res = VARResults.fit(_var2(), lags=1)
+    with pytest.raises(ValueError, match=r"var_irf_bands: seed=18446744073709551616 is outside"):
+        res.irf_bands(method="bootstrap", n_boot=5, seed=2**64)
+    with pytest.raises(ValueError, match=r"var_irf_bands: band_seed=-1 is outside"):
+        res.irf_bands(band="sup-t", band_seed=-1)
+    # In range, the facade still returns exactly the module-level dict.
+    a = res.irf_bands(horizon=4, method="bootstrap", n_boot=20, seed=SEED_MAX)
+    b = tsecon.var_irf_bands(_var2(), lags=1, horizon=4, method="bootstrap", n_boot=20, seed=SEED_MAX)
+    for key in ("point", "lower", "upper"):
+        np.testing.assert_array_equal(a[key], b[key])
+
+
+def test_girf_draw_streams_past_the_materialization_cap_still_run():
+    # var_girf's own memory budget admits more than 2^24 draw streams per
+    # history; its engine used to spawn them all up front, and the stream
+    # cap then refused such a call with a message about the 2^32 spawn
+    # limit. The streams are now derived as each draw is simulated.
+    y = _var2(150)[:, :1]
+    n_draws = 2**24 + 2
+    r = tsecon.var_girf(y, 1, horizon=0, n_draws=n_draws, histories=1, seed=3, antithetic=False)
+    assert r["n_draws"] == n_draws and r["n_effective_draws"] == n_draws
+    assert np.isfinite(np.asarray(r["girf"])).all()

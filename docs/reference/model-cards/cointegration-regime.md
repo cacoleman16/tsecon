@@ -979,8 +979,8 @@ choose *which* nonlinear model — STAR or Markov-switching may fit better;
 power falls when the true delay is not the one tested (search delays in
 `setar` but test at the chosen delay honestly: pre-testing distorts size).
 At the other end, `n_boot` is capped at 1,000,000: the p-value's Monte Carlo
-standard error is `sqrt(p(1 - p)/B) <= 0.5/sqrt(B)`, below 0.0005 there, so
-more draws cannot move a reported p-value; a larger `n_boot` is refused by name
+standard error is `sqrt(p(1 - p)/B) <= 0.5/sqrt(B)`, at most 0.0005 there,
+while the run time grows linearly in `B`; a larger `n_boot` is refused by name
 before any replication runs (the same cap applies to `threshold_var_test` and
 `hansen_seo_test`).
 
