@@ -99,8 +99,9 @@ pub use long_run::{
 };
 pub use max_share::{max_share_shock, MaxShareResult, MaxShareSign, MaxShareWeighting};
 pub use narrative::{
-    ContributionRule, HdSetSummary, NarrativeDiagnostics, NarrativeRestriction,
-    NarrativeRestrictionSet, NarrativeSampleResult, NarrativeSampler,
+    narrative_weight_draw_work, ContributionRule, HdSetSummary, NarrativeDiagnostics,
+    NarrativeRestriction, NarrativeRestrictionSet, NarrativeSampleResult, NarrativeSampler,
+    NARRATIVE_WEIGHT_WORK,
 };
 pub use nongaussian::{nongaussian_svar, Contrast, NonGaussianSvar, OrderBy};
 pub use proxy::{proxy_svar, ProxySvarResult};
@@ -113,6 +114,7 @@ pub use sampler::{
 };
 pub use sign::{Sign, SignRestriction, SignRestrictionSet};
 pub use structural_fevd::{structural_fevd, structural_fevd_from_theta};
+pub use summary::check_irf_horizon;
 pub use zero::{zero_constrained_rotation, ZeroRestriction, ZeroRestrictionSet};
 pub use zero_sampler::{ZeroSignSampleResult, ZeroSignSampler};
 

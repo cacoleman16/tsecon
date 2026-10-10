@@ -1,0 +1,96 @@
+structural_fevd:horizon: quoted max horizon <= 2886401
+  horizon=2886401: RESULT ok 5.93s maxrss 2273 MB
+  horizon=2886402: named=True RESULT raised 0.00s ValueError: horizon = 2886402 is too large: the (horizon + 1) n x n impulse-response matrices (and the nested lists returned for them) would
+structural_fevd_impact:horizon: quoted max horizon <= 1851278
+  horizon=1851278: RESULT ok 8.27s maxrss 2237 MB
+  horizon=1851279: named=True RESULT raised 0.00s ValueError: horizon = 1851279 is too large: the (horizon + 1) n x n impulse-response matrices (and the nested lists returned for them) would
+hetero_svar:horizon: quoted max horizon <= 2886401
+  horizon=2886401: RESULT ok 5.88s maxrss 2097 MB
+  horizon=2886402: named=True RESULT raised 0.00s ValueError: horizon = 2886402 is too large: the (horizon + 1) n x n impulse-response matrices (and the nested lists returned for them) would
+max_share_svar:horizon: quoted max horizon <= 1851278
+  horizon=1851278: RESULT ok 4.20s maxrss 1444 MB
+  horizon=1851279: named=True RESULT raised 0.00s ValueError: horizon = 1851279 is too large: the (horizon + 1) n x n impulse-response matrices (and the nested lists returned for them) would
+proxy_svar:horizon: quoted max horizon <= 1851278
+  horizon=1851278: RESULT ok 3.42s maxrss 992 MB
+  horizon=1851279: named=True RESULT raised 0.00s ValueError: horizon = 1851279 is too large: the (horizon + 1) n x n impulse-response matrices (and the nested lists returned for them) would
+nongaussian_svar:horizon: quoted max horizon <= 2886401
+  horizon=2886401: RESULT ok 4.92s maxrss 2096 MB
+  horizon=2886402: named=True RESULT raised 0.00s ValueError: horizon = 2886402 is too large: the (horizon + 1) n x n impulse-response matrices (and the nested lists returned for them) would
+favar:horizon: quoted max horizon <= 3441479
+  horizon=3441479: RESULT ok 20.23s maxrss 1802 MB
+  horizon=3441480: named=True RESULT raised 0.00s ValueError: horizon = 3441480 is too large: the policy-shock responses ((horizon + 1) factor-VAR moving-average matrices, and (horizon + 1) 
+bvar_irf_draws:horizon: quoted max horizon <= 118775
+  horizon=118775: RESULT ok 7.22s maxrss 2700 MB
+  horizon=118776: named=False RESULT raised 0.00s ValueError: n_draws = 20 is too large: the kept posterior draws (n_draws * (horizon + 1) impulse-response matrices of n x n, each also retur
+bvar_irf_draws:n_draws: quoted max n_draws <= 263172
+  n_draws=263172: RESULT ok 8.44s maxrss 2706 MB
+  n_draws=263173: named=True RESULT raised 0.00s ValueError: n_draws = 263173 is too large: the kept posterior draws (n_draws * (horizon + 1) impulse-response matrices of n x n, each also r
+bvar_ssvs:horizon: quoted max horizon <= 38902
+  horizon=38902: RESULT ok 8.36s maxrss 2721 MB
+  horizon=38903: named=False RESULT raised 0.00s ValueError: n_draws = 120 is too large: the SSVS draws (per chain, the retained-sweep traces and ceil((n_draws - burn) / thin) kept draws of
+bvar_ssvs:n_draws: quoted max n_draws <= 764793
+  n_draws=764793: RESULT ok 18.31s maxrss 2867 MB
+  n_draws=764794: named=True RESULT raised 0.00s ValueError: n_draws = 764794 is too large: the SSVS draws (per chain, the retained-sweep traces and ceil((n_draws - burn) / thin) kept draws
+bvar_ssvs:n_chains: quoted max n_chains <= 7645
+  n_chains=7645: RESULT ok 23.49s maxrss 2866 MB
+  n_chains=7646: named=True RESULT raised 0.00s ValueError: n_chains = 7646 is too large: the SSVS draws (per chain, the retained-sweep traces and ceil((n_draws - burn) / thin) kept draws 
+sign:horizon: quoted max horizon <= 209713
+  horizon=209713: RESULT ok 15.55s maxrss 2353 MB
+  horizon=209714: named=False RESULT raised 0.00s ValueError: n_draws = 20 is too large: the posterior draws (per draw one RNG substream and (horizon + 1) n x n structural impulse-response m
+sign:n_draws: quoted max n_draws <= 1551631
+  n_draws=1551631: RESULT ok 35.28s maxrss 2967 MB
+  n_draws=1551632: named=True RESULT raised 0.00s ValueError: n_draws = 1551632 is too large: the posterior draws (per draw one RNG substream and (horizon + 1) n x n structural impulse-respo
+zero_sign:n_draws: quoted max n_draws <= 1542714
+  n_draws=1542714: RESULT ok 36.70s maxrss 2574 MB
+  n_draws=1542715: named=True RESULT raised 0.00s ValueError: n_draws = 1542715 is too large: the posterior draws (per draw one RNG substream and (horizon + 1) n x n structural impulse-respo
+fry_pagan:n_draws: quoted max n_draws <= 1551631
+  n_draws=1551631: RESULT ok 42.19s maxrss 2511 MB
+  n_draws=1551632: named=True RESULT raised 0.00s ValueError: n_draws = 1551632 is too large: the posterior draws (per draw one RNG substream and (horizon + 1) n x n structural impulse-respo
+narrative:n_draws: quoted max n_draws <= 994193
+  n_draws=994193: RESULT ok 27.58s maxrss 2470 MB
+  n_draws=994194: named=True RESULT raised 0.00s ValueError: n_draws = 994194 is too large: the posterior draws (per draw one RNG substream and (horizon + 1) n x n structural impulse-respon
+robust:horizon: quoted max horizon <= 200923
+  horizon=200923: RESULT ok 34.04s maxrss 2426 MB
+  horizon=200924: named=False RESULT raised 0.00s ValueError: n_draws = 20 is too large: the identified-set bounds (per draw one RNG substream and a lower and an upper bound for each of the 
+robust:n_draws: quoted max n_draws <= 6882804
+  n_draws=6882804: RESULT died rc=124 
+  n_draws=6882805: named=True RESULT raised 0.00s ValueError: n_draws = 6882805 is too large: the identified-set bounds (per draw one RNG substream and a lower and an upper bound for each of
+hd_sign:n_draws: quoted max n_draws <= 47523
+  n_draws=47523: RESULT ok 45.38s maxrss 2406 MB
+  n_draws=47524: named=True RESULT raised 0.00s ValueError: n_draws = 47524 is too large: the posterior draws (per draw one RNG substream, (horizon + 1) n x n structural impulse-response m
+hd_sign_h:n_draws: quoted max n_draws <= 25996
+  n_draws=25996: RESULT ok 27.80s maxrss 1337 MB
+  n_draws=25997: named=True RESULT raised 0.00s ValueError: n_draws = 25997 is too large: the posterior draws (per draw one RNG substream, (horizon + 1) n x n structural impulse-response m
+hd_sign:horizon: quoted max horizon <= 209549
+  horizon=209549: RESULT ok 10.44s maxrss 168 MB
+  horizon=209550: named=False RESULT raised 0.00s ValueError: n_draws = 20 is too large: the posterior draws (per draw one RNG substream, (horizon + 1) n x n structural impulse-response matr
+proxy_bands:horizon: quoted max horizon <= 269511
+  horizon=269511: RESULT ok 5.78s maxrss 1965 MB
+  horizon=269512: named=False RESULT raised 0.00s ValueError: n_boot = 20 is too large: the bootstrap replications (per replication one RNG substream, its (horizon + 1) n x n moving-average 
+proxy_bands:n_boot: quoted max n_boot <= 815908
+  n_boot=815908: RESULT ok 32.43s maxrss 732 MB
+  n_boot=815909: named=True RESULT raised 0.00s ValueError: n_boot = 815909 is too large: the bootstrap replications (per replication one RNG substream, its (horizon + 1) n x n moving-aver
+proxy_ar_mc:rf_draws: quoted max rf_draws <= 12782562
+  rf_draws=12782562: RESULT ok 32.98s maxrss 2093 MB
+  rf_draws=12782563: named=False RESULT raised 0.00s ValueError: invalid argument: rf_draws must be an even number of at least 32 (the second-order simulation works in antithetic pairs; 256 is 
+proxy_ar_delta:horizon: quoted max horizon <= 10903
+  horizon=10903: RESULT ok 24.17s maxrss 84 MB
+  horizon=10904: named=True RESULT raised 0.00s ValueError: horizon = 10904 is too large: the delta-method Jacobians Gamma_1..Gamma_horizon (their work is quadratic in horizon) would excee
+narrative_w:n_weight_draws: quoted max n_weight_draws <= 2120971
+  n_weight_draws=2120971: RESULT ok 67.46s maxrss 43 MB
+  n_weight_draws=2120972: named=False RESULT raised 0.00s ValueError: n_draws = 10 is too large: the narrative importance weights (n_draws * n_weight_draws S-rotations, each recovering the T_eff str
+narrative_w4:n_weight_draws: quoted max n_weight_draws <= 201075
+  n_weight_draws=201075: RESULT ok 39.66s maxrss 44 MB
+  n_weight_draws=201076: named=False RESULT raised 0.00s ValueError: n_draws = 40 is too large: the narrative importance weights (n_draws * n_weight_draws S-rotations, each recovering the T_eff str
+narrative_nr:n_draws: quoted max n_draws <= 106048
+  n_draws=106048: RESULT ok 66.69s maxrss 250 MB
+  n_draws=106049: named=True RESULT raised 0.00s ValueError: n_draws = 106049 is too large: the narrative importance weights (n_draws * n_weight_draws S-rotations, each recovering the T_eff
+hd_sign_nr:n_draws: quoted max n_draws <= 47523
+  n_draws=47523: RESULT ok 91.37s maxrss 1875 MB
+  n_draws=47524: named=True RESULT raised 0.00s ValueError: n_draws = 47524 is too large: the posterior draws (per draw one RNG substream, (horizon + 1) n x n structural impulse-response m
+proxy_ar_mc:horizon: quoted max horizon <= 268166
+  horizon=268166: RESULT ok 125.21s maxrss 1855 MB
+  horizon=268167: named=False RESULT raised 0.00s ValueError: rf_draws = 256 is too large: the moving-average path, its returned lists and the second-order simulation (rf_draws rows of (hori
+bvar_hier:n_grid: quoted max n_grid <= 10000
+  n_grid=10000: RESULT ok 0.37s maxrss 44 MB
+  n_grid=10001: named=True RESULT raised 0.00s ValueError: n_grid = 10001 is too large: the lambda1 pre-scan grid (one marginal-likelihood evaluation per point, only to seed the Nelder-Me

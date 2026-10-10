@@ -59,7 +59,9 @@ same OLS denominator as here) — the GLP-exact choice. How much it matters: on
 GLP's own data the hierarchically selected tightness is 0.26 under AR(4) and
 0.42 under AR(1), which is the entire gap to their published Figure-1 modes
 (see the [GLP replication](../../examples/replication-glp-prior-selection.md)).
-Any `scale_ar ≥ 1` the sample supports is accepted; the default is unchanged,
+Any `scale_ar ≥ 1` the sample supports ($2\,$`scale_ar`$\,+ 2$ rows) is
+accepted, and a longer one is refused naming `scale_ar` and the largest order
+the sample supports; the default is unchanged,
 so existing results do not move. The same argument appears on `bvar_irf_draws`
 and `bvar_hierarchical` (the Bayesian-SVAR wrappers — `sign_restricted_svar`
 and relatives — keep the AR(4) default; their deliberately minimal prior
@@ -161,7 +163,7 @@ collapsed selection covered **~6% at nominal 90%**. The GLP hyperprior
 eliminated the collapse entirely in the same experiment (coverage 0.80–0.85).
 If you use `"none"`, treat a `lambda1_opt` at the bottom of the box as a red
 flag, not a selection. `lambda1_lo`/`lambda1_hi` bracket the search; `n_grid`
-sets the pre-scan resolution; `delta`/`lambda0`/`lambda3` are the fixed
+sets the pre-scan resolution (at most 10000 points, refused by name above); `delta`/`lambda0`/`lambda3` are the fixed
 Minnesota dials (as in `bvar_fit`). `scale_ar` (0.4.0+) selects the
 residual-scale convention described on the `bvar_fit` card above — it moves
 the *location* of the selected tightness, not just its scale: `scale_ar=1`

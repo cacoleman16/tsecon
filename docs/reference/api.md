@@ -1066,6 +1066,9 @@ Minnesota-NIW conjugate BVAR posterior + log marginal likelihood. scale_ar sets 
     sd = np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1)),
     a (k, K) array aligned with posterior_mean_coefs.
 
+    A sample too short for the AR(scale_ar) scale regressions (2*scale_ar + 2
+    rows) is refused naming scale_ar and the largest order the sample supports.
+
     Further arguments, with defaults: `lags` (2), `lambda0` (100.0),
     `lambda1` (0.2), `lambda3` (1.0), `delta` (0.0).
 
@@ -1088,6 +1091,13 @@ def bvar_irf_draws(
 ```
 
 Posterior Cholesky-IRF draws [draw][h][variable][shock] for credible bands.
+
+    A sample too short for the AR(scale_ar) scale regressions (2*scale_ar + 2
+    rows) is refused naming scale_ar and the largest order the sample supports.
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` or `n_draws` past it is refused by
+    name with the largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `horizon` (16), `n_draws`
     (500), `seed` (0), `lambda0` (100.0), `lambda1` (0.2), `lambda3` (1.0),
@@ -1120,6 +1130,11 @@ Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likeliho
     `lambda1_fixed_log_ml`, `lambda1_opt`, `lambda3_opt`,
     `log_marginal_likelihood`, `log_posterior`, `n_evals`,
     `posterior_mean_coefs`, `sigma_posterior_mean`.
+
+    `n_grid` is capped at 10000 grid points (refused by name past it). A sample
+    too short for the AR(scale_ar) scale regressions (2*scale_ar + 2 rows) is
+    refused naming scale_ar and the largest order the sample supports, before
+    the search, instead of surfacing as a non-converged optimization.
 
     Further arguments, with defaults: `lags` (2), `delta` (0.0), `lambda0`
     (100.0), `lambda3` (1.0), `lambda1_init` (0.2), `lambda1_lo` (0.0001),
@@ -1154,6 +1169,12 @@ SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VA
 
     Returned keys: `coef_mean`, `diagnostics`, `inclusion_prob`,
     `irf_draws`, `sigma_mean`.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per chain, the retained-sweep traces and the
+    returned lists, counted as real storage) is budgeted at 2^28 values (2
+    GiB), and a `horizon`, `n_draws` or `n_chains` past it is refused by name
+    with the largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `n_draws` (10000), `burn`
     (2000), `seed` (0), `c0` (0.1), `c1` (10.0), `prior_inclusion` (0.5),
@@ -1657,6 +1678,11 @@ Sign-restricted Bayesian SVAR: identified-set bands + acceptance diagnostics.
     `probs=[0.05,0.16,0.50,0.84,0.95]`, the identified-set envelope
     (`set_min`/`set_max`), and `diagnostics`.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2).
 
@@ -1699,6 +1725,11 @@ Zero + sign restricted Bayesian SVAR: exact zeros by construction + sign rejecti
     reflects posterior (not identified-set) uncertainty since the rotation is
     fixed. The ARW weight is exactly 1 for impact-only zero patterns.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2).
 
@@ -1714,7 +1745,7 @@ def structural_fevd(
     horizon: int = ...,
     trend: str = ...,
     impact: _ArrayLike | Sequence[Sequence[float]] | None = ...,
-    sigma: str = ...,
+    sigma: str | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -1727,10 +1758,21 @@ Structural FEVD for an arbitrary structural impact matrix A0 (the gap
     callable's `impact` (e.g. `long_run_svar(...)["impact"]`) passes straight
     in. If None,
     A0 is the lower Cholesky of the innovation covariance and the result equals
-    `var_fevd` exactly. `sigma` ("dfadj"|"mle") sets the default Cholesky's df
-    scaling; the FEVD shares are invariant to it (it only rescales the reported
-    `impact`). Returns `fevd` [horizon+1][variable][shock] (each row sums to 1)
-    and `impact` [n][n] (the A0 used).
+    `var_fevd` exactly. `sigma` ("dfadj"|"mle"; None, the default, means
+    "dfadj") sets the default Cholesky's df scaling; the FEVD shares are
+    invariant to it (it only rescales the reported `impact`). Returns `fevd`
+    [horizon+1][variable][shock] (each row sums to 1) and `impact` [n][n] (the
+    A0 used).
+
+    `sigma` is validated first and is refused, naming it, whenever it is
+    passed together with `impact` (even as "dfadj") -- it only scales the
+    default Cholesky, so it cannot act there. `lags=0` is refused naming lags
+    (unlike `var_fevd`, which returns the static Cholesky shares of a VAR(0)).
+    Sizes are checked before anything is allocated: the working set (padded matrices
+    and the returned lists, counted as real storage) is budgeted at 2^28 values
+    (2 GiB), and a `horizon` past it is refused by name with the largest value
+    that fits. The shares are computed on row-scaled responses, so an impact of
+    any finite scale gives the scale-1 shares.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
@@ -1797,6 +1839,19 @@ Historical decomposition: per-(time, variable, shock) structural-shock contribut
       {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
        "sign":"+"|"-"}
 
+    An unknown `identification` is refused as such before any keyword that
+    depends on it. Under "sign", `n_weight_draws` is only read with
+    narrative_restrictions and is refused as inert without them; the working
+    set (padded matrices, one RNG substream and T_eff contribution matrices per
+    draw and the returned lists, counted as real storage) is budgeted at 2^28
+    values (2 GiB) before anything is allocated, refusing a `horizon` or
+    `n_draws` past it by name with the largest value that fits; and the
+    narrative weight loop is capped at 2^35 multiply-adds (naming
+    n_weight_draws). Under "impact", an invertible impact whose shocks
+    overflow, or whose `shock_covariance` leaves the double range (entries many
+    orders of magnitude below or above the residuals), is refused naming impact
+    with a rescale hint; the singularity test is scale-invariant.
+
     Further arguments, with defaults: `horizon` (None), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200),
     `impact` (None).
@@ -1843,6 +1898,16 @@ Narrative sign-restricted Bayesian SVAR (Antolín-Díaz & Rubio-Ramírez 2018).
     `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
     weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits. The
+    narrative weight loop, n_draws * n_weight_draws * (T_eff*n^2 + (h + 3)*n^3)
+    multiply-adds, is capped at 2^35 (at most about a minute), refused
+    naming n_weight_draws (or n_draws) with the largest value that fits.
+    `n_weight_draws` is only read under narrative_restrictions: passed
+    (non-default) without them it is refused as inert.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
 
@@ -1887,6 +1952,11 @@ Fry-Pagan (2011) median-target SVAR: the single coherent draw closest to the med
     of the identified set, dependent on the informative Haar prior -- not a
     prior-free point estimate.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `lambda1` (0.2).
 
@@ -1922,6 +1992,11 @@ Giacomini-Kitagawa prior-robust identified-set bounds for a sign-restricted SVAR
     2018 closed form); with multiple jointly-restricted shocks each bound is that
     shock's marginal identified set — a conservative outer approximation of the
     joint set, since the cross-shock orthogonality coupling is not imposed.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `n_draws` (500), `seed`
     (0), `lambda1` (0.2).
@@ -2139,6 +2214,11 @@ Max-share / maximum-FEV structural shock (Uhlig 2004; Francis et al 2014; Barsky
     `fev_share` [horizon+1], and `eigenvalues` (ascending; length k, or k-1 when
     `exclude_impact`).
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
 ### `proxy_svar_bands`
@@ -2183,6 +2263,11 @@ Confidence bands for a proxy-SVAR impulse response.
     `n_failed`, `n_proxy`, `n_used`, `point`, `point_first_stage_f`,
     `point_gamma_norm`, `point_reliability`, `reliability_draws`,
     `rho_draws`, `se`, `upper`, `upper_efron`, `validity_note`.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per replication and the returned lists, counted
+    as real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_boot` past it is refused by name with the largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
     ("c"), `alpha` (0.1), `n_boot` (2000), `seed` (0), `block_length`
@@ -2252,6 +2337,15 @@ Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
     `critical_value`, `first_stage_f`, `impact`, `level`, `n_proxy`,
     `reduced_form_uncertainty`.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits. The delta-method Jacobians cost
+    horizon*(horizon+1)/2 * n*lags * n*(n+1) multiply-adds, quadratic in
+    horizon, capped at 2^32 (under half a minute; refused naming horizon), and the
+    second-order simulation's rf_draws rows of (horizon+1)*n responses share
+    the memory budget (refused naming horizon or rf_draws).
+
     Further arguments, with defaults: `lags` (2), `norm_var` (0), `unit`
     (1.0), `trend` ("c"), `variance` ("hc0"), `hac_lags` (None).
 
@@ -2286,6 +2380,11 @@ Proxy SVAR (external-instrument SVAR-IV): one shock from one instrument.
     Point estimate only; see proxy_svar_bands for moving-block bands
     (strong instrument) and proxy_ar_sets for weak-IV-robust sets (use when
     first_stage["weak_mop_tau10"] is True).
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
 
     Further arguments, with defaults: `trend` ("c").
 
@@ -2368,6 +2467,12 @@ Non-Gaussian / independent-component SVAR identification (Lanne-Meitz-Saikkonen 
     `converged` (bool), `n_iter` (int), and `order` [k] (raw FastICA index per
     identified position).
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits. `lags=0` is refused naming lags before the FastICA
+    iterations.
+
     Further arguments, with defaults: `lags` (2), `trend` ("c"), `max_iter`
     (200), `tol` (1e-08).
 
@@ -2408,6 +2513,11 @@ SVAR identification through heteroskedasticity (Rigobon 2003; Lanne-Lutkepohl 20
     carry no economic labels. Standard errors on B/Theta_h are not provided in
     this closed-form build. The >2-regime and Markov-switching/GARCH variants
     are deferred.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
 
     Further arguments, with defaults: `trend` ("c").
 
@@ -4039,6 +4149,11 @@ Two-step factor-augmented VAR (Bernanke-Boivin-Eliasz 2005).
 
     factors (T x r), params, sigma_u, n_factors, n_endog, policy_index, and
     the recursive policy-shock IRFs irf_panel (N x horizon+1) / irf_policy.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c"),
     `slow_indices` (None), `orth` (True).

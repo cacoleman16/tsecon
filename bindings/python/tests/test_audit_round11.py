@@ -199,7 +199,9 @@ CALLS = {
     ),
     "historical_decomposition[sign]": (
         (_var3(),),
-        {"identification": "sign", "restrictions": POS, "n_draws": 40, "n_weight_draws": 20, "seed": 0},
+        # n_weight_draws is only read under narrative_restrictions (refused
+        # as inert without them since audit round 16), so it is not passed.
+        {"identification": "sign", "restrictions": POS, "n_draws": 40, "seed": 0},
     ),
     "narrative_svar": ((_var3(), POS), {"horizon": 6, "n_draws": 40, "seed": 0}),
     "gpd_fit": ((np.abs(np.random.default_rng(0).standard_t(4, 200)),), {}),

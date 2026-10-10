@@ -124,15 +124,49 @@ def _is_pandas(x: object) -> bool:
     return hasattr(x, "to_numpy") and not isinstance(x, np.ndarray)
 
 
-def _pandas_to_array(x) -> np.ndarray:
-    """A pandas/polars object as a C-contiguous ``float64`` array — unless it
-    holds complex numbers, which are handed on as the complex array they are
-    (as a complex ndarray argument is), so the boundary refuses them by name
-    instead of the cast silently dropping the imaginary part."""
-    arr = x.to_numpy()
-    if getattr(arr, "dtype", None) is not None and arr.dtype.kind == "c":
+def _is_real_scalar(e: object) -> bool:
+    """A Python or NumPy real number (bools included), never a complex,
+    ``Decimal``, string, datetime or missing-value marker."""
+    return isinstance(e, (bool, int, float, np.bool_, np.integer, np.floating))
+
+
+def _real_object_as_float(arr: np.ndarray) -> np.ndarray:
+    """An object array whose every element is a real number, as float64.
+
+    Anything else -- a complex, ``Decimal``, string or ``pd.NA`` element, or
+    an integer too wide for a double -- leaves the array unchanged, so the
+    binding refuses it exactly as it refuses the same values in an ndarray.
+    """
+    if arr.dtype != object or arr.ndim == 0 or arr.size == 0:
         return arr
-    return np.ascontiguousarray(arr, dtype=np.float64)
+    if not all(_is_real_scalar(e) for e in arr.flat):
+        return arr
+    try:
+        return np.ascontiguousarray(arr, dtype=np.float64)
+    except (OverflowError, TypeError, ValueError):
+        return arr
+
+
+def _pandas_to_numpy(x: object) -> object:
+    """A pandas (or polars) object as an ndarray, cast to float64 only when
+    the values are real numbers.
+
+    A real numeric frame (bool, integer, float, or nullable columns whose
+    ``to_numpy`` is an object array of plain floats) becomes C-contiguous
+    float64, as before. Any other dtype -- complex, datetime, strings, an
+    object column of ``Decimal`` -- is returned uncast, so the ndarray rules
+    apply: the binding refuses it, naming the argument, instead of the float
+    cast truncating a complex frame to its real part, reading datetimes as
+    epoch nanoseconds or numeric strings as numbers (audit round 16).
+    """
+    arr = x.to_numpy()
+    if not isinstance(arr, np.ndarray):
+        return arr
+    if arr.dtype.kind in "biuf":
+        return np.ascontiguousarray(arr, dtype=np.float64)
+    if arr.dtype == object:
+        return _real_object_as_float(arr)
+    return arr
 
 
 def _coerce(x: object) -> object:
@@ -150,7 +184,7 @@ def _coerce(x: object) -> object:
             return np.ascontiguousarray(x, dtype=np.float64)
         return x
     if _is_pandas(x):
-        return _pandas_to_array(x)
+        return _pandas_to_numpy(x)
     return x
 
 
@@ -159,9 +193,13 @@ def _coerce_data(x: object) -> object:
 
     Same as :func:`_coerce` but integer (``i``/``u``) and boolean (``b``)
     arrays of rank >= 1 are converted too, since this argument cannot be a
-    label array. Complex/object/datetime arrays are still left alone:
-    converting them would silently drop information (or raise something less
-    clear than the boundary error they already produce). A **0-d** integer
+    label array, and so is an object array whose every element is a real
+    number (what a pandas nullable-float frame's ``to_numpy`` returns), so an
+    ndarray and a pandas object holding the same values get the same verdict.
+    Complex/datetime arrays, and object arrays holding anything else, are
+    still left alone: converting them would silently drop information (or
+    raise something less clear than the boundary error they already
+    produce). A **0-d** integer
     array is left alone as well — no estimator takes rank-0 data, so it is a
     scalar argument in array clothing (``lags=np.array(2)``, which the
     boundary accepts via ``__index__``).
@@ -171,9 +209,11 @@ def _coerce_data(x: object) -> object:
             return np.ascontiguousarray(x, dtype=np.float64)
         if x.dtype.kind == "f" and (x.dtype != np.float64 or not x.flags["C_CONTIGUOUS"]):
             return np.ascontiguousarray(x, dtype=np.float64)
+        if x.dtype == object:
+            return _real_object_as_float(x)
         return x
     if _is_pandas(x):
-        return _pandas_to_array(x)
+        return _pandas_to_numpy(x)
     if isinstance(x, list):
         # Only *lists* are considered data. A tuple is how this API spells a
         # fixed-arity option (`weighted_midas(weight_start=(2.0, 3.0))`,
@@ -403,45 +443,88 @@ def _is_negative_int(v: object) -> bool:
     return isinstance(v, (int, np.integer)) and not isinstance(v, bool) and v < 0
 
 
-def _negative_int_offenders(fn, args, kwargs) -> list[str]:
-    """``name=value`` for every plausibly offending negative integer argument.
+def _nested_negative_paths(v: object, depth: int = 3) -> list[str]:
+    """``"[0][2]=-1"`` / ``"[0]['period']=-1"`` for every negative integer
+    nested inside the elements of a list/tuple argument, up to ``depth``
+    levels (dict values included, for spec entries such as a narrative
+    restriction)."""
+    if depth <= 0:
+        return []
+    if isinstance(v, dict):
+        items = [(f"[{k!r}]", e) for k, e in v.items()]
+    elif isinstance(v, (list, tuple)):
+        items = [(f"[{i}]", e) for i, e in enumerate(v)]
+    else:
+        return []
+    found: list[str] = []
+    for key, e in items:
+        if _is_negative_int(e):
+            found.append(f"{key}={e}")
+        else:
+            found.extend(f"{key}{deeper}" for deeper in _nested_negative_paths(e, depth - 1))
+    return found
 
-    Positional indices are mapped to parameter names through the compiled
-    signature when it resolves (the same introspection ``_exempt_positions``
-    relies on); otherwise the argument is named by position. Shallow
-    tuples/lists are scanned too, for spec arguments like
-    ``arima_fit(seasonal=(0, -1, 0, 4))``.
+
+def _negative_int_offenders(fn, args, kwargs) -> tuple[list[str], list[str]]:
+    """The plausibly offending negative integers: ``(counts, entries)``.
+
+    ``counts`` holds ``name=value`` for a negative top-level argument and for
+    a shallow tuple/list holding one directly (a spec of counts such as
+    ``arima_fit(seasonal=(0, -1, 0, 4))``). ``entries`` holds
+    ``name[0][2]=-1`` for a negative integer nested deeper -- an index inside
+    a restriction spec, ``sign_restricted_svar(restrictions=[(0, 0, -1,
+    "+")])`` or ``narrative_svar(narrative_restrictions=[{"period": -1,
+    ...}])`` -- which audit round 16 found reported as an unnamed "counting"
+    parameter. Positional indices are mapped to parameter names through the
+    compiled signature when it resolves (the same introspection
+    ``_exempt_positions`` relies on); otherwise the argument is named by
+    position.
     """
     try:
         names = list(inspect.signature(fn).parameters)
     except (ValueError, TypeError):
         names = []
-    found: list[str] = []
+    counts: list[str] = []
+    entries: list[str] = []
     labeled = [
         *(((names[i] if i < len(names) else f"argument {i}"), a) for i, a in enumerate(args)),
         *kwargs.items(),
     ]
     for label, v in labeled:
         if _is_negative_int(v):
-            found.append(f"{label}={v}")
+            counts.append(f"{label}={v}")
         elif isinstance(v, (list, tuple)) and any(_is_negative_int(e) for e in v):
-            found.append(f"{label}={v!r}")
-    return found
+            counts.append(f"{label}={v!r}")
+        else:
+            entries.extend(f"{label}{path}" for path in _nested_negative_paths(v))
+    return counts, entries
 
 
 def _negative_int_error(fn, args, kwargs, original: OverflowError) -> ValueError:
     """Rebuild PyO3's bare negative-int OverflowError into a teaching error."""
-    offenders = _negative_int_offenders(fn, args, kwargs)
-    if offenders:
-        what = " and ".join(offenders)
-        verb = "are" if len(offenders) > 1 else "is"
-        subject = f"{what} {verb} negative, but this parameter"
-    else:
-        subject = "an integer argument is negative, but the parameter"
+    counts, entries = _negative_int_offenders(fn, args, kwargs)
+    if counts:
+        what = " and ".join(counts)
+        verb = "are" if len(counts) > 1 else "is"
+        return ValueError(
+            f"{fn.__name__}: {what} {verb} negative, but this parameter counts "
+            f"something — a lag length, order, horizon, window, iteration cap, "
+            f"draw count, or seed — and must be a nonnegative integer. Original "
+            f"error: {original}"
+        )
+    if entries:
+        what = " and ".join(entries)
+        verb = "are" if len(entries) > 1 else "is"
+        return ValueError(
+            f"{fn.__name__}: {what} {verb} negative, but each integer entry of "
+            f"that spec is a position — a variable, shock, horizon or period "
+            f"index — and must be a nonnegative integer (0 is the first). "
+            f"Original error: {original}"
+        )
     return ValueError(
-        f"{fn.__name__}: {subject} counts something — a lag length, order, "
-        f"horizon, window, iteration cap, draw count, or seed — and must be a "
-        f"nonnegative integer. Original error: {original}"
+        f"{fn.__name__}: an integer argument received a negative value, but it "
+        f"must be a nonnegative integer (a count such as a lag length or draw "
+        f"count, or an index inside a spec argument). Original error: {original}"
     )
 
 
