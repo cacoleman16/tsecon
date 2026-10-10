@@ -321,3 +321,39 @@ fn politis_white_increases_with_persistence() {
         weak.stationary
     );
 }
+
+/// Audit round 16 (A7): a resample longer than `MAX_RESAMPLE_LEN` (2^28) is
+/// refused by every scheme before the index vector is allocated (`n = 2^31`
+/// used to request 16 GiB and abort the process), the message naming `n`
+/// and the largest admissible length; the stream is left untouched.
+#[test]
+fn resample_lengths_beyond_the_budget_are_refused_before_allocating() {
+    use tsecon_bootstrap::{BootstrapError, MAX_RESAMPLE_LEN};
+    assert_eq!(MAX_RESAMPLE_LEN, 1 << 28);
+    let schemes = [
+        BlockScheme::Iid,
+        BlockScheme::MovingBlock { block_length: 5 },
+        BlockScheme::CircularBlock { block_length: 5 },
+        BlockScheme::Stationary { p: 0.1 },
+    ];
+    for n in [MAX_RESAMPLE_LEN + 1, 1 << 31, 1 << 40, usize::MAX] {
+        for scheme in schemes {
+            let mut stream = Stream::new(1);
+            let before = stream.clone();
+            let err = indices(scheme, n, &mut stream).unwrap_err();
+            assert_eq!(
+                err,
+                BootstrapError::SampleTooLong {
+                    n,
+                    max: MAX_RESAMPLE_LEN
+                }
+            );
+            let msg = err.to_string();
+            assert!(
+                msg.contains(&format!("n = {n} exceeds")) && msg.contains("n = 268435456"),
+                "{msg}"
+            );
+            assert_eq!(stream, before, "no draw before the refusal");
+        }
+    }
+}

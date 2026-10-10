@@ -52,6 +52,15 @@ pub enum BlockScheme {
     },
 }
 
+/// The longest resample [`indices`] draws: `n <= 2^28 = 268 435 456`
+/// indices, a 2 GiB index vector — the house 2^28-value working-set
+/// convention, far beyond any sample a bootstrap indexes.
+///
+/// Checked before the index vector is allocated: `n = 2^31` used to request
+/// 16 GiB and abort the process (the `bootstrap_indices` Python binding
+/// passes its `n` straight through).
+pub const MAX_RESAMPLE_LEN: usize = 1 << 28;
+
 /// Draw one full set of bootstrap indices for a length-`n` sample under
 /// `scheme`, consuming randomness from `stream`.
 ///
@@ -75,6 +84,8 @@ pub enum BlockScheme {
 /// # Errors
 ///
 /// - [`BootstrapError::EmptySample`] if `n == 0`.
+/// - [`BootstrapError::SampleTooLong`] if `n` exceeds [`MAX_RESAMPLE_LEN`]
+///   (checked before anything is allocated).
 /// - [`BootstrapError::InvalidBlockLength`] if a block length is outside
 ///   `1..=n`.
 /// - [`BootstrapError::InvalidProbability`] if the stationary restart
@@ -90,6 +101,12 @@ pub fn indices(
 ) -> Result<Vec<usize>, BootstrapError> {
     if n == 0 {
         return Err(BootstrapError::EmptySample);
+    }
+    if n > MAX_RESAMPLE_LEN {
+        return Err(BootstrapError::SampleTooLong {
+            n,
+            max: MAX_RESAMPLE_LEN,
+        });
     }
     match scheme {
         BlockScheme::Iid => Ok((0..n).map(|_| uniform_index(stream, n)).collect()),
