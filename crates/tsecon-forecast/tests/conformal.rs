@@ -314,9 +314,17 @@ fn split_conformal_teaching_errors() {
         split_conformal(&bad, &base, naive_base),
         Err(ForecastError::NonFinite { .. })
     ));
+    // A grid longer than the series names the window that asks for the
+    // most (calib) and its largest admissible value: 15 observations hold at
+    // most 15 - horizon - 1 = 13 calibration origins.
     assert!(matches!(
         split_conformal(&y[..15], &base, naive_base),
-        Err(ForecastError::SeriesTooShort { .. })
+        Err(ForecastError::TooLarge {
+            name: "calib",
+            value: 20,
+            max: Some(13),
+            ..
+        })
     ));
     // A forecaster that returns the wrong number of steps is caught.
     let err = split_conformal(&y, &base, |_t, h| Ok(vec![0.0; h + 1])).unwrap_err();

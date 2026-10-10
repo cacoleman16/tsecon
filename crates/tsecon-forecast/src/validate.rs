@@ -64,10 +64,35 @@ pub(crate) fn check_level(level: f64) -> Result<(), ForecastError> {
     Ok(())
 }
 
-/// Validate a forecast step count: must be a positive integer.
-pub(crate) fn check_steps(steps: usize) -> Result<(), ForecastError> {
+/// Largest forecast horizon the point forecasters and conformal methods of
+/// this crate accept (1,000,000 steps, the cap `arima_fit` and `ets_fit` put
+/// on theirs) — a guard against absurd allocations, not a modelling limit:
+/// every step is materialised, so a typo such as `2**31` used to request
+/// 16 GiB and abort the process on the failed allocation.
+pub const MAX_FORECAST_STEPS: usize = 1_000_000;
+
+/// Validate a forecast step count: a positive integer no larger than
+/// [`MAX_FORECAST_STEPS`]. `name` is the caller's keyword for it (`steps`,
+/// `horizon`) and `what` the computation, for the refusal.
+pub(crate) fn check_steps(
+    steps: usize,
+    name: &'static str,
+    what: &'static str,
+) -> Result<(), ForecastError> {
     if steps == 0 {
         return Err(ForecastError::InvalidSteps { steps });
+    }
+    if steps > MAX_FORECAST_STEPS {
+        return Err(ForecastError::TooLarge {
+            what,
+            name,
+            value: steps,
+            requirement: format!(
+                "every forecast step is materialised, so the horizon is capped at \
+                 {MAX_FORECAST_STEPS} steps (as in arima_fit and ets_fit)"
+            ),
+            max: Some(MAX_FORECAST_STEPS),
+        });
     }
     Ok(())
 }
