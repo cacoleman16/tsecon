@@ -45,7 +45,9 @@
 
 use crate::error::RegimeError;
 use crate::linsolve::{chol_solve, cholesky};
-use tsecon_bootstrap::{par_replicate, WildWeights};
+use tsecon_bootstrap::{
+    check_test_replications, par_replicate, WildWeights, MAX_TEST_REPLICATIONS,
+};
 
 // ------------------------------------------------------------ small linalg
 //
@@ -460,6 +462,33 @@ fn validate_common(y: &[f64], p: usize, trim: f64) -> Result<(), RegimeError> {
     Ok(())
 }
 
+/// What a refused bootstrap replication count must satisfy (the shared
+/// [`MAX_TEST_REPLICATIONS`] cap of the fixed-regressor bootstrap tests).
+const N_BOOT_CAP: &str = "n_boot <= 1000000 (the bootstrap p-value's Monte Carlo standard \
+                          error is already below 0.0005 there, so more replications cannot \
+                          change the reported p-value; checked before any replication runs)";
+
+/// The refusal of a bootstrap replication count, naming `n_boot` and the
+/// largest admissible value.
+pub(crate) fn n_boot_refused(n_boot: usize) -> RegimeError {
+    RegimeError::InvalidParameter {
+        name: "n_boot",
+        value: n_boot as f64,
+        requirement: N_BOOT_CAP,
+    }
+}
+
+/// Refuse an `n_boot` beyond [`MAX_TEST_REPLICATIONS`] by name, before any
+/// work: a count of 2^31 used to abort the process allocating one RNG
+/// stream per replication, and a merely huge one runs for hours.
+pub(crate) fn check_n_boot_cap(n_boot: usize) -> Result<(), RegimeError> {
+    debug_assert_eq!(
+        MAX_TEST_REPLICATIONS, 1_000_000,
+        "N_BOOT_CAP quotes the cap"
+    );
+    check_test_replications(n_boot).map_err(|_| n_boot_refused(n_boot))
+}
+
 fn validate_delay(delay: usize) -> Result<(), RegimeError> {
     if delay == 0 {
         return Err(RegimeError::InvalidParameter {
@@ -725,7 +754,8 @@ pub fn setar(
 /// # Errors
 ///
 /// The input errors of [`setar`], plus
-/// [`RegimeError::InvalidParameter`] for `n_boot = 0` and
+/// [`RegimeError::InvalidParameter`] for `n_boot = 0` or `n_boot` above
+/// [`MAX_TEST_REPLICATIONS`] (checked before any work) and
 /// [`RegimeError::NonFinite`] if the observed threshold fit is a degenerate
 /// perfect fit.
 pub fn setar_test(
@@ -747,6 +777,7 @@ pub fn setar_test(
                           only by bootstrap; 499+ recommended)",
         });
     }
+    check_n_boot_cap(n_boot)?;
     let start = p.max(delay);
     let k = p + usize::from(constant);
     check_length(y.len(), start, k, trim)?;
@@ -788,11 +819,7 @@ pub fn setar_test(
             .collect();
         scan.supf(&design, &ystar)
     })
-    .map_err(|_| RegimeError::InvalidParameter {
-        name: "n_boot",
-        value: n_boot as f64,
-        requirement: "n_boot within the RNG substream spawn limit (< 2^32)",
-    })?;
+    .map_err(|_| n_boot_refused(n_boot))?;
 
     let exceed = boot_stats.iter().filter(|&&f| f >= stat).count();
     let p_value = (1 + exceed) as f64 / (n_boot + 1) as f64;

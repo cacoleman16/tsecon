@@ -97,7 +97,9 @@ pub use fmols::{
 };
 pub use johansen::{johansen, JohansenResult, SignificanceLevel};
 pub use ou::{ou_fit, spread_zscore, OuFit};
-pub use tvecm::{hansen_seo_test, threshold_vecm, HansenSeoTest, TvecmResult};
+pub use tvecm::{
+    hansen_seo_test, threshold_vecm, HansenSeoTest, TvecmResult, TVECM_MAX_GRID_CELLS,
+};
 pub use vecm::{fit_vecm, fit_vecm_det, fit_vecm_seasonal, VecmDeterministic, VecmResult};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense

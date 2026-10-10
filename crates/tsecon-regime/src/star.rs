@@ -99,6 +99,17 @@ const GAMMA_STD_GRID_HI: f64 = 100.0;
 /// past the grid top; beyond the top the SSR surface is flat in gamma).
 const GAMMA_STD_CAP: f64 = 1000.0;
 
+/// The most `(gamma, c)` cells the [`star`] grid search evaluates per
+/// candidate delay: `n_gamma * n_c <= 2^20 = 1 048 576` (a 1024 x 1024
+/// grid; the default is 25 x 25).
+///
+/// Each cell is one concentrated OLS of the `[x, G x]` design, and the
+/// grid's SSR surface is materialized (and returned), so the product sizes
+/// both the work and the allocation. It is checked, with an overflow-proof
+/// product, before anything is allocated: `n_gamma = 2^31` used to request
+/// a 16 GiB grid vector and abort the process.
+pub const STAR_MAX_GRID_CELLS: usize = 1 << 20;
+
 // ----------------------------------------------------------- transition
 
 /// The STAR transition-function family.
@@ -695,6 +706,8 @@ fn build_grid(
 ///   variable.
 /// * [`RegimeError::InvalidParameter`] for `trim` outside `(0, 0.5)`,
 ///   a zero delay, or a grid dimension below 2.
+/// * [`RegimeError::GridTooLarge`] when `n_gamma * n_c` exceeds
+///   [`STAR_MAX_GRID_CELLS`] (checked before the grid is allocated).
 /// * [`RegimeError::InsufficientData`] when the usable sample is shorter
 ///   than `2k + 3` or the trimmed c grid is empty.
 /// * [`RegimeError::Singular`] when every grid cell's concentrated OLS is
@@ -739,6 +752,16 @@ pub fn star(
             name: "n_c",
             value: n_c as f64,
             requirement: "n_c >= 2 grid points for the location c",
+        });
+    }
+    if n_gamma
+        .checked_mul(n_c)
+        .is_none_or(|cells| cells > STAR_MAX_GRID_CELLS)
+    {
+        return Err(RegimeError::GridTooLarge {
+            n_gamma,
+            n_c,
+            max_cells: STAR_MAX_GRID_CELLS,
         });
     }
     let max_delay = delays.iter().copied().max().unwrap_or(1);
