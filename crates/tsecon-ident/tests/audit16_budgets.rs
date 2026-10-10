@@ -19,7 +19,9 @@
 use serde_json::Value;
 use tsecon_bayes::{BayesError, MinnesotaNiwPrior, NiwPosterior};
 use tsecon_ident::histdecomp::decompose_with_impact;
-use tsecon_ident::proxy_ar::psi_reduced_form_cov;
+use tsecon_ident::proxy_ar::{
+    check_ar_sets_budget, psi_reduced_form_cov, ArRfBudget, PROXY_AR_DELTA_WORK,
+};
 use tsecon_ident::structural_fevd::structural_fevd_from_theta;
 use tsecon_ident::{
     narrative_weight_draw_work, robust_svar_bounds_default, IdentError, NarrativeRestriction,
@@ -163,7 +165,7 @@ fn the_narrative_weight_loop_is_a_named_work_budget() {
             .run(&post, data.as_ref(), Some(&signs(4)), Some(&nr), 0)
             .unwrap_err();
         assert!(
-            e.to_string().contains("2^36 multiply-add work budget"),
+            e.to_string().contains("2^35 multiply-add work budget"),
             "{e}"
         );
         assert_eq!(named(e), ("n_weight_draws", k));
@@ -197,6 +199,105 @@ fn zero_counts_name_the_python_keywords() {
             "{msg}"
         );
     }
+}
+
+/// `(arg, value, max)` of a named `TooLarge` refusal.
+fn quoted(e: IdentError) -> (&'static str, usize, Option<usize>) {
+    match e {
+        IdentError::Bayes(BayesError::TooLarge {
+            arg, value, max, ..
+        }) => (arg, value, max),
+        other => panic!("expected a named TooLarge, got {other:?}"),
+    }
+}
+
+#[test]
+fn a_quoted_maximum_passes_every_budget_of_the_call() {
+    // proxy_ar_sets, delta method, n = 3, lags = 2: the memory budget alone
+    // admits horizons in the millions, but the Jacobian work
+    // H (H + 1) / 2 * 72 + 1350 H (np = 6, d = 18: per pair
+    // np * n (n + 1) = 72, per horizon n d^2 + n^2 d + np^3 = 1350) caps it
+    // far lower; the quote is that closed-form boundary.
+    let work = |h: u128| h * (h + 1) / 2 * 72 + 1350 * h;
+    let mut h_star = 0u128;
+    while work(h_star + 1) <= PROXY_AR_DELTA_WORK {
+        h_star += 1;
+    }
+    let h_star = h_star as usize;
+    for h in [BIG, HUGE, h_star + 1] {
+        let e = check_ar_sets_budget(3, 2, h, ArRfBudget::Delta).unwrap_err();
+        assert!(
+            e.to_string().contains("2^32 multiply-add work budget"),
+            "{e}"
+        );
+        assert_eq!(quoted(e), ("horizon", h, Some(h_star)));
+    }
+    check_ar_sets_budget(3, 2, h_star, ArRfBudget::Delta).unwrap();
+    // The second-order simulation: the quoted rf_draws is even (the
+    // simulation works in antithetic pairs) and passes.
+    let e = check_ar_sets_budget(3, 2, 12, ArRfBudget::Simulation { draws: HUGE }).unwrap_err();
+    let (arg, _, max) = quoted(e);
+    let max = max.unwrap();
+    assert_eq!((arg, max % 2), ("rf_draws", 0));
+    check_ar_sets_budget(3, 2, 12, ArRfBudget::Simulation { draws: max }).unwrap();
+    check_ar_sets_budget(3, 2, 12, ArRfBudget::Simulation { draws: max + 2 }).unwrap_err();
+    // And a quoted horizon passes with the simulation's rows counted.
+    let e = check_ar_sets_budget(3, 2, HUGE, ArRfBudget::Simulation { draws: 256 }).unwrap_err();
+    let (_, _, max) = quoted(e);
+    check_ar_sets_budget(3, 2, max.unwrap(), ArRfBudget::Simulation { draws: 256 }).unwrap();
+
+    // The narrative sampler with narrative restrictions: an absurd n_draws
+    // is quoted at the work boundary 2^35 / (n_weight_draws * unit), which
+    // is below the memory boundary, never at a value the work budget then
+    // refuses.
+    let data = toy_data(200);
+    let post = posterior(&data);
+    let nr = NarrativeRestrictionSet::new(
+        vec![NarrativeRestriction::ShockSign {
+            shock: 0,
+            period: 10,
+            sign: Sign::Positive,
+        }],
+        3,
+        199,
+    )
+    .unwrap();
+    let unit = narrative_weight_draw_work(3, 199, 4);
+    let work_max = (NARRATIVE_WEIGHT_WORK / (200 * unit)) as usize;
+    let e = NarrativeSampler::new(4, HUGE, 100, 200)
+        .unwrap()
+        .run(&post, data.as_ref(), Some(&signs(4)), Some(&nr), 0)
+        .unwrap_err();
+    assert!(
+        e.to_string().contains("2^35 multiply-add work budget"),
+        "{e}"
+    );
+    assert_eq!(quoted(e), ("n_draws", HUGE, Some(work_max)));
+    // Sized for a historical decomposition, each draw also keeps its T_eff
+    // contribution matrices, so the memory boundary drops below the plain
+    // one and is quoted as such.
+    let plain = NarrativeSampler::new(4, HUGE, 100, 200)
+        .unwrap()
+        .run(&post, data.as_ref(), Some(&signs(4)), None, 0)
+        .unwrap_err();
+    let hd = NarrativeSampler::new(4, HUGE, 100, 200)
+        .unwrap()
+        .sized_for_hd()
+        .run(&post, data.as_ref(), Some(&signs(4)), None, 0)
+        .unwrap_err();
+    let (_, _, plain_max) = quoted(plain);
+    let (arg, _, hd_max) = quoted(hd);
+    let hd_max = hd_max.unwrap();
+    assert!(
+        arg == "n_draws" && hd_max < plain_max.unwrap() / 10,
+        "{hd_max}"
+    );
+    let e = NarrativeSampler::new(4, hd_max + 1, 100, 200)
+        .unwrap()
+        .sized_for_hd()
+        .run(&post, data.as_ref(), Some(&signs(4)), None, 0)
+        .unwrap_err();
+    assert_eq!(quoted(e), ("n_draws", hd_max + 1, Some(hd_max)));
 }
 
 #[test]

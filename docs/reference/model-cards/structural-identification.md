@@ -1560,11 +1560,12 @@ admissible rotations (that is what `robust_svar_bounds` is for on the IRFs).
 **Key arguments and defaults (and why).** `lags`, `horizon` (the FEVD is
 reported for steps $0..\,$`horizon`), `trend="c"`. `impact=None` uses the lower
 Cholesky of $\Sigma_u$ (so the result reproduces `var_fevd`); pass an
-$(n\times n)$ `impact` for any other scheme. `sigma="dfadj"` (default) or
-`"mle"` sets the default Cholesky's df scaling — the **shares are invariant to
-it** (numerator and denominator scale together); it only rescales the reported
-`impact`. It is validated on every path, and refused (naming it) when passed
-with `impact`, where there is no default Cholesky for it to scale. `lags=0` is
+$(n\times n)$ `impact` for any other scheme. `sigma` (`"dfadj"`, which the
+default `None` means, or `"mle"`) sets the default Cholesky's df scaling — the
+**shares are invariant to it** (numerator and denominator scale together); it
+only rescales the reported `impact`. It is validated on every path, and refused
+(naming it) whenever it is passed with `impact`, even as `"dfadj"`, since there
+is then no default Cholesky for it to scale. `lags=0` is
 refused, unlike `var_fevd`, which returns the static Cholesky shares of a
 VAR(0).
 
@@ -2007,7 +2008,7 @@ tuples; may be empty if narrative restrictions are given), `narrative_restrictio
 `seed`, `lambda1`, and `n_weight_draws=200` (the $K_w$ for $\hat{P}$; refused
 when passed without `narrative_restrictions`, where every weight is 1). The
 weight loop costs `n_draws * n_weight_draws * (T_eff n^2 + (h + 3) n^3)`
-multiply-adds and is capped at $2^{36}$ (about a minute and a half), refused
+multiply-adds and is capped at $2^{35}$ (at most about a minute), refused
 naming `n_weight_draws`; the kept draws share the $2^{28}$-value working-set
 budget of the sign samplers (refusing `horizon` or `n_draws`). The dict
 schemas use 0-based **effective-sample** indices ($=$ `data_row - lags`):

@@ -18,6 +18,7 @@ that belongs to these callables:
 Every refusal below happens before an allocation is attempted, so these run
 in-process on every platform (the counts, not the allocator, decide).
 """
+import re
 import time
 
 import numpy as np
@@ -116,7 +117,10 @@ HORIZON_CALLS = {
 @pytest.mark.parametrize("h", [BIG, HUGE])
 def test_an_absurd_horizon_is_refused_by_name_before_allocating(name, h):
     msg = _refused(lambda: HORIZON_CALLS[name](h), "horizon", h)
-    assert "2^28-value (2 GiB)" in msg, msg
+    # The refusal names the budget its quoted horizon runs into: for the
+    # proxy AR delta method that is the (quadratic) Jacobian work cap.
+    budget = "2^32 multiply-add work budget" if name == "proxy_ar_sets" else "2^28-value (2 GiB)"
+    assert budget in msg, msg
     assert "pass horizon <= " in msg, msg
 
 
@@ -139,6 +143,78 @@ def test_the_proxy_ar_delta_method_work_is_capped_by_name():
     # memory budget admits is refused before it runs for hours.
     msg = _refused(lambda: tsecon.proxy_ar_sets(X3, PROXY, lags=2, horizon=200_000), "horizon", 200_000)
     assert "2^32 multiply-add work budget" in msg, msg
+
+
+def _quoted_max(call, arg):
+    with pytest.raises(ValueError) as info:
+        call()
+    msg = str(info.value)
+    m = re.search(rf"pass {arg} <= (\d+) ", msg)
+    assert m, msg
+    return int(m.group(1)), msg
+
+
+def test_proxy_ar_sets_quotes_the_horizon_every_budget_admits():
+    # Closed form: with n = 3 and lags = 2 the delta-method Jacobians cost
+    # H (H + 1) / 2 * 72 + 1350 H multiply-adds (np = 6, d = n^2 p = 18;
+    # per pair np * n (n + 1), per horizon n d^2 + n^2 d + np^3), capped at
+    # 2^32. The memory budget alone would quote 1851278; the quote must be
+    # the (much lower) work boundary, which the call then admits.
+    h = 0
+    while (h + 1) * (h + 2) // 2 * 72 + 1350 * (h + 1) <= 2**32:
+        h += 1
+    for bad in (HUGE, h + 1):
+        got, msg = _quoted_max(lambda: tsecon.proxy_ar_sets(X3, PROXY, lags=2, horizon=bad), "horizon")
+        assert got == h, msg
+        assert "2^32 multiply-add work budget" in msg, msg
+    # The second-order simulation: an rf_draws refusal quotes an even count.
+    got, msg = _quoted_max(
+        lambda: tsecon.proxy_ar_sets(X3, PROXY, lags=2, horizon=6, rf_method="second_order", rf_draws=HUGE),
+        "rf_draws",
+    )
+    assert got % 2 == 0 and got >= 32, msg
+
+
+def test_the_narrative_draw_quote_is_the_work_boundary_not_the_memory_one():
+    # With narrative restrictions the weight loop is the binding budget:
+    # n_draws * n_weight_draws * (T_eff n^2 + (h + 3) n^3) <= 2^35, with
+    # T_eff = 199, n = 3 and h = 4 here (1980 per weight draw).
+    want = 2**35 // (200 * (199 * 9 + 7 * 27))
+    got, msg = _quoted_max(
+        lambda: tsecon.narrative_svar(X3, SR3, NR, lags=1, horizon=4, n_draws=HUGE, max_tries=100),
+        "n_draws",
+    )
+    assert got == want, msg
+    assert "2^35 multiply-add work budget" in msg, msg
+
+
+def test_proxy_svar_bands_counts_each_replications_moving_average_path():
+    # Closed form of the documented count at n = 3, horizon = 6: per
+    # replication 9 (substream) + 7 * 32 (its MA path) + 7 * 6 (responses)
+    # + 9 * 6 (diagnostics) = 329; fixed 7 * 64 (point path) + 7 * 172
+    # (bands) = 1652. Replications run in parallel, so each one's MA path
+    # is counted (the long_run_svar_bands idiom); without it the quoted
+    # boundary ran past 4 GB of address space at large horizons.
+    want = (2**28 - 1652) // 329
+    got, msg = _quoted_max(
+        lambda: tsecon.proxy_svar_bands(X3, PROXY, lags=2, horizon=6, n_boot=HUGE, block_length=5),
+        "n_boot",
+    )
+    assert got == want, msg
+
+
+def test_a_product_overflow_never_blames_an_argument_at_its_minimum():
+    # bvar_ssvs: a horizon just past its boundary at n_chains=1 used to be
+    # refused as "n_chains = 1 is too large" with no value that fits.
+    hmax, _ = _quoted_max(
+        lambda: tsecon.bvar_ssvs(X2, lags=1, n_draws=120, burn=20, horizon=HUGE), "horizon"
+    )
+    with pytest.raises(ValueError) as info:
+        tsecon.bvar_ssvs(X2, lags=1, n_draws=120, burn=20, horizon=hmax + 1)
+    msg = str(info.value)
+    assert "n_chains = 1" not in msg and "no value of" not in msg, msg
+    assert re.search(r"(n_draws|horizon) = \d+ is too large", msg), msg
+    assert re.search(r"pass (n_draws|horizon) <= \d+", msg), msg
 
 
 # --------------------------------------------------------------------------
@@ -212,7 +288,7 @@ def test_an_absurd_weight_draw_count_is_refused_instead_of_hanging(fn, k):
             n_draws=20, max_tries=200, n_weight_draws=k,
         )
     msg = _refused(call, "n_weight_draws", k)
-    assert "2^36 multiply-add work budget" in msg, msg
+    assert "2^35 multiply-add work budget" in msg, msg
     assert "pass n_weight_draws <= " in msg, msg
 
 
@@ -440,14 +516,17 @@ def test_structural_fevd_sigma_is_validated_and_refused_where_inert():
         for bad in ("bogus", "MLE", ""):
             with pytest.raises(ValueError, match=r"unknown sigma"):
                 tsecon.structural_fevd(X2, lags=1, sigma=bad, **kw)
-    with pytest.raises(ValueError, match=r'sigma="mle" is only read when impact=None'):
-        tsecon.structural_fevd(X2, lags=1, impact=a0, sigma="mle")
-    # The default (and the default spelled out) with impact are bit-identical.
-    base = tsecon.structural_fevd(X2, lags=1, impact=a0)
-    same = tsecon.structural_fevd(X2, lags=1, impact=a0, sigma="dfadj")
-    assert base == same
-    # sigma stays live where documented: it rescales the reported impact.
-    dfadj = tsecon.structural_fevd(X2, lags=1)
+    # Inert with impact whatever its value: the None sentinel tells an
+    # explicit sigma (even the default spelled out) from an omitted one.
+    for sg in ("mle", "dfadj"):
+        with pytest.raises(ValueError, match=rf'sigma="{sg}" is only read when impact=None'):
+            tsecon.structural_fevd(X2, lags=1, impact=a0, sigma=sg)
+    tsecon.structural_fevd(X2, lags=1, impact=a0, sigma=None)
+    # sigma stays live where documented: it rescales the reported impact,
+    # and None is "dfadj" bit for bit.
+    dfadj = tsecon.structural_fevd(X2, lags=1, sigma="dfadj")
+    assert tsecon.structural_fevd(X2, lags=1) == dfadj
+    assert tsecon.structural_fevd(X2, lags=1, sigma=None) == dfadj
     mle = tsecon.structural_fevd(X2, lags=1, sigma="mle")
     assert dfadj["impact"] != mle["impact"]
     np.testing.assert_allclose(dfadj["fevd"], mle["fevd"], rtol=0, atol=1e-12)

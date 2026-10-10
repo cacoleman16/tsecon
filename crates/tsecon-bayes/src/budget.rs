@@ -107,55 +107,99 @@ pub fn largest_fitting(lo: usize, hi: usize, fits: impl Fn(usize) -> bool) -> Op
     Some(lo)
 }
 
-/// Refuses a call whose `cost` — a non-decreasing function of every size
-/// argument, evaluated at the values passed — exceeds `limit`, before
-/// anything is allocated.
+/// One budget a call is sized against: what it counts, its limit, how the
+/// limit is quoted, and the count — a non-decreasing function of every size
+/// argument of the [`check_budgets`] call, in the order they are listed.
+pub struct Budget<'a> {
+    /// What the budget counts, as a refusal states it.
+    pub what: &'static str,
+    /// The largest admissible count.
+    pub limit: u128,
+    /// How `limit` is quoted (e.g. [`MEMORY_BUDGET`]).
+    pub phrase: &'static str,
+    /// The count at the given argument values.
+    pub cost: &'a dyn Fn(&[usize]) -> u128,
+}
+
+/// Refuses a call whose size arguments push any of `budgets` past its
+/// limit, before anything is allocated. Several budgets are checked
+/// together (a memory and a work budget, or the working sets of two stages
+/// that are live at once) so that the largest value a refusal quotes passes
+/// every one of them, not only the budget that tripped first.
 ///
 /// The refusal names the FIRST argument of `args` (in the order given) that
-/// does not fit even with every other argument at its minimum; when each
-/// fits alone and only their product does not, it names the LAST one. It
-/// quotes the largest value of the named argument that fits with every
-/// other argument as passed (`None` when none does). Callers list the
-/// per-draw size (the horizon) before the draw count, so an absurd draw
-/// count is blamed on the draw count and an absurd horizon on the horizon.
+/// does not fit even with every other argument at its minimum. When each
+/// fits alone and only their product does not, it names the LAST argument
+/// that can be lowered to fit (one passed above its minimum), never one
+/// already at its minimum. It quotes the largest value of the named
+/// argument that fits every budget with every other argument as passed
+/// (`None` when none does), and the budget that value runs into. Callers
+/// list the per-draw size (the horizon) before the draw count, so an absurd
+/// draw count is blamed on the draw count and an absurd horizon on the
+/// horizon.
 ///
 /// # Errors
 ///
 /// [`BayesError::TooLarge`] as described.
-pub fn check_sizes(
-    what: &'static str,
-    limit: u128,
-    budget: &'static str,
-    args: &[SizeArg],
-    cost: impl Fn(&[usize]) -> u128,
-) -> Result<(), BayesError> {
+pub fn check_budgets(args: &[SizeArg], budgets: &[Budget<'_>]) -> Result<(), BayesError> {
+    let fits = |v: &[usize]| budgets.iter().all(|b| (b.cost)(v) <= b.limit);
     let passed: Vec<usize> = args.iter().map(|a| a.value).collect();
-    if cost(&passed) <= limit {
+    if fits(&passed) {
         return Ok(());
     }
-    let floors: Vec<usize> = args.iter().map(|a| a.min.min(a.value)).collect();
-    let alone_too_large = |i: usize| {
-        let mut v = floors.clone();
-        v[i] = passed[i];
-        cost(&v) > limit
-    };
-    let blame = (0..args.len())
-        .find(|&i| alone_too_large(i))
-        .unwrap_or(args.len().saturating_sub(1));
-    let Some(arg) = args.get(blame) else {
+    let Some(last) = args.len().checked_sub(1) else {
+        // No size argument to blame (a fixed cost past its budget).
+        let b = budgets.iter().find(|b| (b.cost)(&passed) > b.limit);
         return Err(BayesError::TooLarge {
             arg: "the size arguments",
             value: 0,
             max: None,
-            what,
-            budget,
+            what: b.map_or("the working set", |b| b.what),
+            budget: b.map_or(MEMORY_BUDGET, |b| b.phrase),
         });
     };
-    let max = largest_fitting(arg.min, arg.value.saturating_sub(1), |x| {
-        let mut v = passed.clone();
-        v[blame] = x;
-        cost(&v) <= limit
-    });
+    let floors: Vec<usize> = args.iter().map(|a| a.min.min(a.value)).collect();
+    let with = |base: &[usize], i: usize, x: usize| {
+        let mut v = base.to_vec();
+        v[i] = x;
+        v
+    };
+    let largest = |i: usize| {
+        let a = &args[i];
+        largest_fitting(a.min, a.value.saturating_sub(1), |x| {
+            fits(&with(&passed, i, x))
+        })
+    };
+    let alone = (0..args.len()).find(|&i| !fits(&with(&floors, i, passed[i])));
+    let (blame, max) = match alone {
+        Some(i) => (i, largest(i)),
+        None => {
+            // A product of arguments that each fit alone: blame the last one
+            // that can be lowered to fit, else the last one above its floor.
+            let reducible: Vec<usize> = (0..args.len())
+                .rev()
+                .filter(|&i| passed[i] > floors[i])
+                .collect();
+            reducible
+                .iter()
+                .find_map(|&i| largest(i).map(|m| (i, Some(m))))
+                .or_else(|| reducible.first().map(|&i| (i, None)))
+                .unwrap_or((last, None))
+        }
+    };
+    // The budget the quoted value runs into: the first one that fails one
+    // step above it (at the value passed when no value fits).
+    let at = with(
+        &passed,
+        blame,
+        max.map_or(passed[blame], |m| m.saturating_add(1)),
+    );
+    let tripped = budgets
+        .iter()
+        .find(|b| (b.cost)(&at) > b.limit)
+        .or_else(|| budgets.iter().find(|b| (b.cost)(&passed) > b.limit));
+    let (what, budget) = tripped.map_or(("the working set", MEMORY_BUDGET), |b| (b.what, b.phrase));
+    let arg = &args[blame];
     Err(BayesError::TooLarge {
         arg: arg.name,
         value: arg.value,
@@ -163,6 +207,29 @@ pub fn check_sizes(
         what,
         budget,
     })
+}
+
+/// [`check_budgets`] against the single budget `cost <= limit`.
+///
+/// # Errors
+///
+/// [`BayesError::TooLarge`] as for [`check_budgets`].
+pub fn check_sizes(
+    what: &'static str,
+    limit: u128,
+    budget: &'static str,
+    args: &[SizeArg],
+    cost: impl Fn(&[usize]) -> u128,
+) -> Result<(), BayesError> {
+    check_budgets(
+        args,
+        &[Budget {
+            what,
+            limit,
+            phrase: budget,
+            cost: &cost,
+        }],
+    )
 }
 
 /// [`check_sizes`] against [`MEMORY_BUDGET_VALUES`].
@@ -254,6 +321,81 @@ mod tests {
             }
             other => panic!("{other:?}"),
         }
+    }
+
+    #[test]
+    fn a_product_is_never_blamed_on_an_argument_at_its_minimum() {
+        // cost = chains * draws * (horizon + 1); chains = 1 is its minimum,
+        // so the product overflow is blamed on the draw count, the last
+        // argument that can be lowered, never on "chains = 1".
+        let cost = |v: &[usize]| (v[0] as u128 + 1) * (v[1] as u128) * (v[2] as u128);
+        let args = [
+            SizeArg::new("horizon", 99, 0),
+            SizeArg::new("n_draws", 20, 1),
+            SizeArg::new("n_chains", 1, 1),
+        ];
+        match check_sizes("w", 1000, "b", &args, cost) {
+            Err(BayesError::TooLarge { arg, max, .. }) => {
+                assert_eq!((arg, max), ("n_draws", Some(10)));
+            }
+            other => panic!("{other:?}"),
+        }
+    }
+
+    #[test]
+    fn several_budgets_quote_a_value_that_passes_all_of_them() {
+        // Memory: draws * 10 <= 1000 (draws <= 100). Work: draws * reps <=
+        // 600. At reps = 20 the memory budget alone would quote 100, which
+        // the work budget refuses; the quote is 30, and the work budget is
+        // named as the one it runs into.
+        let memory = |v: &[usize]| (v[1] as u128) * 10;
+        let work = |v: &[usize]| (v[0] as u128) * (v[1] as u128);
+        let budgets = [
+            Budget {
+                what: "memory",
+                limit: 1000,
+                phrase: "m",
+                cost: &memory,
+            },
+            Budget {
+                what: "work",
+                limit: 600,
+                phrase: "w",
+                cost: &work,
+            },
+        ];
+        let args = |reps, draws| {
+            [
+                SizeArg::new("reps", reps, 1),
+                SizeArg::new("n_draws", draws, 1),
+            ]
+        };
+        assert!(check_budgets(&args(20, 30), &budgets).is_ok());
+        match check_budgets(&args(20, 1 << 31), &budgets) {
+            Err(BayesError::TooLarge { arg, max, what, .. }) => {
+                assert_eq!((arg, max, what), ("n_draws", Some(30), "work"));
+            }
+            other => panic!("{other:?}"),
+        }
+        // With few reps the memory budget is the binding one.
+        match check_budgets(&args(2, 1 << 31), &budgets) {
+            Err(BayesError::TooLarge { arg, max, what, .. }) => {
+                assert_eq!((arg, max, what), ("n_draws", Some(100), "memory"));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(check_budgets(&args(2, 100), &budgets).is_ok());
+    }
+
+    #[test]
+    fn a_fixed_cost_past_its_budget_is_refused_without_panicking() {
+        match check_sizes("w", 10, "b", &[], |_| 11) {
+            Err(BayesError::TooLarge { arg, max, .. }) => {
+                assert_eq!((arg, max), ("the size arguments", None));
+            }
+            other => panic!("{other:?}"),
+        }
+        assert!(check_sizes("w", 10, "b", &[], |_| 10).is_ok());
     }
 
     #[test]

@@ -4792,11 +4792,14 @@ fn max_share_svar<'py>(
 }
 
 /// The proxy-SVAR bootstrap working set, checked before any replication is
-/// spawned: per replication one RNG substream, its `(horizon + 1) x n`
-/// response rows and the per-draw diagnostics (`gamma_norm`, `rho`, the
-/// first-stage F and reliability, all also returned as lists); plus the
-/// point MA path and the reported bands. Names `horizon` (when one
-/// replication at that horizon does not fit) or `n_boot`.
+/// spawned: per replication one RNG substream, its own `(horizon + 1)`
+/// moving-average path (`n x n` each: replications run in parallel, so it
+/// is counted per replication, as `long_run_svar_bands` counts its
+/// bootstrap paths), its `(horizon + 1) x n` response rows and the per-draw
+/// diagnostics (`gamma_norm`, `rho`, the first-stage F and reliability, all
+/// also returned as lists); plus the point MA path and the reported bands.
+/// Names `horizon` (when one replication at that horizon does not fit) or
+/// `n_boot`.
 fn proxy_bands_budget(
     n: usize,
     horizon: usize,
@@ -4805,8 +4808,9 @@ fn proxy_bands_budget(
     use tsecon_bayes::budget::{check_memory, irf_path_values, mat_values, SizeArg, STREAM_VALUES};
     let n128 = n as u128;
     check_memory(
-        "the bootstrap replications (per replication one RNG substream, (horizon + 1) \
-         x n responses and the per-draw diagnostics, also returned as lists)",
+        "the bootstrap replications (per replication one RNG substream, its (horizon \
+         + 1) n x n moving-average path, (horizon + 1) x n responses and the per-draw \
+         diagnostics, also returned as lists)",
         &[
             SizeArg::new("horizon", horizon, 0),
             SizeArg::new("n_boot", n_boot, 2),
@@ -4814,6 +4818,7 @@ fn proxy_bands_budget(
         |v| {
             let hs = (v[0] as u128).saturating_add(1);
             let per_rep = STREAM_VALUES
+                .saturating_add(irf_path_values(n, v[0], 0))
                 .saturating_add(hs.saturating_mul(n128.saturating_add(3)))
                 .saturating_add(n128.saturating_add(6).saturating_mul(6));
             (v[1] as u128)
@@ -5386,13 +5391,23 @@ fn proxy_ar_sets<'py>(
     rf_seed: Option<u64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_ident::proxy_ar::{
-        pope_bias_corrected_coefs, proxy_ar_sets as ar_fn, psi_reduced_form_cov,
-        psi_reduced_form_cov_mc, ArCritical, ArReducedForm, ArVariance, ArVarianceSpec,
+        check_ar_sets_budget, pope_bias_corrected_coefs, proxy_ar_sets as ar_fn,
+        psi_reduced_form_cov, psi_reduced_form_cov_mc, ArCritical, ArReducedForm, ArRfBudget,
+        ArVariance, ArVarianceSpec,
     };
 
-    // The MA path and the nested lists returned for it, sized before
-    // anything is allocated (a horizon past the budget is refused by name).
-    tsecon_ident::check_irf_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
+    // The MA path, the nested lists returned for it and the reduced-form
+    // variance the call will run, sized together before anything is
+    // allocated, so a refusal quotes a horizon (or rf_draws) that passes
+    // every budget. An unknown rf_method is refused by name further down.
+    let rf_budget = match (reduced_form_uncertainty, rf_method) {
+        (true, "delta") => ArRfBudget::Delta,
+        (true, "second_order" | "second_order_bc") => ArRfBudget::Simulation {
+            draws: rf_draws.unwrap_or(256),
+        },
+        _ => ArRfBudget::Off,
+    };
+    check_ar_sets_budget(data.as_array().ncols(), lags, horizon, rf_budget).map_err(to_py)?;
     let r = var_results(&data, lags, trend)?;
     let psi = r.ma_rep(horizon).map_err(to_py)?;
     let n_obs = data.as_array().nrows();
@@ -12499,16 +12514,17 @@ fn impact_matrix_arg<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Option<ImpactArg<
 /// callable's `impact` (e.g. `long_run_svar(...)["impact"]`) passes straight
 /// in. If None, A0 is the
 /// lower Cholesky of the innovation covariance and the result equals `var_fevd`
-/// exactly. `sigma` ('dfadj'|'mle') selects the default Cholesky's df scaling;
-/// the FEVD shares are INVARIANT to it (numerator and denominator scale
-/// together) — it only rescales the reported `impact`.
+/// exactly. `sigma` ('dfadj'|'mle'; None, the default, means 'dfadj') selects
+/// the default Cholesky's df scaling; the FEVD shares are INVARIANT to it
+/// (numerator and denominator scale together) — it only rescales the reported
+/// `impact`.
 ///
 /// Returns `fevd` [horizon+1][variable][shock] (each row sums to 1) and the
 /// `impact` [n][n] A0 used.
 ///
-/// `sigma` is validated first and is refused, naming it, when passed
-/// (non-default) together with `impact` -- it only scales the default Cholesky,
-/// so it cannot act there. `lags=0` is refused naming lags (unlike `var_fevd`,
+/// `sigma` is validated first and is refused, naming it, whenever it is passed
+/// together with `impact` (even as 'dfadj') -- it only scales the default
+/// Cholesky, so it cannot act there. `lags=0` is refused naming lags (unlike `var_fevd`,
 /// which returns the static Cholesky shares of a VAR(0)). Sizes are checked
 /// before anything is allocated: the working set (padded matrices and the
 /// returned lists, counted as real storage) is budgeted at 2^28 values (2 GiB),
@@ -12518,7 +12534,7 @@ fn impact_matrix_arg<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Option<ImpactArg<
 ///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c", impact = None, sigma = "dfadj"))]
+#[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c", impact = None, sigma = None))]
 fn structural_fevd<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
@@ -12526,7 +12542,7 @@ fn structural_fevd<'py>(
     horizon: usize,
     trend: &str,
     #[pyo3(from_py_with = impact_matrix_arg)] impact: Option<ImpactArg<'py>>,
-    sigma: &str,
+    sigma: Option<&str>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_bayes::cholesky_irf;
     use tsecon_var::tsecon_linalg::faer::Mat;
@@ -12534,9 +12550,9 @@ fn structural_fevd<'py>(
     // `sigma` is validated before it is used or refused, so a typo is named
     // as such whichever path the call takes.
     let use_mle = match sigma {
-        "dfadj" => false,
-        "mle" => true,
-        other => {
+        None | Some("dfadj") => false,
+        Some("mle") => true,
+        Some(other) => {
             return Err(PyValueError::new_err(format!(
                 "unknown sigma {other:?}; expected \"dfadj\" or \"mle\""
             )))
@@ -12544,10 +12560,11 @@ fn structural_fevd<'py>(
     };
     // `sigma` only sets the df scaling of the DEFAULT Cholesky impact; with
     // `impact` given it cannot act (the shares are invariant to it anyway),
-    // so passing it there is refused, the house rule for an inert keyword.
-    if impact.is_some() && sigma != "dfadj" {
+    // so passing it there -- even spelled as the default -- is refused, the
+    // None-sentinel house rule for an inert keyword.
+    if let (Some(_), Some(sg)) = (&impact, sigma) {
         return Err(PyValueError::new_err(format!(
-            "sigma={sigma:?} is only read when impact=None (it sets the df scaling of the \
+            "sigma={sg:?} is only read when impact=None (it sets the df scaling of the \
              default Cholesky impact matrix); with impact given that matrix is used as \
              passed, so sigma would be ignored. Drop sigma, or drop impact to use the \
              default Cholesky identification."
@@ -12620,29 +12637,6 @@ fn inert_n_weight_draws(callable: &str) -> PyErr {
          with no narrative restrictions every weight is 1 and it would be ignored. Pass \
          narrative_restrictions, or drop n_weight_draws."
     ))
-}
-
-/// The memory the sign-mode historical decomposition adds to the narrative
-/// sampler's own count: every accepted draw's `T_eff` contribution matrices
-/// (`n x n`), kept for the weighted quantiles, plus one draw's
-/// decomposition scratch and the per-cell summary; names `n_draws`.
-fn hd_draws_budget(n: usize, t_eff: usize, n_draws: usize) -> Result<(), tsecon_bayes::BayesError> {
-    use tsecon_bayes::budget::{
-        check_memory, irf_path_values, mat_values, SizeArg, SUMMARY_CELL_VALUES,
-    };
-    let path = irf_path_values(n, t_eff.saturating_sub(1), 0);
-    let cells = (t_eff as u128).saturating_mul((n as u128).saturating_mul(n as u128));
-    check_memory(
-        "the historical decomposition draws (per accepted draw T_eff n x n \
-         contribution matrices, plus the per-cell summary)",
-        &[SizeArg::new("n_draws", n_draws, 1)],
-        |v| {
-            (v[0] as u128)
-                .saturating_mul(path.saturating_add(mat_values(n)))
-                .saturating_add(path.saturating_mul(3))
-                .saturating_add(cells.saturating_mul(SUMMARY_CELL_VALUES))
-        },
-    )
 }
 
 /// Parse a list of narrative-restriction dicts into a NarrativeRestrictionSet.
@@ -12769,7 +12763,7 @@ fn parse_narrative_restrictions(
 /// and the returned lists, counted as real storage) is budgeted at 2^28 values
 /// (2 GiB) before anything is allocated, refusing a `horizon` or `n_draws` past
 /// it by name with the largest value that fits; and the narrative weight loop
-/// is capped at 2^36 multiply-adds (naming n_weight_draws). Under "impact", an
+/// is capped at 2^35 multiply-adds (naming n_weight_draws). Under "impact", an
 /// invertible impact whose shocks overflow, or whose `shock_covariance` leaves
 /// the double range (entries many orders of magnitude below or above the
 /// residuals), is refused naming impact with a rescale hint; the singularity
@@ -13027,11 +13021,11 @@ fn historical_decomposition<'py>(
                 return Err(inert_n_weight_draws("historical_decomposition"));
             }
             // The decomposition keeps every accepted draw's T_eff historical
-            // contributions (n x n each) on top of the sampler's own count,
-            // which the sampler checks itself.
-            hd_draws_budget(n, t_eff, n_draws).map_err(to_py)?;
+            // contributions (n x n each); the sampler counts them with its own
+            // draws in one budget, before any substream is spawned.
             let result = NarrativeSampler::new(sign_h, n_draws, max_tries, n_weight_draws)
                 .map_err(to_py)?
+                .sized_for_hd()
                 .run(
                     &posterior,
                     m.as_ref(),
@@ -13103,7 +13097,7 @@ fn historical_decomposition<'py>(
 /// storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or `n_draws`
 /// past it is refused by name with the largest value that fits. The narrative
 /// weight loop, n_draws * n_weight_draws * (T_eff*n^2 + (h + 3)*n^3)
-/// multiply-adds, is capped at 2^36 (about a minute and a half), refused naming
+/// multiply-adds, is capped at 2^35 (at most about a minute), refused naming
 /// n_weight_draws (or n_draws) with the largest value that fits.
 /// `n_weight_draws` is only read under narrative_restrictions: passed
 /// (non-default) without them it is refused as inert.

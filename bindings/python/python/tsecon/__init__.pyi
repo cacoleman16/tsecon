@@ -1436,7 +1436,7 @@ def structural_fevd(
     horizon: int = ...,
     trend: str = ...,
     impact: _ArrayLike | Sequence[Sequence[float]] | None = ...,
-    sigma: str = ...,
+    sigma: str | None = ...,
 ) -> dict[str, Any]:
     """Structural FEVD for an arbitrary structural impact matrix A0 (the gap
     var_fevd, recursive-Cholesky only, leaves).
@@ -1447,16 +1447,17 @@ def structural_fevd(
     callable's `impact` (e.g. `long_run_svar(...)["impact"]`) passes straight
     in. If None,
     A0 is the lower Cholesky of the innovation covariance and the result equals
-    `var_fevd` exactly. `sigma` ("dfadj"|"mle") sets the default Cholesky's df
-    scaling; the FEVD shares are invariant to it (it only rescales the reported
-    `impact`). Returns `fevd` [horizon+1][variable][shock] (each row sums to 1)
-    and `impact` [n][n] (the A0 used).
+    `var_fevd` exactly. `sigma` ("dfadj"|"mle"; None, the default, means
+    "dfadj") sets the default Cholesky's df scaling; the FEVD shares are
+    invariant to it (it only rescales the reported `impact`). Returns `fevd`
+    [horizon+1][variable][shock] (each row sums to 1) and `impact` [n][n] (the
+    A0 used).
 
-    `sigma` is validated first and is refused, naming it, when passed
-    (non-default) together with `impact` -- it only scales the default
-    Cholesky, so it cannot act there. `lags=0` is refused naming lags (unlike
-    `var_fevd`, which returns the static Cholesky shares of a VAR(0)). Sizes
-    are checked before anything is allocated: the working set (padded matrices
+    `sigma` is validated first and is refused, naming it, whenever it is
+    passed together with `impact` (even as "dfadj") -- it only scales the
+    default Cholesky, so it cannot act there. `lags=0` is refused naming lags
+    (unlike `var_fevd`, which returns the static Cholesky shares of a VAR(0)).
+    Sizes are checked before anything is allocated: the working set (padded matrices
     and the returned lists, counted as real storage) is budgeted at 2^28 values
     (2 GiB), and a `horizon` past it is refused by name with the largest value
     that fits. The shares are computed on row-scaled responses, so an impact of
@@ -1530,7 +1531,7 @@ def historical_decomposition(
     draw and the returned lists, counted as real storage) is budgeted at 2^28
     values (2 GiB) before anything is allocated, refusing a `horizon` or
     `n_draws` past it by name with the largest value that fits; and the
-    narrative weight loop is capped at 2^36 multiply-adds (naming
+    narrative weight loop is capped at 2^35 multiply-adds (naming
     n_weight_draws). Under "impact", an invertible impact whose shocks
     overflow, or whose `shock_covariance` leaves the double range (entries many
     orders of magnitude below or above the residuals), is refused naming impact
@@ -1583,7 +1584,7 @@ def narrative_svar(
     real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
     `n_draws` past it is refused by name with the largest value that fits. The
     narrative weight loop, n_draws * n_weight_draws * (T_eff*n^2 + (h + 3)*n^3)
-    multiply-adds, is capped at 2^36 (about a minute and a half), refused
+    multiply-adds, is capped at 2^35 (at most about a minute), refused
     naming n_weight_draws (or n_draws) with the largest value that fits.
     `n_weight_draws` is only read under narrative_restrictions: passed
     (non-default) without them it is refused as inert.

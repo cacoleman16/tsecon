@@ -1,6 +1,6 @@
 """Run a battery of VALID ident/bayes calls and pickle the outputs, so the
 baseline wheel and the fixed wheel can be compared bit for bit:
-    python bitident.py dump OUT.pkl ; python bitident.py compare A.pkl B.pkl"""
+    python bit_identity.py dump OUT.pkl ; python bit_identity.py compare A.pkl B.pkl"""
 import pickle
 import sys
 

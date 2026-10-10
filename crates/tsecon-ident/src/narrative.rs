@@ -63,7 +63,9 @@
 //! batching. With no narrative restrictions the weight loop is skipped and the
 //! sampler reproduces [`crate::SignSampler`] exactly.
 
-use tsecon_bayes::budget::{self, mat_values, rect_values, SizeArg};
+use tsecon_bayes::budget::{
+    self, irf_path_values, mat_values, rect_values, SizeArg, SUMMARY_CELL_VALUES,
+};
 use tsecon_bayes::{cholesky_irf, NiwPosterior};
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
@@ -79,7 +81,7 @@ use crate::shocks::{
     build_regressors, orthogonalized_residuals, reduced_form_residuals, structural_shocks,
 };
 use crate::sign::{Sign, SignRestrictionSet};
-use crate::summary::{check_draw_budget, structural_irf, summarize_weighted};
+use crate::summary::{draw_budget_values, structural_irf, summarize_weighted, DRAW_BUDGET_WHAT};
 
 /// Default pointwise credible-band probabilities (5/16/50/84/95 percentiles).
 const DEFAULT_QUANTILE_PROBS: [f64; 5] = [0.05, 0.16, 0.50, 0.84, 0.95];
@@ -673,16 +675,17 @@ impl NarrativeSampleResult {
 /// Refused beyond it, naming `n_weight_draws` (or `n_draws`) with the
 /// largest value that fits: the loop holds the interpreter and cannot be
 /// interrupted, and every count is a fixed loop length, not a convergence
-/// cap that stops early. Measured at 1.2 to 1.3 ns per unit (a 4-variable
-/// VAR(1), `T = 400`; `n_draws = 100, n_weight_draws = 10000` takes 8.7 s;
-/// `lab/audit/round16/ident_bayes/cost_narrative.py`), so the cap is about
-/// a minute and a half; the default 500 x 200 on a 3-variable VAR with
-/// `T = 200` is 2e8 units.
-pub const NARRATIVE_WEIGHT_WORK: u128 = 1 << 36;
+/// cap that stops early. Measured at 0.6 to 2.0 ns per unit (a 4-variable
+/// VAR(1) with `T = 400` and a 3-variable one with `T = 160`;
+/// `lab/audit/round16/ident_bayes/cost_narrative.py`), so the cap is at most
+/// about a minute (22 to 67 s); the default 500 x 200 on a 3-variable VAR
+/// with `T = 200` is 2e8 units, and on an 8-variable one with `T = 2000`
+/// 1.3e10.
+pub const NARRATIVE_WEIGHT_WORK: u128 = 1 << 35;
 
 /// How [`NARRATIVE_WEIGHT_WORK`] is quoted in a refusal.
 const NARRATIVE_WEIGHT_WORK_PHRASE: &str =
-    "the 2^36 multiply-add work budget (about a minute and a half)";
+    "the 2^35 multiply-add work budget (at most about a minute)";
 
 /// The work of one narrative weight draw, in multiply-adds: recovering the
 /// `T_eff` structural shocks (`T_eff n^2`), the Haar rotation and the
@@ -710,6 +713,7 @@ pub struct NarrativeSampler {
     max_tries_per_draw: usize,
     n_weight_draws: usize,
     quantile_probs: Vec<f64>,
+    sized_for_hd: bool,
 }
 
 impl NarrativeSampler {
@@ -751,7 +755,19 @@ impl NarrativeSampler {
             max_tries_per_draw,
             n_weight_draws,
             quantile_probs: DEFAULT_QUANTILE_PROBS.to_vec(),
+            sized_for_hd: false,
         })
+    }
+
+    /// Sizes [`NarrativeSampler::run`] for a historical decomposition of
+    /// every accepted draw ([`NarrativeSampleResult::hd_summary`]): each
+    /// draw's `T_eff` contribution matrices (`n x n`), kept for the weighted
+    /// quantiles, are counted in the same memory budget as the draws
+    /// themselves, so a refusal quotes a draw count that fits both.
+    #[must_use]
+    pub fn sized_for_hd(mut self) -> Self {
+        self.sized_for_hd = true;
+        self
     }
 
     /// The default IRF horizon (used by [`NarrativeSampleResult::irf_summary`]
@@ -870,38 +886,69 @@ impl NarrativeSampler {
             .unwrap_or(0)
             .max(narrative.map(|nr| nr.contrib_check_horizon()).unwrap_or(0));
 
-        // Size the run before any substream is spawned: the kept draws (b,
-        // Sigma, Q and a weight each, then their IRF summary) against the
-        // memory budget, and the weight loop -- n_weight_draws S-rotations
-        // per accepted draw, each recovering T_eff structural shocks and an
-        // IRF cube to the check horizon -- against the work budget.
+        // Size the run before any substream is spawned, in one check so a
+        // refusal quotes a value that fits every budget: the kept draws (b,
+        // Sigma, Q and a weight each, then their IRF summary -- or, sized
+        // for a historical decomposition, every draw's T_eff contribution
+        // matrices as well) against the memory budget, and the weight loop
+        // -- n_weight_draws S-rotations per accepted draw, each recovering
+        // T_eff structural shocks and an IRF cube to the check horizon --
+        // against the work budget.
         let k = n.saturating_mul(p).saturating_add(1);
-        check_draw_budget(
-            n,
-            self.horizon.max(check_horizon),
-            self.n_posterior_draws,
-            rect_values(k, n)
-                .saturating_add(mat_values(n).saturating_mul(2))
-                .saturating_add(1),
-        )?;
+        let per_draw_extra = rect_values(k, n)
+            .saturating_add(mat_values(n).saturating_mul(2))
+            .saturating_add(1);
+        let hd_path = irf_path_values(n, t_eff.saturating_sub(1), 0);
+        let hd_cells = (t_eff as u128).saturating_mul((n as u128).saturating_mul(n as u128));
+        let sized_for_hd = self.sized_for_hd;
+        // v = [horizon, n_weight_draws, n_draws]
+        let memory = |v: &[usize]| {
+            let draws = draw_budget_values(n, v[0], v[2], per_draw_extra);
+            if sized_for_hd {
+                (v[2] as u128)
+                    .saturating_mul(hd_path.saturating_add(mat_values(n)))
+                    .saturating_add(hd_path.saturating_mul(3))
+                    .saturating_add(hd_cells.saturating_mul(SUMMARY_CELL_VALUES))
+                    .saturating_add(draws)
+            } else {
+                draws
+            }
+        };
+        let per_weight_draw = narrative_weight_draw_work(n, t_eff, check_horizon);
+        let work = |v: &[usize]| {
+            (v[1] as u128)
+                .saturating_mul(v[2] as u128)
+                .saturating_mul(per_weight_draw)
+        };
+        let memory_budget = budget::Budget {
+            what: if sized_for_hd {
+                "the posterior draws (per draw one RNG substream, (horizon + 1) n x n \
+                 structural impulse-response matrices and T_eff n x n historical \
+                 contribution matrices, plus the per-cell summaries)"
+            } else {
+                DRAW_BUDGET_WHAT
+            },
+            limit: budget::MEMORY_BUDGET_VALUES,
+            phrase: budget::MEMORY_BUDGET,
+            cost: &memory,
+        };
+        let work_budget = budget::Budget {
+            what: "the narrative importance weights (n_draws * n_weight_draws S-rotations, \
+                   each recovering the T_eff structural shocks and an impulse-response \
+                   cube to the restriction horizon)",
+            limit: NARRATIVE_WEIGHT_WORK,
+            phrase: NARRATIVE_WEIGHT_WORK_PHRASE,
+            cost: &work,
+        };
+        let args = [
+            SizeArg::new("horizon", self.horizon.max(check_horizon), 0),
+            SizeArg::new("n_weight_draws", self.n_weight_draws, 1),
+            SizeArg::new("n_draws", self.n_posterior_draws, 1),
+        ];
         if narrative.is_some() {
-            let per_weight_draw = narrative_weight_draw_work(n, t_eff, check_horizon);
-            budget::check_sizes(
-                "the narrative importance weights (n_draws * n_weight_draws S-rotations, \
-                 each recovering the T_eff structural shocks and an impulse-response \
-                 cube to the restriction horizon)",
-                NARRATIVE_WEIGHT_WORK,
-                NARRATIVE_WEIGHT_WORK_PHRASE,
-                &[
-                    SizeArg::new("n_weight_draws", self.n_weight_draws, 1),
-                    SizeArg::new("n_draws", self.n_posterior_draws, 1),
-                ],
-                |v| {
-                    (v[0] as u128)
-                        .saturating_mul(v[1] as u128)
-                        .saturating_mul(per_weight_draw)
-                },
-            )?;
+            budget::check_budgets(&args, &[memory_budget, work_budget])?;
+        } else {
+            budget::check_budgets(&args, &[memory_budget])?;
         }
 
         // Regressors are fixed across draws; only needed when we must recover

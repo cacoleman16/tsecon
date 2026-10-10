@@ -66,18 +66,25 @@ pub(crate) fn scale_exponent(values: impl Iterator<Item = f64>) -> Option<i32> {
 /// that fits, before anything is allocated.
 pub fn check_irf_horizon(n: usize, horizon: usize) -> Result<(), IdentError> {
     budget::check_memory(
-        "the (horizon + 1) n x n impulse-response matrices (and the nested lists \
-         returned for them)",
+        IRF_HORIZON_WHAT,
         &[SizeArg::new("horizon", horizon, 0)],
-        |v| {
-            irf_path_values(
-                n,
-                v[0],
-                mat_values(n).saturating_add(budget::py_matrix_values(n)),
-            )
-        },
+        |v| irf_horizon_values(n, v[0]),
     )?;
     Ok(())
+}
+
+/// What [`check_irf_horizon`] counts, as its refusal states it.
+pub(crate) const IRF_HORIZON_WHAT: &str = "the (horizon + 1) n x n impulse-response matrices \
+     (and the nested lists returned for them)";
+
+/// The working set [`check_irf_horizon`] counts, in `f64` values: per
+/// horizon two `n x n` matrices and their nested list.
+pub(crate) fn irf_horizon_values(n: usize, horizon: usize) -> u128 {
+    irf_path_values(
+        n,
+        horizon,
+        mat_values(n).saturating_add(budget::py_matrix_values(n)),
+    )
 }
 
 /// The working set of a posterior-draw sampler, checked before its
@@ -94,27 +101,38 @@ pub(crate) fn check_draw_budget(
     per_draw_extra: u128,
 ) -> Result<(), IdentError> {
     budget::check_memory(
-        "the posterior draws (per draw one RNG substream and (horizon + 1) n x n \
-         structural impulse-response matrices, plus the per-cell band summary)",
+        DRAW_BUDGET_WHAT,
         &[
             SizeArg::new("horizon", horizon, 0),
             SizeArg::new("n_draws", n_draws, 1),
         ],
-        |v| {
-            let cells = (v[0] as u128)
-                .saturating_add(1)
-                .saturating_mul((n as u128).saturating_mul(n as u128));
-            let per_draw = STREAM_VALUES
-                .saturating_add(4)
-                .saturating_add(irf_path_values(n, v[0], 0))
-                .saturating_add(per_draw_extra);
-            (v[1] as u128)
-                .saturating_mul(per_draw)
-                .saturating_add(irf_path_values(n, v[0], mat_values(n)))
-                .saturating_add(cells.saturating_mul(SUMMARY_CELL_VALUES))
-        },
+        |v| draw_budget_values(n, v[0], v[1], per_draw_extra),
     )?;
     Ok(())
+}
+
+/// What [`check_draw_budget`] counts, as its refusal states it.
+pub(crate) const DRAW_BUDGET_WHAT: &str = "the posterior draws (per draw one RNG substream and \
+     (horizon + 1) n x n structural impulse-response matrices, plus the per-cell band summary)";
+
+/// The working set [`check_draw_budget`] counts, in `f64` values.
+pub(crate) fn draw_budget_values(
+    n: usize,
+    horizon: usize,
+    n_draws: usize,
+    per_draw_extra: u128,
+) -> u128 {
+    let cells = (horizon as u128)
+        .saturating_add(1)
+        .saturating_mul((n as u128).saturating_mul(n as u128));
+    let per_draw = STREAM_VALUES
+        .saturating_add(4)
+        .saturating_add(irf_path_values(n, horizon, 0))
+        .saturating_add(per_draw_extra);
+    (n_draws as u128)
+        .saturating_mul(per_draw)
+        .saturating_add(irf_path_values(n, horizon, mat_values(n)))
+        .saturating_add(cells.saturating_mul(SUMMARY_CELL_VALUES))
 }
 
 /// Candidate structural IRF `Theta_h = Theta^chol_h Q` (post-multiplying each
