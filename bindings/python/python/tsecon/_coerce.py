@@ -533,6 +533,69 @@ def _negative_int_error(fn, args, kwargs, original: OverflowError) -> ValueError
     )
 
 
+# The identification engines refuse an index past its bound as "restriction
+# out of range: <label> index <i> is not below the bound <b>", which names
+# neither the keyword nor the entry (the engine sees parsed structs). The
+# label says which field of a restriction tuple or narrative dict it was.
+_RANGE_ERROR = re.compile(
+    r"restriction out of range: (?P<label>.+?) index (?P<index>\d+) is not below the bound (?P<bound>\d+)"
+)
+_SPEC_ARGS = ("restrictions", "sign_restrictions", "zero_restrictions", "narrative_restrictions")
+
+
+def _range_field(label: str) -> tuple[int | None, tuple[str, ...]]:
+    """The tuple position and dict keys a range-error label refers to."""
+    if "variable" in label:
+        return 0, ("variable",)
+    if "shock" in label:
+        return 1, ("shock",)
+    if "period" in label:
+        return None, ("period", "start")
+    if "end" in label:
+        return None, ("end",)
+    if "horizon" in label:
+        return 2, ()
+    return None, ()
+
+
+def _range_error(fn, args, kwargs, original: ValueError) -> ValueError | None:
+    """Name the restriction-spec entry an engine range refusal is about.
+
+    Returns ``None`` (leave the original) unless exactly the reported index is
+    found at the reported field of some entry of a spec argument.
+    """
+    m = _RANGE_ERROR.search(str(original))
+    if m is None:
+        return None
+    pos, keys = _range_field(m.group("label"))
+    index, bound = int(m.group("index")), int(m.group("bound"))
+    try:
+        names = list(inspect.signature(fn).parameters)
+    except (ValueError, TypeError):
+        names = []
+    labeled = [
+        *((names[i], a) for i, a in enumerate(args) if i < len(names)),
+        *kwargs.items(),
+    ]
+    for name, spec in labeled:
+        if name not in _SPEC_ARGS or not isinstance(spec, (list, tuple)):
+            continue
+        for i, entry in enumerate(spec):
+            hit = None
+            if isinstance(entry, dict):
+                hit = next((f"[{k!r}]" for k in keys if entry.get(k) == index), None)
+            elif isinstance(entry, (list, tuple)) and pos is not None and pos < len(entry):
+                if isinstance(entry[pos], int) and entry[pos] == index:
+                    hit = f"[{pos}]"
+            if hit is not None:
+                return ValueError(
+                    f"{fn.__name__}: {name}[{i}]{hit} = {index} is out of range: it "
+                    f"must be below {bound} ({m.group('label')}). Original error: "
+                    f"{original}"
+                )
+    return None
+
+
 # A count argument of 2**48 or more asks for at least 2 PiB of f64 — beyond
 # any addressable memory — and the compiled core reacts to it in one of two
 # ways, neither of them an exception a user can catch (repo audit, security
@@ -1108,6 +1171,11 @@ def _call(fn, args, kwargs):
     except OverflowError as exc:
         if _NEGATIVE_INT_HINT in str(exc):
             raise _negative_int_error(fn, args, kwargs, exc) from exc
+        raise
+    except ValueError as exc:
+        rebuilt = _range_error(fn, args, kwargs, exc)
+        if rebuilt is not None:
+            raise rebuilt from exc
         raise
     except BaseException as exc:
         # Only the allocation-size panic is rebuilt; every other BaseException

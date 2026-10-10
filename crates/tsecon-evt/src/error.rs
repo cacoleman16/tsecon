@@ -156,8 +156,8 @@ impl fmt::Display for EvtError {
             ),
             Self::InvalidReturnPeriod { t } => write!(
                 f,
-                "invalid return period {t}; each return period must be \
-                 strictly greater than 1 block (T = 10 means the level \
+                "invalid return period {t} in return_periods; each return \
+                 period must be strictly greater than 1 block (T = 10 means the level \
                  exceeded once every 10 blocks on average, i.e. the \
                  1 - 1/10 GEV quantile)"
             ),

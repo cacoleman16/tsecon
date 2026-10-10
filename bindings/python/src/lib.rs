@@ -268,7 +268,16 @@ fn bootstrap_indices<'py>(
         }
     };
     let mut stream = tsecon_rng::Stream::new(seed);
-    let idx = tsecon_bootstrap::indices(s, n, &mut stream).map_err(to_py)?;
+    let idx = tsecon_bootstrap::indices(s, n, &mut stream).map_err(|e| match e {
+        // The engine's message says "block length"; name the keyword.
+        tsecon_bootstrap::BootstrapError::InvalidBlockLength { block_length, n } => {
+            PyValueError::new_err(format!(
+                "block_length = {block_length} is outside the valid range 1..={n} \
+                 (a block can be at most the series length n)"
+            ))
+        }
+        other => to_py(other),
+    })?;
     Ok(idx
         .into_iter()
         .map(|i| i as u64)
@@ -10803,6 +10812,31 @@ fn favar<'py>(
             )))
         }
     };
+    // Name the keywords, not the engine's `r` and "slow index".
+    let (t_obs, n_series) = (m.nrows(), m.ncols());
+    let max_factors = t_obs.min(n_series);
+    if n_factors == 0 || n_factors > max_factors {
+        return Err(PyValueError::new_err(format!(
+            "n_factors = {n_factors} is invalid: it must satisfy 1 <= n_factors <= \
+             min(T, N) = {max_factors} for a {t_obs} x {n_series} panel"
+        )));
+    }
+    if let Some(ref idx) = slow_indices {
+        if let Some((i, &v)) = idx.iter().enumerate().find(|&(_, &v)| v >= n_series) {
+            return Err(PyValueError::new_err(format!(
+                "slow_indices[{i}] = {v} is out of range: a slow series is a column of \
+                 panel, so its index must be below N = {n_series}"
+            )));
+        }
+        if !idx.is_empty() && idx.len() < n_factors {
+            return Err(PyValueError::new_err(format!(
+                "slow_indices holds {} series but n_factors = {n_factors}: the slow-fast \
+                 scheme needs at least n_factors slow series to extract n_factors slow \
+                 factors; pass more slow_indices or a smaller n_factors",
+                idx.len()
+            )));
+        }
+    }
     let fit = match slow_indices {
         Some(ref idx) => {
             tsecon_favar::Favar::two_step_slow_fast(m.as_ref(), pol, idx, n_factors, lags, tr)

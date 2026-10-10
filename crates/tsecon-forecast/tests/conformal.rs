@@ -374,6 +374,20 @@ fn split_conformal_teaching_errors() {
     assert!(!msg.contains("seasonal period"), "{msg}");
     let ok = SplitConformalOptions { calib: 26, ..base };
     assert!(split_conformal(&y[..30], &ok, theta).is_ok());
+    // When even the longest first window the grid allows (horizon, calib and
+    // n_eval at 1) cannot hold what the base needs, the grid is not the cause:
+    // a seasonal Theta at period 1000 needs 2000 observations, not a smaller
+    // calib (audit round 16, the house sweep re-run).
+    let seasonal = |t: &[f64], h: usize| theta_forecast(t, 1000, h).map(|r| r.forecast);
+    let err = split_conformal(&y[..30], &ok, seasonal).unwrap_err();
+    assert!(
+        matches!(err, ForecastError::BaseForecaster { .. }),
+        "{err:?}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("needs at least 2000"), "{msg}");
+    assert!(msg.contains("2 * period"), "{msg}");
+    assert!(!msg.contains("calib = "), "{msg}");
     // A too-short refusal from a later (longer) window is the base's own
     // business and passes through unchanged.
     let first_window = y.len() - base.horizon - base.calib + 1;

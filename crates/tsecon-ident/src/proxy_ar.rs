@@ -1496,10 +1496,13 @@ pub fn check_ar_sets_budget(
             )?;
         }
         ArRfBudget::Delta => {
-            let memory = |v: &[usize]| point(v[0]).saturating_add(delta_values(n, p, v[0]));
-            let work = |v: &[usize]| delta_work(n, p, v[0]);
+            // The delta method's Jacobian grows with the lag order as well as the
+            // horizon, so an absurd `lags` is blamed on `lags`, not on a modest
+            // horizon (listed first: the per-draw size before the horizon).
+            let memory = |v: &[usize]| point(v[1]).saturating_add(delta_values(n, v[0], v[1]));
+            let work = |v: &[usize]| delta_work(n, v[0], v[1]);
             budget::check_budgets(
-                &[SizeArg::new("horizon", horizon, 0)],
+                &[SizeArg::new("lags", p, 1), SizeArg::new("horizon", horizon, 0)],
                 &[
                     Budget {
                         what: "the moving-average path, its returned lists and the \
