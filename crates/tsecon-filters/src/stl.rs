@@ -597,7 +597,11 @@ fn check_jump(name: &'static str, value: usize) -> Result<(), FiltersError> {
 
 /// Resolve the supplied [`StlParams`] against `period` and `n`, applying the
 /// statsmodels default rules and validations.
-fn resolve_config(n: usize, period: usize, p: &StlParams) -> Result<StlConfig, FiltersError> {
+pub(crate) fn resolve_config(
+    n: usize,
+    period: usize,
+    p: &StlParams,
+) -> Result<StlConfig, FiltersError> {
     if period < 2 {
         return Err(FiltersError::InvalidParameter {
             name: "period",
@@ -608,14 +612,11 @@ fn resolve_config(n: usize, period: usize, p: &StlParams) -> Result<StlConfig, F
                  (hp_filter, hamilton_filter) instead",
         });
     }
-    if n < 2 * period {
-        return Err(FiltersError::SeriesTooShort {
+    if n / 2 < period {
+        return Err(FiltersError::PeriodTooLong {
             filter: "stl",
-            needed: 2 * period,
-            got: n,
-            why: "STL smooths each cycle-subseries (all Januaries, all Februaries, ...) \
-                  and needs at least two full cycles to tell the seasonal from the trend \
-                  (R's stl() enforces the same bound)",
+            period,
+            n,
         });
     }
     if p.seasonal < 3 || p.seasonal % 2 == 0 {
@@ -697,6 +698,128 @@ fn resolve_config(n: usize, period: usize, p: &StlParams) -> Result<StlConfig, F
     })
 }
 
+/// The LOESS work budget of one [`stl`] or [`crate::mstl`] call, in LOESS
+/// evaluation units (see [`stl_pass_work`]): `2^32`, about half a minute at
+/// the measured 6 to 9 ns per unit (`lab/stl_cost/stl_cost.py`).
+pub const STL_WORK_BUDGET: u128 = 1 << 32;
+
+/// Inner passes per STL fit that the iteration budget never refuses: the
+/// robust default `inner_iter x (outer_iter + 1) = 2 x 16 = 32`. The budget
+/// polices explicit iteration counts, not the series length or the LOESS
+/// windows, so a call at the default counts runs whatever it costs.
+pub const STL_FREE_PASSES: u128 = 32;
+
+/// LOESS evaluation units of one STL inner pass on `n` observations under
+/// the resolved `cfg`: each smoother evaluates its LOESS at about
+/// `n / jump` points over a window of `min(window, length)` observations —
+/// the cycle-subseries smoother at `n / seasonal_jump + 3 period` points
+/// (each subseries is extended one cycle at each end) over at most
+/// `ceil(n / period)` observations, the low-pass and trend smoothers at
+/// `n / jump + 1` points — plus `12 n` for the moving averages and the
+/// detrending and deseasonalizing sweeps. Measured at 6 to 9 ns per unit.
+pub fn stl_pass_work(n: usize, cfg: &StlConfig) -> u128 {
+    let n = n as u128;
+    let p = (cfg.period as u128).max(1);
+    let k = n.div_ceil(p);
+    let points = |jump: usize| n / (jump as u128).max(1) + 1;
+    let seasonal =
+        (points(cfg.seasonal_jump) + 3 * p).saturating_mul((cfg.seasonal as u128).min(k));
+    let low_pass = points(cfg.low_pass_jump).saturating_mul((cfg.low_pass as u128).min(n));
+    let trend = points(cfg.trend_jump).saturating_mul((cfg.trend as u128).min(n));
+    seasonal
+        .saturating_add(low_pass)
+        .saturating_add(trend)
+        .saturating_add(n.saturating_mul(12))
+}
+
+/// Refuse iteration counts whose LOESS work exceeds [`STL_WORK_BUDGET`],
+/// before any smoothing: `rounds` refinement rounds (1 for STL, MSTL's
+/// effective `iterate`) of one STL fit per entry of `cfgs`, each running
+/// `inner_iter x (outer_iter + 1)` inner passes. Requests of at most
+/// [`STL_FREE_PASSES`] passes per fit over at most two rounds (every default)
+/// are never refused. The refusal names the count that overshoots its
+/// largest admissible value (the others held fixed) by the widest margin.
+pub(crate) fn check_iteration_budget(
+    filter: &'static str,
+    n: usize,
+    cfgs: &[StlConfig],
+    rounds: usize,
+    mstl: bool,
+) -> Result<(), FiltersError> {
+    let Some(first) = cfgs.first() else {
+        return Ok(());
+    };
+    let (inner, outer) = (first.inner_iter as u128, first.outer_iter as u128);
+    let r = rounds as u128;
+    let per_round: u128 = cfgs
+        .iter()
+        .fold(0u128, |acc, c| acc.saturating_add(stl_pass_work(n, c)))
+        .max(1);
+    let passes = inner.saturating_mul(outer.saturating_add(1));
+    let free = |passes: u128, r: u128| passes <= STL_FREE_PASSES && r <= 2;
+    let work = r.saturating_mul(passes).saturating_mul(per_round);
+    if free(passes, r) || work <= STL_WORK_BUDGET {
+        return Ok(());
+    }
+    let budget_units = STL_WORK_BUDGET / per_round; // admissible r x passes
+                                                    // Largest admissible value of each count with the others held fixed:
+                                                    // inside the free region or within the budget, whichever is larger.
+    let max_inner = {
+        let o1 = outer.saturating_add(1);
+        let free_max = if r <= 2 { STL_FREE_PASSES / o1 } else { 0 };
+        free_max.max(budget_units / r.saturating_mul(o1).max(1))
+    };
+    let max_outer = {
+        let free_max = if r <= 2 {
+            STL_FREE_PASSES / inner.max(1)
+        } else {
+            0
+        };
+        let budget_max = budget_units / r.saturating_mul(inner).max(1);
+        free_max.max(budget_max).checked_sub(1)
+    };
+    let max_iterate = {
+        let free_max = if passes <= STL_FREE_PASSES { 2 } else { 0 };
+        free_max.max(budget_units / passes.max(1))
+    };
+    // (param, value, max): a count with no admissible value (below its
+    // floor of 1 for inner_iter/iterate, 0 for outer_iter) is not a remedy.
+    let mut candidates: Vec<(&'static str, u128, u128)> = Vec::with_capacity(3);
+    if max_inner >= 1 {
+        candidates.push(("inner_iter", inner, max_inner));
+    }
+    if let Some(m) = max_outer {
+        candidates.push(("outer_iter", outer, m));
+    }
+    if mstl && cfgs.len() > 1 && max_iterate >= 1 {
+        candidates.push(("iterate", r, max_iterate));
+    }
+    // The widest overshoot: value / (max + 1), compared by cross-multiplying.
+    let pick = candidates
+        .iter()
+        .filter(|&&(_, v, m)| v > m)
+        .copied()
+        .reduce(|a, b| {
+            if b.1.saturating_mul(a.2 + 1) > a.1.saturating_mul(b.2 + 1) {
+                b
+            } else {
+                a
+            }
+        });
+    let (param, value, max) = pick.unwrap_or(("inner_iter", inner, max_inner));
+    let to_usize = |v: u128| usize::try_from(v).unwrap_or(usize::MAX);
+    Err(FiltersError::IterationBudget {
+        filter,
+        param,
+        value: to_usize(value),
+        inner_iter: to_usize(inner),
+        outer_iter: to_usize(outer),
+        iterate: mstl.then_some(rounds),
+        work,
+        max: to_usize(max),
+    })
+}
+
 /// STL decomposition of `y` with seasonal period `period` (observations per
 /// cycle): `y = seasonal + trend + resid`, with bisquare robustness weights
 /// under `robust`.
@@ -712,12 +835,18 @@ fn resolve_config(n: usize, period: usize, p: &StlParams) -> Result<StlConfig, F
 /// * [`FiltersError::InvalidParameter`] — `period < 2`; `seasonal` even or
 ///   `< 3`; `trend`/`low_pass` even, `< 3`, or `<= period`; a degree
 ///   outside {0, 1}; a zero jump; `inner_iter = 0`.
-/// * [`FiltersError::SeriesTooShort`] — fewer than `2 * period`
+/// * [`FiltersError::PeriodTooLong`] — fewer than `2 * period`
 ///   observations.
+/// * [`FiltersError::IterationBudget`] — `inner_iter x (outer_iter + 1)`
+///   inner passes past [`STL_FREE_PASSES`] whose LOESS work
+///   ([`stl_pass_work`] per pass) exceeds [`STL_WORK_BUDGET`]; checked
+///   before any smoothing, naming the count and its largest admissible
+///   value.
 pub fn stl(y: &[f64], period: usize, params: &StlParams) -> Result<StlResult, FiltersError> {
     check_finite(y)?;
     let n = y.len();
     let cfg = resolve_config(n, period, params)?;
+    check_iteration_budget("stl", n, &[cfg], 1, false)?;
 
     let buf = n + 2 * period;
     let mut state = StlState {
@@ -864,4 +993,75 @@ pub fn seasonal_strength(y: &[f64], period: usize) -> Result<StrengthResult, Fil
     }
     let fit = stl(y, period, &StlParams::default())?;
     Ok(strength_from_components(&fit))
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    fn cfg(period: usize, seasonal: usize, trend: usize, low_pass: usize) -> StlConfig {
+        StlConfig {
+            period,
+            seasonal,
+            trend,
+            low_pass,
+            seasonal_deg: 1,
+            trend_deg: 1,
+            low_pass_deg: 1,
+            robust: true,
+            seasonal_jump: 1,
+            trend_jump: 1,
+            low_pass_jump: 1,
+            inner_iter: 2,
+            outer_iter: 15,
+        }
+    }
+
+    /// The default counts are exempt however expensive one pass is: a long
+    /// series at a long period (each pass about 4.7e8 units, so the robust
+    /// default's 32 passes are past the budget) is not refused at the
+    /// default counts, and is at one pass more.
+    #[test]
+    fn default_counts_are_free_however_long_the_pass() {
+        let n = 40_000;
+        let c = cfg(4000, 7, 7637, 4001);
+        let units = stl_pass_work(n, &c);
+        assert!(32 * units > STL_WORK_BUDGET, "units {units}");
+        assert!(check_iteration_budget("stl", n, &[c], 1, false).is_ok());
+        let non_robust = StlConfig {
+            inner_iter: 5,
+            outer_iter: 0,
+            ..c
+        };
+        assert!(check_iteration_budget("stl", n, &[non_robust], 1, false).is_ok());
+        // Two MSTL rounds at the default counts are free too; three are not.
+        assert!(check_iteration_budget("mstl", n, &[c, c], 2, true).is_ok());
+        assert!(check_iteration_budget("mstl", n, &[c, c], 3, true).is_err());
+        let one_more = StlConfig {
+            inner_iter: 33,
+            outer_iter: 0,
+            ..c
+        };
+        match check_iteration_budget("stl", n, &[one_more], 1, false) {
+            Err(FiltersError::IterationBudget {
+                param: "inner_iter",
+                max,
+                ..
+            }) => assert_eq!(max, 32, "the free count is the largest admissible"),
+            other => panic!("expected IterationBudget, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn absurd_counts_saturate_instead_of_wrapping() {
+        let c = StlConfig {
+            inner_iter: usize::MAX,
+            outer_iter: usize::MAX,
+            ..cfg(12, 7, 23, 13)
+        };
+        assert!(matches!(
+            check_iteration_budget("mstl", 96, &[c, c], usize::MAX, true),
+            Err(FiltersError::IterationBudget { .. })
+        ));
+    }
 }

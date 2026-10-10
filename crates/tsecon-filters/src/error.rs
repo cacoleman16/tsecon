@@ -66,6 +66,42 @@ pub enum FiltersError {
         /// Name of the diagnostic that rejected the series.
         what: &'static str,
     },
+    /// The seasonal period is too long for the series: STL smooths each
+    /// cycle-subseries and needs at least two full cycles, `n >= 2 *
+    /// period` (R's `stl()` enforces the same bound).
+    PeriodTooLong {
+        /// Name of the filter (or diagnostic) that rejected the period.
+        filter: &'static str,
+        /// The period that was supplied.
+        period: usize,
+        /// Number of observations supplied.
+        n: usize,
+    },
+    /// An explicit STL/MSTL iteration count asks for more LOESS work than
+    /// [`crate::STL_WORK_BUDGET`]: `inner_iter`, `outer_iter` and MSTL's
+    /// `iterate` are fixed loop counts that never stop early, so an absurd
+    /// count would run for hours (holding the GIL, deaf to Ctrl-C). The
+    /// counts of the defaults — at most [`crate::STL_FREE_PASSES`] inner
+    /// passes per STL fit over at most two MSTL rounds — are never refused.
+    IterationBudget {
+        /// Name of the filter that refused the counts.
+        filter: &'static str,
+        /// The count named as the remedy (`"inner_iter"`, `"outer_iter"`
+        /// or `"iterate"`).
+        param: &'static str,
+        /// Its value.
+        value: usize,
+        /// The resolved number of inner passes.
+        inner_iter: usize,
+        /// The resolved number of outer (robustness) passes.
+        outer_iter: usize,
+        /// The MSTL refinement rounds actually run (`None` for STL).
+        iterate: Option<usize>,
+        /// The LOESS evaluation units the request asks for.
+        work: u128,
+        /// The largest admissible value of `param`, the others held fixed.
+        max: usize,
+    },
     /// The series is degenerate for the requested filter in a way the
     /// message itself states fully — e.g. constant *first differences*
     /// (an exact linear ramp) for the Beveridge-Nelson filter, whose AR
@@ -127,6 +163,51 @@ impl fmt::Display for FiltersError {
                  decomposition's float-noise variances is implementation noise, not \
                  a measurement. A constant series has no seasonality to measure."
             ),
+            FiltersError::PeriodTooLong { filter, period, n } => {
+                write!(
+                    f,
+                    "{filter}: period = {period} needs at least 2 * period = {} observations \
+                     but the series has {n}: STL smooths each cycle-subseries (all \
+                     Januaries, all Februaries, ...) and needs at least two full cycles to \
+                     tell the seasonal from the trend (R's stl() enforces the same bound); ",
+                    (*period as u128) * 2
+                )?;
+                if n / 2 >= 2 {
+                    write!(f, "pass period <= {}, or supply a longer series", n / 2)
+                } else {
+                    write!(
+                        f,
+                        "no period >= 2 fits a series this short, so supply a longer one"
+                    )
+                }
+            }
+            FiltersError::IterationBudget {
+                filter,
+                param,
+                value,
+                inner_iter,
+                outer_iter,
+                iterate,
+                work,
+                max,
+            } => {
+                write!(
+                    f,
+                    "{filter}: {param} = {value} is past the STL work budget: inner_iter = \
+                     {inner_iter} and outer_iter = {outer_iter}"
+                )?;
+                if let Some(r) = iterate {
+                    write!(f, " over iterate = {r} rounds of every period")?;
+                }
+                write!(
+                    f,
+                    " ask for about {:.2e} LOESS evaluation units at this series length and \
+                     these windows, past the budget of 2^32 units (about half a minute, \
+                     checked before any smoothing). These are fixed loop counts that never \
+                     stop early; pass {param} <= {max}",
+                    *work as f64
+                )
+            }
             FiltersError::Degenerate { what } => write!(f, "{what}"),
         }
     }
