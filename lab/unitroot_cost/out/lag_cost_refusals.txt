@@ -1,0 +1,7 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+arch_lm(n = 1e6, nlags = 400000): refused in 10.3 ms, quoting nlags <= 67
+adf(n = 1e6, maxlag = 400000, autolag=None): refused in 3.1 ms, quoting maxlag <= 65
+adf(n = 1e6, maxlag = 100000) (AIC search): refused in 2.4 ms, quoting maxlag <= 65
+dfgls(n = 1e6, lags = 300000): refused in 2.4 ms, quoting lags <= 66
+zivot_andrews(n = 1e6, max_lags = 400000): refused in 3.5 ms, quoting max_lags <= 64

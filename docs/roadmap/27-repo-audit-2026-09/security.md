@@ -250,6 +250,18 @@ max_power=2**31)` were still running at the 15 s deadline (they would run
 for years); every other `max_iter`-style parameter converged early or
 refused. Both remain post-fix (below 2⁴⁸). See *Policy proposal*.
 
+**Status (audit round 16): fixed, and the RESET diagnosis corrected.**
+`reset_test` was not an iteration count without a cap: it built every
+fitted-value power column before running the degrees-of-freedom check it
+already had, so `max_power = 2**31` grew memory one column at a time and
+aborted in the allocator after about 50 s. The augmented design is now sized
+first, against `n > k + max_power - 1` and the Breusch-Godfrey
+auxiliary-regression budgets, and refused naming `max_power`. `mstl`'s
+`iterate`, and `inner_iter` / `outer_iter` of `stl` and `mstl`, are fixed loop
+counts with no early exit; they are now charged against an STL work budget of
+2^32 LOESS evaluation units and refused by name before any smoothing, while
+the default counts are never refused.
+
 ### M5 — moderate: the wheel carries no third-party license notices, contrary to the repository's claim
 
 **Observed.** `THIRD-PARTY-LICENSES.md` states that "the full verbatim

@@ -1,0 +1,4 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+arch_lm(n = 30000): largest admissible nlags = 1477 (the work budget binds)
+  work 3.43e+10 multiply-adds, ran in 56.9 s (1.66 ns/madd)

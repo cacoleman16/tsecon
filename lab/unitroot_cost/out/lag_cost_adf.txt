@@ -1,0 +1,9 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+adf default search (regression 'c', AIC over 0..=maxlag)
+
+      n maxlag       work  seconds  ns/madd
+   1000     22   5.36e+06     0.01     1.20
+  10000     38   2.37e+08     0.29     1.25
+  30000     50   1.53e+09     1.87     1.23
+ 100000     68   1.22e+10    18.60     1.53

@@ -34,9 +34,9 @@ It inspects one dataset — it cannot know your research question.
 |---|---|---|
 | `data` | — | 1D array → univariate battery; 2D `(n, k)`, k ≥ 2 → multivariate (an `(n, 1)` column squeezes to univariate). Plain lists are coerced. |
 | `seasonal_period` | `None` | A *known* period `s` (12 for monthly, 4 for quarterly) unlocks real seasonal evidence: the ACF at lags `s, 2s, 3s` plus the periodogram ordinate at frequency `1/s`. Without it you only get a heuristic `detected_period`. |
-| `lags` | `None` | Ljung-Box horizon; `None` → `min(10, n_analysis // 5)`. |
+| `lags` | `None` | 1D input: the Ljung-Box horizon, an integer `1 <= lags <= n - 3` (the battery may test the `n - 1` first differences); `None` → `min(10, n_analysis // 5)`. 2D input: the cap of the VAR lag search, an integer `>= 1` (`None` → 8; a cap beyond the feasible lags searches all of them). Validated up front and refused by name — it used to be clamped silently (1D) or to drive an unbounded loop (2D). |
 | `alpha` | `0.05` | One significance level for every family. Must lie in `(0.01, 0.10]` — the KPSS p-value is interpolated from a table clamped to `[0.01, 0.10]`, so anything outside that range could never be served honestly (a teaching error explains this if you try). |
-| `max_breaks` | `5` | Passed to `bai_perron` when the break scan escalates. |
+| `max_breaks` | `5` | Passed to `bai_perron` when the break scan escalates; an integer in `[1, 10]`, validated up front whatever the data (it used to be checked only when the sup-F test rejected). |
 | `trim` | `0.15` | Trimming fraction for the sup-F search and Bai-Perron segments. |
 
 ## How to read the report

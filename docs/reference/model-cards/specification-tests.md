@@ -185,8 +185,13 @@ probability. A small p-value rejects correct specification.
 a linear combination of the columns, making `yhat^2` collinear with `X` and
 raising `SingularDesign`. Reading a large p-value as "correctly specified" rather
 than "no evidence of this kind of misspecification". Setting `max_power` below 2
-(`InvalidPower`). As with every test here, a missing constant column raises
-`MissingConstant`.
+(`InvalidPower`). A `max_power` that leaves the augmented regression no
+residual degree of freedom (`n <= k + max_power - 1`), or whose augmented
+design exceeds the Breusch-Godfrey auxiliary-regression budgets (2^26
+entries, 2^34 multiply-adds), is refused before any power column is built,
+naming `max_power` and the largest that fits; `max_power = 2**31` used to
+build power columns until the allocator aborted the interpreter (about 50 s).
+As with every test here, a missing constant column raises `MissingConstant`.
 
 **Validated against.** The `fixtures/tsecon-spectest.json` golden pins the RESET
 F statistic and p-value to statsmodels' `linear_reset(power=3, use_f=True)`,
