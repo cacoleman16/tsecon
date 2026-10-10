@@ -555,10 +555,14 @@ struct Draw {
 ///   before anything is allocated;
 /// * [`VarError::InvalidArgument`] when the full-sample VAR cannot be
 ///   identified (a singular `I - sum A_i`, naming `data` and `lags`);
-/// * [`VarError::Replication`] naming the first replication whose re-estimated
-///   VAR cannot be identified (singular `I - sum A_i` or a non-PD long-run
-///   covariance — a measure-zero event that is propagated, never dropped);
-/// * any [`crate::VarSpec::fit`] error on the full sample or a pseudo-sample.
+/// * [`VarError::Replication`] naming the first replication whose
+///   pseudo-sample cannot be refitted (a singular residual covariance, which
+///   very small samples hit with positive probability because the iid
+///   resample can draw too few distinct residual rows; a singular `Z'Z`; an
+///   overflow) or whose re-estimated VAR cannot be identified (singular
+///   `I - sum A_i` or a non-PD long-run covariance) — propagated, never
+///   dropped;
+/// * any [`crate::VarSpec::fit`] error on the full sample.
 pub fn long_run_bootstrap_bands(
     endog: MatRef<'_, f64>,
     spec: &LongRunBandSpec,
@@ -600,7 +604,7 @@ pub fn long_run_bootstrap_bands(
     let min_root = min_root_of(fit)?;
 
     let raw: Vec<Result<Draw, &'static str>> =
-        engine.replicate(spec.seed, spec.n_boot, |res_b, coefs_b| {
+        engine.replicate(spec.seed, spec.n_boot, true, |res_b, coefs_b| {
             let radius = spectral_radius_of(&res_b.coefs)?;
             Ok(match identify(coefs_b, res_b.sigma_u.as_ref(), spec) {
                 Ok(id) => Ok(Draw {

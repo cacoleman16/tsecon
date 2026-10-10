@@ -50,7 +50,8 @@ use tsecon_linalg::{companion_from_var, spectral_radius};
 use tsecon_bootstrap::{indices, par_replicate, BlockScheme, BootstrapError};
 use tsecon_stats::simultaneous;
 
-use crate::error::VarError;
+use crate::error::{NonFiniteCell, VarError};
+use crate::estimate::{lag_coefs, refit, Refit, SIGMA_U_WHAT};
 use crate::irf::ma_rep;
 use crate::irf_asymptotic::{apply_critical_values, irf_families, IrfCriticalValues};
 use crate::results::{chol_lower, VarResults};
@@ -138,8 +139,13 @@ pub(crate) const BIAS_SEED_OFFSET: u64 = 0x9E37_79B9_7F4A_7C15;
 ///
 /// * [`VarError::InvalidArgument`] if `lags == 0`, `horizon`'s implied
 ///   arrays would be empty, `n_boot < 2`, or `alpha` is not in `(0, 1)`;
-/// * any error from [`VarSpec::fit`] on the full sample or on a bootstrap
-///   pseudo-sample (e.g. a singular regressor cross-product);
+/// * any error from [`VarSpec::fit`] on the full sample;
+/// * [`VarError::Replication`] naming the first bootstrap replication (of
+///   the outer bootstrap, or of the inner bias bootstrap under
+///   `bias_correct`) whose pseudo-sample refit fails — a singular residual
+///   covariance (under `orth` only; a resample with too few distinct
+///   residual rows is recognised by count), a singular regressor
+///   cross-product, or an overflow;
 /// * [`VarError::NotPositiveDefinite`] if an orthogonalization Cholesky
 ///   fails.
 #[allow(clippy::too_many_arguments)]
@@ -297,7 +303,7 @@ fn run_bootstrap(
 
     // Outer bootstrap: one reproducible substream per replication; the first
     // failed replication, if any, is propagated.
-    let draws: Vec<Vec<Mat<f64>>> = engine.replicate(seed, n_boot, |res_b, coefs_b| {
+    let draws: Vec<Vec<Mat<f64>>> = engine.replicate(seed, n_boot, orth, |res_b, coefs_b| {
         irf_cube(coefs_b, res_b.sigma_u.as_ref(), horizon, orth, cumulative)
     })?;
 
@@ -416,38 +422,96 @@ impl ResidualBootstrap {
 
     /// Run the outer bootstrap: replication `b` draws `T_eff` iid row indices
     /// from substream `b` of `SeedSequence(seed).spawn(n_boot)`, rebuilds the
-    /// pseudo-sample recursively from [`Self::dgp_coefs`], refits the VAR, and
-    /// hands `per_draw` the RAW refit plus the coefficients to use (the
-    /// Kilian-corrected refit coefficients under `bias_correct`, the raw ones
-    /// otherwise). Results come back in replication order; the first failed
-    /// replication is propagated.
+    /// pseudo-sample recursively from [`Self::dgp_coefs`], refits the VAR
+    /// ([`refit`]: coefficients and `sigma_u` bit-identical to
+    /// [`VarSpec::fit`]'s), and hands `per_draw` the RAW refit plus the
+    /// coefficients to use (the Kilian-corrected refit coefficients under
+    /// `bias_correct`, the raw ones otherwise). Results come back in
+    /// replication order; the first failed replication is propagated. A refit
+    /// failure is reported as [`VarError::Replication`] with its index: the
+    /// full sample passed every check, so the full-sample messages (which tell
+    /// the caller to drop a duplicated column) would be false here.
+    ///
+    /// `uses_sigma_u` says whether `per_draw` reads the refit's `sigma_u`.
+    /// When it does, a resample that is singular by construction is refused
+    /// by COUNT, before the refit: with an intercept the refit residuals are
+    /// `M_Z u*`, and `M_Z` annihilates the constant, so a resample with `d`
+    /// distinct residual rows leaves them rank `<= d - 1` (`<= d` under
+    /// `trend = "n"`), and `sigma_u` is singular whenever that is below `k`.
+    /// Its Cholesky factorization would detect that only by rounding (most
+    /// such matrices pass it with an `O(eps)` pivot), so which replication
+    /// failed, or whether a garbage draw was kept, would depend on the
+    /// platform's floating-point kernels. When it does not (reduced-form
+    /// responses), such a draw is as good as any other.
     pub(crate) fn replicate<T, F>(
         &self,
         seed: u64,
         n_boot: usize,
+        uses_sigma_u: bool,
         per_draw: F,
     ) -> Result<Vec<T>, VarError>
     where
         T: Send,
-        F: Fn(&VarResults, &[Mat<f64>]) -> Result<T, VarError> + Send + Sync,
+        F: Fn(&Refit, &[Mat<f64>]) -> Result<T, VarError> + Send + Sync,
     {
-        let te = self.uc.nrows();
+        let (te, k) = (self.uc.nrows(), self.uc.ncols());
         let (lags, trend) = (self.lags, self.trend);
-        let raw = par_replicate(seed, n_boot, |_rep, stream| -> Result<T, VarError> {
+        let raw = par_replicate(seed, n_boot, |rep, stream| -> Result<T, VarError> {
             let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
+            if uses_sigma_u && resample_rank_bound(&idx, te, trend) < k {
+                return Err(VarError::Replication {
+                    index: rep,
+                    what: TOO_FEW_DISTINCT_ROWS,
+                });
+            }
             let ustar = gather_rows(&self.uc, &idx);
             let ysim = simulate_recursive(&self.dgp_coefs, &self.intercept, &self.init, &ustar);
-            let res_b = VarSpec { lags, trend }.fit(ysim.as_ref())?;
-            match &self.bias {
+            let res_b = refit(ysim.as_ref(), lags, trend)
+                .map_err(|e| pseudo_sample_error(&e, rep, false))?;
+            let out = match &self.bias {
                 Some(b) => {
                     let coefs_b = correct_coefs(&res_b.coefs, b)?;
                     per_draw(&res_b, &coefs_b)
                 }
                 None => per_draw(&res_b, &res_b.coefs),
-            }
+            };
+            // A refit covariance with more than enough distinct rows can still
+            // be numerically singular, which the statistic's orthogonalisation
+            // detects: the same pseudo-sample failure.
+            out.map_err(|e| match e {
+                VarError::NotPositiveDefinite { what } if what == SIGMA_U_WHAT => {
+                    pseudo_sample_error(&e, rep, false)
+                }
+                other => other,
+            })
         })
         .map_err(map_boot_err)?;
         raw.into_iter().collect()
+    }
+}
+
+/// Why a resample with too few distinct residual rows is refused (see
+/// [`ResidualBootstrap::replicate`]).
+const TOO_FEW_DISTINCT_ROWS: &str = "its iid resample drew too few distinct residual rows \
+     to span the k series (at most k of them with an intercept, at most k - 1 under \
+     trend=\"n\"), so its refit's residual covariance Sigma_u is singular by construction \
+     — which has positive probability when the effective sample T_eff is small (the full \
+     sample is fine); more observations make it vanishingly rare, and reduced-form \
+     responses (orth=False) do not need Sigma_u";
+
+/// An upper bound on the rank of a pseudo-sample's refit residuals from its
+/// resample `idx` of `te` residual rows: the number of distinct rows, less one
+/// with an intercept (the refit residuals `M_Z u*` lose the constant
+/// direction that every row-selection matrix contains).
+fn resample_rank_bound(idx: &[usize], te: usize, trend: Trend) -> usize {
+    let mut seen = vec![false; te];
+    let distinct = idx
+        .iter()
+        .filter(|&&i| !std::mem::replace(&mut seen[i], true))
+        .count();
+    match trend {
+        Trend::Constant => distinct.saturating_sub(1),
+        Trend::None => distinct,
     }
 }
 
@@ -498,9 +562,17 @@ pub(crate) fn draw_critical_values(
                             let v = d[h][(i, j)];
                             if !v.is_finite() {
                                 return Err(VarError::NonFinite {
-                                    what: "a bootstrap impulse-response replication; drop \
-                                           the failed replications before banding",
-                                    at: Some((b, c_idx)),
+                                    what: "the bootstrap impulse-response draws (row = \
+                                           replication, column = cell of the band family)",
+                                    at: Some(NonFiniteCell {
+                                        row: b,
+                                        col: c_idx,
+                                        why: "an explosive pseudo-sample overflowed its \
+                                              responses, and the sup-t maximum is undefined \
+                                              with a non-finite draw (dropping the draw would \
+                                              narrow the band); change seed or n_boot, or use \
+                                              method=\"asymptotic\"",
+                                    }),
                                 });
                             }
                             flat[b * n_cells + c_idx] = v;
@@ -596,7 +668,7 @@ fn irf_cube(
 ) -> Result<Vec<Mat<f64>>, VarError> {
     let psi = ma_rep(coefs, horizon)?;
     let mut cube: Vec<Mat<f64>> = if orth {
-        let pchol = chol_lower(sigma_u, "Sigma_u, the residual covariance")?;
+        let pchol = chol_lower(sigma_u, SIGMA_U_WHAT)?;
         psi.iter().map(|m| m * &pchol).collect()
     } else {
         psi
@@ -667,7 +739,9 @@ pub(crate) fn percentile_sorted(sorted: &[f64], q: f64) -> f64 {
 /// Estimate the mean bias `E*[A*] - A_hat` of the LS slope estimator by an
 /// inner bootstrap around the fitted coefficients, then shrink it (Kilian's
 /// stationarity-preserving adjustment) so that `A_hat - bias` stays inside
-/// the unit circle.
+/// the unit circle. Each inner refit computes the slopes alone
+/// ([`lag_coefs`], bit-identical to the full fit's), so a pseudo-sample
+/// whose residual covariance happens to be singular does not stop it.
 fn estimate_bias(
     coefs_hat: &[Mat<f64>],
     intercept: &[f64],
@@ -690,12 +764,11 @@ fn estimate_bias(
     let raw = par_replicate(
         bias_seed,
         n_inner,
-        |_rep, stream| -> Result<Vec<Mat<f64>>, VarError> {
+        |rep, stream| -> Result<Vec<Mat<f64>>, VarError> {
             let idx = indices(BlockScheme::Iid, te, stream).map_err(map_boot_err)?;
             let ustar = gather_rows(uc, &idx);
             let ysim = simulate_recursive(coefs_hat, intercept, init, &ustar);
-            let res_b = VarSpec { lags, trend }.fit(ysim.as_ref())?;
-            Ok(res_b.coefs.clone())
+            lag_coefs(ysim.as_ref(), lags, trend).map_err(|e| pseudo_sample_error(&e, rep, true))
         },
     )
     .map_err(map_boot_err)?;
@@ -766,11 +839,52 @@ fn scale(bias: &[Mat<f64>], delta: f64) -> Vec<Mat<f64>> {
         .collect()
 }
 
-/// Spectral radius of the companion matrix of a VAR lag polynomial.
+/// Spectral radius of the companion matrix of a VAR lag polynomial, from
+/// the balanced eigenvalue solve ([`tsecon_linalg::balanced_eigenvalues`]),
+/// so the Kilian shrink and `n_unstable_draws` do not depend on the units of
+/// the series.
 pub(crate) fn spectral_radius_of(coefs: &[Mat<f64>]) -> Result<f64, VarError> {
     let refs: Vec<MatRef<'_, f64>> = coefs.iter().map(Mat::as_ref).collect();
     let comp = companion_from_var(&refs)?;
     Ok(spectral_radius(comp.as_ref())?)
+}
+
+/// A refit failure on bootstrap pseudo-sample `rep`, as
+/// [`VarError::Replication`]. `inner` marks the inner bias bootstrap of
+/// `bias_correct` (whose refits compute only the slopes, so its
+/// `NotPositiveDefinite` can only be `Z'Z`).
+fn pseudo_sample_error(e: &VarError, rep: usize, inner: bool) -> VarError {
+    let what = match (e, inner) {
+        (VarError::NotPositiveDefinite { what }, false) if *what == SIGMA_U_WHAT => {
+            "its refit's residual covariance Sigma_u is numerically singular — its resampled \
+             residual rows, though enough of them are distinct, nearly fail to span the k \
+             series, a risk when the residual degrees of freedom T_eff - m are close to k \
+             (the full sample is fine); more observations or fewer lags make it rare"
+        }
+        (VarError::NotPositiveDefinite { .. }, false) => {
+            "its refit's regressor cross-product Z'Z is singular (the pseudo-sample's lagged \
+             values are collinear)"
+        }
+        (VarError::NotPositiveDefinite { .. }, true) => {
+            "it is a replication of the inner bias-estimation bootstrap of bias_correct=True, \
+             and its refit's regressor cross-product Z'Z is singular (the pseudo-sample's \
+             lagged values are collinear)"
+        }
+        (VarError::NonFinite { .. }, false) => {
+            "its pseudo-sample overflowed to infinity (the VAR it is simulated from is \
+             explosive)"
+        }
+        (VarError::NonFinite { .. }, true) => {
+            "it is a replication of the inner bias-estimation bootstrap of bias_correct=True, \
+             and its pseudo-sample overflowed to infinity (the fitted VAR is explosive)"
+        }
+        (_, false) => "its pseudo-sample's VAR refit failed",
+        (_, true) => {
+            "it is a replication of the inner bias-estimation bootstrap of bias_correct=True, \
+             and its pseudo-sample's VAR refit failed"
+        }
+    };
+    VarError::Replication { index: rep, what }
 }
 
 /// Map the resampling engine's error into the VAR error type. Only the
@@ -830,6 +944,104 @@ mod tests {
                 let resid = y[(t, r)] - fitted;
                 assert!((resid - u[(t - 1, r)]).abs() < 1e-12);
             }
+        }
+    }
+
+    /// Residual rows taking only two distinct values make EVERY pseudo-sample's
+    /// refit residual covariance singular (rank <= 1 with an intercept and
+    /// k = 2). The Kilian inner bootstrap needs only the slopes, so it must
+    /// still succeed (it used to die on the refit's log-determinant).
+    #[test]
+    fn inner_bias_bootstrap_survives_a_singular_pseudo_sample_covariance() {
+        let k = 2usize;
+        let a = Mat::from_fn(k, k, |i, j| [[0.5, 0.1], [-0.2, 0.3]][i][j]);
+        let intercept = [0.4, -0.2];
+        let init = Mat::from_fn(1, k, |_, j| 1.0 + j as f64);
+        let te = 6usize;
+        let uc = Mat::from_fn(te, k, |t, j| {
+            let sign = if t % 2 == 0 { 1.0 } else { -1.0 };
+            sign * [0.7, -0.3][j]
+        });
+        let bias =
+            estimate_bias(std::slice::from_ref(&a), &intercept, &init, &uc, te, 1, 20).unwrap();
+        assert!(bias
+            .iter()
+            .all(|m| (0..k).all(|i| (0..k).all(|j| m[(i, j)].is_finite()))));
+    }
+
+    /// A resample with at most k distinct residual rows (intercept, k = 2) is
+    /// refused by count, as exactly the first such replication of the index
+    /// stream — not whenever rounding happens to fail the Cholesky (most such
+    /// covariances pass it). A statistic that does not read `sigma_u` keeps
+    /// every draw.
+    #[test]
+    fn a_resample_of_too_few_distinct_rows_is_refused_by_count_not_by_rounding() {
+        let data = Mat::from_fn(6, 2, |t, j| {
+            [
+                [0.3, -1.1],
+                [1.2, 0.4],
+                [-0.7, 0.9],
+                [0.1, -0.2],
+                [2.0, 1.3],
+                [-1.4, 0.6],
+            ][t][j]
+        });
+        let (seed, n_boot) = (1u64, 50usize);
+        let engine =
+            ResidualBootstrap::new(data.as_ref(), 1, Trend::Constant, n_boot, seed, false).unwrap();
+        let te = engine.uc.nrows();
+        // Replay the index streams the engine draws from.
+        let draws: Vec<Vec<usize>> = par_replicate(seed, n_boot, |_, stream| {
+            indices(BlockScheme::Iid, te, stream).unwrap()
+        })
+        .unwrap();
+        let singular: Vec<usize> = (0..n_boot)
+            .filter(|&b| resample_rank_bound(&draws[b], te, Trend::Constant) < 2)
+            .collect();
+        assert!(singular.len() >= 2, "{singular:?}");
+        let mut distinct = draws[singular[0]].clone();
+        distinct.sort_unstable();
+        distinct.dedup();
+        assert!(distinct.len() <= 2, "{distinct:?}");
+
+        let e = engine
+            .replicate(seed, n_boot, true, |_, _| Ok(()))
+            .unwrap_err();
+        assert!(
+            matches!(e, VarError::Replication { index, what }
+                if index == singular[0] && what == TOO_FEW_DISTINCT_ROWS),
+            "{e:?}"
+        );
+        let text = e.to_string();
+        assert!(!text.contains("redundant column"), "{text}");
+
+        // Reduced-form responses do not read sigma_u: every draw is kept, and
+        // the singular ones have finite slopes like the rest.
+        let coefs = engine
+            .replicate(seed, n_boot, false, |res_b, _| Ok(res_b.coefs.clone()))
+            .unwrap();
+        assert_eq!(coefs.len(), n_boot);
+        for &b in &singular {
+            assert!((0..2).all(|i| (0..2).all(|j| coefs[b][0][(i, j)].is_finite())));
+        }
+    }
+
+    /// [`refit`] gives [`VarSpec::fit`]'s coefficients and `sigma_u` bit for
+    /// bit.
+    #[test]
+    fn the_bootstrap_refit_is_the_full_fit_bit_for_bit() {
+        let mut st = 11u64;
+        let y = Mat::from_fn(40, 3, |_, _| {
+            st = st
+                .wrapping_mul(6364136223846793005)
+                .wrapping_add(1442695040888963407);
+            (st >> 11) as f64 / (1u64 << 53) as f64 - 0.5
+        });
+        for trend in [Trend::Constant, Trend::None] {
+            let full = VarSpec { lags: 2, trend }.fit(y.as_ref()).unwrap();
+            let r = refit(y.as_ref(), 2, trend).unwrap();
+            assert_eq!(r.coefs, full.coefs);
+            assert_eq!(r.sigma_u, full.sigma_u);
         }
     }
 

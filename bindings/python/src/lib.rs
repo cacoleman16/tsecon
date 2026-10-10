@@ -1257,7 +1257,14 @@ fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
 ///
 /// Stability: read `is_stable` (bool). `min_root`/`max_root` are the smallest
 /// and largest moduli of the reciprocal characteristic roots — the system is
-/// stable iff `min_root > 1`, so `max_root` alone is NOT a verdict.
+/// stable iff `min_root > 1`, so `max_root` alone is NOT a verdict. The roots
+/// are solved on an exactly balanced companion matrix, so they do not depend
+/// on the units of the series.
+///
+/// The sample must leave at least k residual degrees of freedom,
+/// `len(data) >= lags + n_trend + k*lags + k`: with fewer, the k x k residual
+/// covariance is singular whatever the data, and the call is refused naming
+/// the sample size and the largest lag order that fits.
 ///
 /// Returns dict keys: `params` (the `(n_trend + k p) x k` stacked coefficient
 /// matrix, statsmodels layout — rows `[const, lag-1 var 1..k, ...]`, one

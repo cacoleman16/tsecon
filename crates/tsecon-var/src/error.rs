@@ -61,9 +61,9 @@ pub enum VarError {
     NonFinite {
         /// Name of the offending argument.
         what: &'static str,
-        /// Zero-based `(row, column)` of the first offending entry, when
-        /// the check scanned a specific array.
-        at: Option<(usize, usize)>,
+        /// Where the first offending entry sits, and why that one entry is
+        /// fatal for this caller, when the check scanned a specific array.
+        at: Option<NonFiniteCell>,
     },
     /// A matrix that must be symmetric positive definite (residual
     /// covariance, regressor cross-product, Wald middle matrix) failed
@@ -84,6 +84,27 @@ pub enum VarError {
         /// What failed in that replication.
         what: &'static str,
     },
+    /// The sample leaves fewer residual degrees of freedom than series:
+    /// with `df_resid = T - m < k` the `T x k` residual matrix has rank at
+    /// most `df_resid`, so `Sigma_u`, the `k x k` residual covariance, is
+    /// singular whatever the data (the log-likelihood, the information
+    /// criteria and every orthogonalisation need its determinant or its
+    /// Cholesky factor). Refused before the fit, so the message names the
+    /// sample size and not a collinear column.
+    SingularResidualCovariance {
+        /// Minimum number of rows required, `lags + m + k`.
+        needed: usize,
+        /// Number of rows available.
+        got: usize,
+        /// Lag order `p` that was requested.
+        lags: usize,
+        /// Number of series `k` in the system.
+        neqs: usize,
+        /// Number of deterministic terms per equation.
+        n_trend: usize,
+        /// The residual degrees of freedom `T - m` the sample leaves.
+        df_resid: usize,
+    },
     /// The sample is too short for the requested specification: OLS
     /// needs strictly more usable observations than regressors per
     /// equation.
@@ -99,6 +120,19 @@ pub enum VarError {
         /// Number of deterministic terms per equation.
         n_trend: usize,
     },
+}
+
+/// The position of the first non-finite entry a scan found, and why that
+/// one entry is fatal for the caller (printed after the position, so each
+/// caller explains its own consequence instead of borrowing another's).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub struct NonFiniteCell {
+    /// Zero-based row of the offending entry.
+    pub row: usize,
+    /// Zero-based column of the offending entry.
+    pub col: usize,
+    /// Why one non-finite entry is fatal here, and what to do about it.
+    pub why: &'static str,
 }
 
 impl fmt::Display for VarError {
@@ -132,13 +166,10 @@ impl fmt::Display for VarError {
             } => write!(f, "invalid {name} = {value}: requires {requirement}"),
             Self::NonFinite {
                 what,
-                at: Some((row, col)),
+                at: Some(NonFiniteCell { row, col, why }),
             } => write!(
                 f,
-                "non-finite value (NaN or inf) in {what} at row {row}, column {col}: \
-                 the VAR estimator has no missing-value handling, so a single gap would \
-                 corrupt every coefficient — drop or impute those rows first \
-                 (pandas: df.dropna())"
+                "non-finite value (NaN or inf) in {what} at row {row}, column {col}: {why}"
             ),
             Self::NonFinite { what, at: None } => write!(
                 f,
@@ -160,6 +191,26 @@ impl fmt::Display for VarError {
                  a column that is constant over the estimation sample. Drop the redundant \
                  column and refit."
             ),
+            Self::SingularResidualCovariance {
+                needed,
+                got,
+                lags,
+                neqs,
+                n_trend,
+                df_resid,
+            } => {
+                let per_eq = n_trend + neqs * lags;
+                write!(
+                    f,
+                    "Sigma_u, the residual covariance, is singular: data has {got} rows, and a \
+                     VAR with lags = p = {lags} on its k={neqs} series has n_trend + k*lags = \
+                     {per_eq} regressors per equation, which leaves df_resid = {df_resid} \
+                     residual degrees of freedom — fewer than the k={neqs} series, so the \
+                     k x k residual covariance has rank at most {df_resid} whatever the data \
+                     (no column needs dropping). {}",
+                    resid_df_hint(*needed, *got, *lags, *neqs, *n_trend)
+                )
+            }
             Self::InsufficientObservations {
                 needed,
                 got,
@@ -190,7 +241,7 @@ impl fmt::Display for VarError {
 /// that identity and only the generic advice is emitted.
 fn lag_hint(needed: usize, got: usize, lags: usize, neqs: usize, n_trend: usize) -> String {
     if needed != lags + n_trend + neqs * lags + 1 {
-        return "Reduce maxlags, drop a series, or supply a longer sample.".to_string();
+        return "Reduce max_lags, drop a series, or supply a longer sample.".to_string();
     }
     let p_max = got.saturating_sub(n_trend + 1) / (neqs + 1);
     if p_max >= 1 {
@@ -200,6 +251,34 @@ fn lag_hint(needed: usize, got: usize, lags: usize, neqs: usize, n_trend: usize)
         format!(
             "Even lags=1 would need {min_rows} rows on k={neqs} series, so supply a longer \
              sample or fit fewer series."
+        )
+    }
+}
+
+/// The rows needed and a concrete "what to try" clause for
+/// [`VarError::SingularResidualCovariance`]: on the direct fit path
+/// (`needed == lags + n_trend + k lags + k`) the largest lag order whose
+/// residual degrees of freedom reach `k`; on `select_order`'s common
+/// subsample (where every candidate loses the same `max_lags` rows, so a
+/// larger candidate needs more) only the generic advice, naming `max_lags`.
+fn resid_df_hint(needed: usize, got: usize, lags: usize, neqs: usize, n_trend: usize) -> String {
+    if needed != lags + n_trend + neqs * lags + neqs {
+        return format!(
+            "This candidate alone needs at least {needed} rows on the common sample, and \
+             every larger one more: reduce max_lags, drop a series, or supply a longer sample."
+        );
+    }
+    let p_max = got.saturating_sub(n_trend + neqs) / (neqs + 1);
+    if p_max >= 1 {
+        format!(
+            "It needs at least {needed} rows. Try lags <= {p_max}, drop a series, or supply \
+             a longer sample."
+        )
+    } else {
+        let min_rows = n_trend + 2 * neqs + 1;
+        format!(
+            "It needs at least {needed} rows. Even lags=1 would need {min_rows} rows on \
+             k={neqs} series, so supply a longer sample or fit fewer series."
         )
     }
 }

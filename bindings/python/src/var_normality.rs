@@ -128,8 +128,18 @@ fn set_cholesky_keys(d: &Bound<'_, PyDict>, n: &NormalityTest) -> PyResult<()> {
 /// large or so small that their squares overflow or underflow (rescale:
 /// every statistic is invariant to a common factor), a constant column,
 /// collinear columns (a correlation-matrix eigenvalue `<= 1e-12 x` its
-/// trace), and columns on scales so different that the unit-dependent
-/// symmetric root cannot be computed reliably.
+/// trace), and columns on scales so different that the covariance's
+/// smallest eigenvalue is `<= 1e-12 x` its trace (the floor of the
+/// unit-dependent symmetric root, which above it is computed to relative
+/// accuracy: a Cholesky factor and a one-sided Jacobi SVD).
+///
+/// Cost: the three statistics share one validation, and cost about
+/// `5 T k^2 + 20 k^3` nanoseconds (the `k^3` term is the symmetric root's
+/// one-sided Jacobi iteration): 0.06 s at T = 1000, k = 100, 2.3 s at
+/// 2000 x 400, 11 s at 1000 x 800. Past a budget of 2^34 such units (about
+/// 17 s) or a working set of `3 T k + 6 k^2` values above 2^28 (2 GiB) the
+/// call is refused before any work, naming `resid`, the largest column count
+/// at that T and the largest row count at that k.
 ///
 /// Validation: JMulTi (independent program) — the symmetric block against
 /// its "Doornik & Hansen (1994)" block, the Cholesky block against its
@@ -145,12 +155,9 @@ fn multivariate_normality<'py>(
     resid: PyReadonlyArrayDyn<'py, f64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let v = resid.as_array();
-    let m = match v.ndim() {
-        1 => Mat::from_fn(v.len(), 1, |i, _| v[[i]]),
-        2 => {
-            let v2 = v.into_dimensionality::<Ix2>().map_err(to_py)?;
-            Mat::from_fn(v2.nrows(), v2.ncols(), |i, j| v2[(i, j)])
-        }
+    let (t, k) = match v.ndim() {
+        1 => (v.len(), 1),
+        2 => (v.shape()[0], v.shape()[1]),
         d => {
             return Err(PyValueError::new_err(format!(
                 "resid must be a 2-D T x k residual matrix (one column per series) or a \
@@ -158,13 +165,45 @@ fn multivariate_normality<'py>(
             )))
         }
     };
-    let dh = tsecon_var::doornik_hansen_test(m.as_ref()).map_err(to_py)?;
-    let chol = tsecon_var::normality_test_cholesky(m.as_ref()).map_err(to_py)?;
-    let sym = tsecon_var::normality_test_symmetric(m.as_ref()).map_err(to_py)?;
+    // The size and work budgets, before anything is copied or computed.
+    if !tsecon_var::normality_within_budget(t, k) {
+        // The admissible shapes also need T >= 8 rows and T > k.
+        let min_rows = tsecon_var::DOORNIK_HANSEN_MIN_NOBS;
+        let max_k = tsecon_var::normality_max_columns(t).min(t.saturating_sub(1));
+        let max_t = tsecon_var::normality_max_rows(k);
+        let by_columns = if t < min_rows {
+            format!("T = {t} rows is below the {min_rows} the test needs at any k")
+        } else if max_k == 0 {
+            format!("at T = {t} rows not even one column fits")
+        } else {
+            format!("at T = {t} rows pass at most k = {max_k} columns")
+        };
+        let by_rows = if max_t < min_rows.max(k.saturating_add(1)) {
+            format!("at k = {k} columns no row count fits (T must also exceed k)")
+        } else {
+            format!("at k = {k} columns at most T = {max_t} rows")
+        };
+        return Err(PyValueError::new_err(format!(
+            "resid is T = {t} rows by k = {k} columns: the three normality statistics would \
+             cost about 5 T k^2 + 20 k^3 = {work:.2e} work units (about a nanosecond each) and \
+             hold 3 T k + 6 k^2 = {vals:.2e} values, beyond the budgets of 2^34 work units \
+             (about 17 s) and 2^28 values (2 GiB), checked before any work; {by_columns}, or \
+             {by_rows}",
+            work = tsecon_var::normality_work(t, k) as f64,
+            vals = tsecon_var::normality_values(t, k) as f64,
+        )));
+    }
+    let m = if v.ndim() == 1 {
+        Mat::from_fn(t, 1, |i, _| v[[i]])
+    } else {
+        let v2 = v.into_dimensionality::<Ix2>().map_err(to_py)?;
+        Mat::from_fn(t, k, |i, j| v2[(i, j)])
+    };
+    let r = tsecon_var::normality_tests(m.as_ref()).map_err(to_py)?;
     let d = PyDict::new(py);
-    set_cholesky_keys(&d, &chol)?;
-    set_symmetric_keys(&d, Some(&sym))?;
-    set_doornik_hansen_keys(&d, Some(&dh))?;
+    set_cholesky_keys(&d, &r.cholesky)?;
+    set_symmetric_keys(&d, Some(&r.symmetric))?;
+    set_doornik_hansen_keys(&d, Some(&r.doornik_hansen))?;
     d.set_item("nobs", m.nrows())?;
     d.set_item("k", m.ncols())?;
     Ok(d)

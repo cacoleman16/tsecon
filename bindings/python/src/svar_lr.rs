@@ -146,8 +146,11 @@ fn restrictions_arg(obj: &Bound<'_, PyAny>) -> PyResult<Option<Vec<(usize, usize
 /// `band_scope`). The asymptotic arm's Jacobians cost horizon·(horizon+1)/2 ·
 /// k² · lags·k² multiply-adds, QUADRATIC in horizon, and are capped at 2^28
 /// (a few seconds; refused naming `horizon`). A replication whose
-/// re-estimated VAR cannot be identified is never dropped: the first one is
-/// reported, by index, as an error.
+/// pseudo-sample cannot be refitted (a singular residual covariance, which
+/// very small samples hit with positive probability because the iid resample
+/// can draw too few distinct residual rows) or whose re-estimated VAR cannot
+/// be identified is never dropped: the first one is reported, by index, as an
+/// error.
 ///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
 /// ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`

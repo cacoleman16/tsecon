@@ -3,7 +3,7 @@
 
 use tsecon_linalg::faer::Mat;
 
-use crate::error::VarError;
+use crate::error::{NonFiniteCell, VarError};
 use crate::results::{chol_lower, VarResults};
 
 // TODO(phase0): bootstrap IRF confidence bands. The hook will consume
@@ -77,7 +77,14 @@ pub fn ma_rep(coefs: &[Mat<f64>], horizon: usize) -> Result<Vec<Mat<f64>>, VarEr
                 if !a[(i, j)].is_finite() {
                     return Err(VarError::NonFinite {
                         what: "the VAR coefficient matrices",
-                        at: Some((i, j)),
+                        at: Some(NonFiniteCell {
+                            row: i,
+                            col: j,
+                            why: "every response mixes every lag coefficient through the \
+                                  moving-average recursion, so one non-finite coefficient \
+                                  makes all of them undefined — pass finite coefficient \
+                                  matrices",
+                        }),
                     });
                 }
             }

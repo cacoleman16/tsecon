@@ -1142,16 +1142,17 @@ fn build_problem<'a>(
 
 /// JSZ's recommended start for `lambda^Q`: the eigenvalues of the OLS
 /// feedback matrix (real parts, sorted descending, separated by at least
-/// `1e-3`).
+/// `1e-3`) — the companion of the factors' VAR(1), solved on the exactly
+/// balanced matrix like every companion in the library.
 fn starting_lambda(phi: &[Vec<f64>]) -> Result<Vec<f64>, TermStructureError> {
     let n = phi.len();
     let a = Mat::from_fn(n, n, |i, j| phi[i][j]);
-    let eigs = a
-        .eigenvalues()
-        .map_err(|_| TermStructureError::OptimizationFailed {
+    let eigs = tsecon_linalg::balanced_eigenvalues(a.as_ref()).map_err(|_| {
+        TermStructureError::OptimizationFailed {
             reason: "the eigenvalues of the OLS feedback matrix (the JSZ starting \
                      values for lambda_q) could not be computed",
-        })?;
+        }
+    })?;
     let mut lam: Vec<f64> = eigs.iter().map(|c| c.re).collect();
     lam.sort_by(|a, b| b.partial_cmp(a).unwrap_or(std::cmp::Ordering::Equal));
     for v in lam.iter_mut() {

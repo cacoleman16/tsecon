@@ -365,9 +365,22 @@ and `cumulative`. Three diagnostics:
 * A near-zero anchored cell, which makes the bands bimodal
   (`sign_anchor_mismatches`).
 * A refit that cannot be identified (singular `I − ΣA_i` or a non-PD long-run
-  covariance). This is a measure-zero event. It is reported by replication
-  index as an error, never dropped, because dropping exactly the boundary
-  draws would narrow the band.
+  covariance), or a pseudo-sample that cannot be refitted at all. The second
+  is not measure-zero in very small samples: the iid resample can draw too
+  few distinct residual rows to span the k series, and the refit's residual
+  covariance is then singular. With k = 2, lags = 1 and the default 1,000
+  draws, at least one draw has at most k distinct rows with probability
+  1.00, 0.96, 0.35 and 0.05 at T = 7, 8, 9 and 10 (exact combinatorics,
+  `lab/audit/round16/var_numerics/pseudo_sample_singularity.py`). Such a
+  draw is recognised by counting its distinct rows, not by the Cholesky
+  factorization of its covariance, which lets most of these exactly
+  singular matrices through by rounding, so the replication named is the
+  same on every platform. The bias correction's inner bootstrap needs only
+  the slopes and never stops there, and neither do the reduced-form
+  responses of `var_irf_bands(orth=False)`. Either failure is reported by
+  replication index as an error, never dropped, because dropping exactly
+  the boundary draws would narrow the band; more observations, fewer lags
+  or `method="asymptotic"` avoid it.
 * An absurd `n_boot`, `horizon` or family size. The working set is checked
   against a 2^28-value (2 GiB) budget before anything is allocated, and the
   refusal names `n_boot` and `horizon` (bootstrap) or `horizon` and

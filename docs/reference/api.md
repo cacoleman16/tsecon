@@ -771,7 +771,14 @@ Fit a VAR(p) by OLS; params, sigma_u, ICs, residuals, and stability.
 
     Read `is_stable` for the stability verdict. `min_root`/`max_root` are the
     smallest/largest moduli of the reciprocal characteristic roots — stable iff
-    `min_root > 1`, so `max_root` alone is not a verdict.
+    `min_root > 1`, so `max_root` alone is not a verdict. The roots are solved
+    on an exactly balanced companion matrix, so they do not depend on the
+    units of the series.
+
+    The sample must leave at least k residual degrees of freedom,
+    len(data) >= lags + n_trend + k*lags + k: with fewer, the k x k residual
+    covariance is singular whatever the data, and the call is refused naming
+    the sample size and the largest lag order that fits.
 
     Keys: params, sigma_u, llf, aic, bic, hqic, resid ((T, k) nested list —
     the OLS residuals over the effective sample, row t = observation lags+t),
@@ -2016,8 +2023,11 @@ Confidence bands for Blanchard-Quah long-run SVAR impulse responses, re-identifi
     band_scope="all" (refused naming horizon and band_scope). The asymptotic
     arm's Jacobians cost horizon*(horizon+1)/2 * k^2 * lags*k^2 multiply-adds,
     quadratic in horizon, capped at 2^28 (refused naming horizon). A
-    replication whose re-estimated VAR cannot be identified is never dropped:
-    the first is reported by index as an error.
+    replication whose pseudo-sample cannot be refitted (a singular residual
+    covariance, which very small samples hit with positive probability
+    because the iid resample can draw too few distinct residual rows) or
+    whose re-estimated VAR cannot be identified is never dropped: the first
+    is reported by index as an error.
 
     Further arguments, with defaults: `lags` (2), `horizon` (12), `trend` ("c"),
     `restrictions` (None), `normalize` ("long_run"), `impact_signs` (None),
@@ -6640,7 +6650,17 @@ Residual normality tests on a residual matrix — the three statistics
     Refusals (ValueError naming `resid`): fewer than 8 rows, T <= k, not
     1-D or 2-D, zero columns, NaN/inf, entries whose squares overflow or
     underflow, a constant column, collinear columns, or columns on scales
-    too different for the symmetric root.
+    too different for the symmetric root (a covariance eigenvalue
+    <= 1e-12 x its trace; above that floor the root is computed to relative
+    accuracy).
+
+    Cost: the three statistics share one validation, and cost about
+    5 T k^2 + 20 k^3 nanoseconds (the k^3 term is the symmetric root's
+    one-sided Jacobi iteration): 0.06 s at T = 1000, k = 100, 2.3 s at
+    2000 x 400, 11 s at 1000 x 800. Past a budget of 2^34 such units (about
+    17 s) or a working set of 3 T k + 6 k^2 values above 2^28 (2 GiB) the
+    call is refused before any work, naming `resid`, the largest column count
+    at that T and the largest row count at that k.
 
     Validation: JMulTi's printed output (independent program) on 16
     residual matrices at 5e-5 — symmetric, Cholesky and per-variable blocks;

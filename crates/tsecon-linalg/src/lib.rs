@@ -20,6 +20,9 @@
 //! * [`companion_from_ar`] / [`companion_from_var`] / [`spectral_radius`]
 //!   / [`is_stable`] / [`ar_psi_weights`] — companion-form utilities and
 //!   the MA(infinity) / impulse-response expansion primitive;
+//! * [`balance`] / [`balanced_eigenvalues`] — the exact power-of-two
+//!   (LAPACK `dgebal`) balancing every companion eigenvalue solve goes
+//!   through, so VAR roots do not depend on the units of the series;
 //! * [`symmetrize`] / [`jittered_cholesky`] — positive-definiteness
 //!   hygiene helpers.
 //!
@@ -33,7 +36,8 @@ pub mod levinson;
 pub mod lyapunov;
 
 pub use companion::{
-    ar_psi_weights, companion_from_ar, companion_from_var, is_stable, spectral_radius,
+    ar_psi_weights, balance, balanced_eigenvalues, companion_from_ar, companion_from_var,
+    is_stable, spectral_radius,
 };
 pub use error::LinalgError;
 pub use hygiene::{jittered_cholesky, symmetrize, JitteredCholesky};
