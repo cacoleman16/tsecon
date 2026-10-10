@@ -96,7 +96,7 @@
 
 use crate::backtest::{Backtest, Window};
 use crate::error::ForecastError;
-use crate::validate::{check_finite, check_series, check_steps};
+use crate::validate::{check_finite, check_steps};
 use tsecon_bootstrap::{indices, BlockScheme};
 use tsecon_rng::Stream;
 
@@ -214,10 +214,18 @@ type ResidualGrid = (Vec<usize>, Vec<Vec<f64>>, Vec<Vec<f64>>);
 /// where every origin's forecaster saw `y[0..=t_i]` only. Also returns the
 /// origin indices and the raw point forecasts (bit-identical to what the
 /// forecaster produced, so downstream results never re-derive them).
+///
+/// The grid holds `calib` origins (`calib + n_eval` for the online
+/// evaluators), each with all `horizon` targets in sample, after a first
+/// training window of at least one observation: `n >= horizon + calib
+/// (+ n_eval) + 1`, refused otherwise by [`grid_too_long`] naming the
+/// parameter that asks for the most; a base forecaster that finds that first
+/// window too short is refused the same way ([`base_window_too_short`]).
 fn residual_grid<F>(
     y: &[f64],
     horizon: usize,
-    n_origins: usize,
+    calib: usize,
+    n_eval: Option<usize>,
     what: &'static str,
     forecaster: &mut F,
 ) -> Result<ResidualGrid, ForecastError>
@@ -225,19 +233,20 @@ where
     F: FnMut(&[f64], usize) -> Result<Vec<f64>, ForecastError>,
 {
     let n = y.len();
+    // Counted in u128 so an absurd calib or n_eval cannot overflow the
+    // check meant to refuse it.
+    let needed = horizon as u128 + calib as u128 + n_eval.unwrap_or(0) as u128 + 1;
+    if needed > n as u128 {
+        return Err(grid_too_long(n, horizon, calib, n_eval, needed, what));
+    }
     // p origins ending at n-1-H  =>  first training window has
     // min_train = n - horizon - p + 1 observations.
-    let needed = horizon + n_origins;
-    if n < needed + 1 {
-        return Err(ForecastError::SeriesTooShort {
-            what,
-            n,
-            needed: needed + 1,
-        });
-    }
+    let n_origins = calib + n_eval.unwrap_or(0);
     let min_train = n - horizon - n_origins + 1;
     let bt = Backtest::new(Window::Expanding { min_train }, horizon, 1)?;
-    let res = bt.run(y, |train, h| forecaster(train, h))?;
+    let res = bt
+        .run(y, |train, h| forecaster(train, h))
+        .map_err(|e| base_window_too_short(e, min_train, horizon, calib, n_eval, what))?;
     let mut resid = Vec::with_capacity(horizon);
     let mut fc = Vec::with_capacity(horizon);
     for h in 1..=horizon {
@@ -245,6 +254,111 @@ where
         fc.push(res.forecasts(h)?.to_vec());
     }
     Ok((res.origins().to_vec(), resid, fc))
+}
+
+/// The refusal of a calibration/evaluation grid that does not fit the
+/// series: names the largest of `horizon`, `calib` and `n_eval` (the one
+/// that asks for the most) and the largest value it may take with the other
+/// two as given.
+fn grid_too_long(
+    n: usize,
+    horizon: usize,
+    calib: usize,
+    n_eval: Option<usize>,
+    needed: u128,
+    what: &'static str,
+) -> ForecastError {
+    let requirement = match n_eval {
+        None => format!(
+            "the calibration grid needs horizon + calib + 1 = {horizon} + {calib} + 1 = \
+             {needed} observations (calib forecast origins, each with all horizon targets in \
+             sample, after a first training window of at least one observation), but the \
+             series has {n}"
+        ),
+        Some(e) => format!(
+            "the evaluation grid needs horizon + calib + n_eval + 1 = {horizon} + {calib} + \
+             {e} + 1 = {needed} observations (calib calibration origins, then n_eval \
+             evaluation origins, each with all horizon targets in sample, after a first \
+             training window of at least one observation), but the series has {n}"
+        ),
+    };
+    let (name, value) = grid_culprit(horizon, calib, n_eval);
+    let others = horizon as u128 + calib as u128 + n_eval.unwrap_or(0) as u128 - value as u128;
+    // name + others + 1 <= n  =>  name <= n - 1 - others (at least 1).
+    let max = (n as u128)
+        .checked_sub(others + 1)
+        .filter(|&m| m >= 1)
+        .map(|m| m as usize);
+    ForecastError::TooLarge {
+        what,
+        name,
+        value,
+        requirement,
+        max,
+    }
+}
+
+/// The grid parameter that asks for the most, with its value: the largest
+/// of `horizon`, `calib` and `n_eval`, ties going to the later (the window
+/// the caller sized, not the horizon).
+fn grid_culprit(horizon: usize, calib: usize, n_eval: Option<usize>) -> (&'static str, usize) {
+    let mut best = ("horizon", horizon);
+    for part in std::iter::once(("calib", calib)).chain(n_eval.map(|e| ("n_eval", e))) {
+        if part.1 >= best.1 {
+            best = part;
+        }
+    }
+    best
+}
+
+/// A base forecaster that refuses the grid's first training window as too
+/// short (its own [`ForecastError::SeriesTooShort`] on exactly the
+/// `min_train` observations that window holds) is refused like a grid that
+/// does not fit: naming the grid parameter that asks for the most and the
+/// largest value it may take for that window to hold what the forecaster
+/// needs. The generic too-short hint would otherwise tell the caller to
+/// "reduce the seasonal period / horizon" when `calib` or `n_eval` is what
+/// starves the window. Every other error passes through unchanged.
+fn base_window_too_short(
+    err: ForecastError,
+    min_train: usize,
+    horizon: usize,
+    calib: usize,
+    n_eval: Option<usize>,
+    what: &'static str,
+) -> ForecastError {
+    let ForecastError::SeriesTooShort {
+        what: base,
+        n: got,
+        needed,
+    } = err
+    else {
+        return err;
+    };
+    if got != min_train || needed <= got {
+        return ForecastError::SeriesTooShort {
+            what: base,
+            n: got,
+            needed,
+        };
+    }
+    let (name, value) = grid_culprit(horizon, calib, n_eval);
+    let window = if n_eval.is_some() {
+        "n - horizon - calib - n_eval + 1"
+    } else {
+        "n - horizon - calib + 1"
+    };
+    ForecastError::TooLarge {
+        what,
+        name,
+        value,
+        requirement: format!(
+            "the grid's first training window holds {window} = {got} observations, but the \
+             base forecaster ({base}) needs at least {needed}"
+        ),
+        // Lowering `name` by the shortfall lengthens the first window by as much.
+        max: value.checked_sub(needed - got).filter(|&m| m >= 1),
+    }
 }
 
 /// The forward point forecast from the full sample, validated like a
@@ -412,7 +526,10 @@ pub struct SplitConformalForecast {
 /// [`ForecastError::InvalidSteps`] (`horizon = 0`),
 /// [`ForecastError::InvalidAlpha`],
 /// [`ForecastError::CalibrationTooSmall`] (`calib` cannot support `alpha`
-/// at the requested mode), [`ForecastError::SeriesTooShort`],
+/// at the requested mode), [`ForecastError::TooLarge`] (a `horizon` past
+/// [`crate::MAX_FORECAST_STEPS`], or a grid of `horizon + calib + 1`
+/// observations longer than the series — naming whichever of `horizon` and
+/// `calib` asks for more, and its largest admissible value),
 /// [`ForecastError::NonFinite`], plus whatever the forecaster itself
 /// returns.
 ///
@@ -438,10 +555,11 @@ where
     F: FnMut(&[f64], usize) -> Result<Vec<f64>, ForecastError>,
 {
     const WHAT: &str = "split conformal";
-    check_steps(opts.horizon)?;
+    check_steps(opts.horizon, "horizon", WHAT)?;
     check_alpha(opts.alpha)?;
     check_calib(opts.calib, opts.alpha, opts.symmetric, WHAT)?;
-    let (_origins, resid, _fc) = residual_grid(y, opts.horizon, opts.calib, WHAT, &mut forecaster)?;
+    let (_origins, resid, _fc) =
+        residual_grid(y, opts.horizon, opts.calib, None, WHAT, &mut forecaster)?;
     let mean = forward_forecast(y, opts.horizon, &mut forecaster)?;
 
     let mut lower = Vec::with_capacity(opts.horizon);
@@ -557,7 +675,8 @@ pub struct SplitOnlineOptions {
 ///
 /// # Errors
 ///
-/// As [`split_conformal`], plus `n_eval = 0` is
+/// As [`split_conformal`] (the grid is now `horizon + calib + n_eval + 1`
+/// observations, and the refusal can name `n_eval`), plus `n_eval = 0` is
 /// [`ForecastError::InvalidConformalParam`]. `calib` must support the
 /// level even in the smallest (horizon-`H` start-of-window) case, i.e.
 /// `calib - horizon + 1` realized scores must suffice.
@@ -570,7 +689,7 @@ where
     F: FnMut(&[f64], usize) -> Result<Vec<f64>, ForecastError>,
 {
     const WHAT: &str = "split conformal (online)";
-    check_steps(opts.horizon)?;
+    check_steps(opts.horizon, "horizon", WHAT)?;
     check_alpha(opts.alpha)?;
     if opts.n_eval == 0 {
         return Err(ForecastError::InvalidConformalParam {
@@ -595,8 +714,14 @@ where
         WHAT,
     )?;
 
-    let p = opts.calib + opts.n_eval;
-    let (origins, resid, fc) = residual_grid(y, opts.horizon, p, WHAT, &mut forecaster)?;
+    let (origins, resid, fc) = residual_grid(
+        y,
+        opts.horizon,
+        opts.calib,
+        Some(opts.n_eval),
+        WHAT,
+        &mut forecaster,
+    )?;
 
     let mut mean = vec![Vec::with_capacity(opts.n_eval); opts.horizon];
     let mut lower = vec![Vec::with_capacity(opts.n_eval); opts.horizon];
@@ -731,7 +856,7 @@ where
     F: FnMut(&[f64], usize) -> Result<Vec<f64>, ForecastError>,
 {
     const WHAT: &str = "adaptive conformal inference";
-    check_steps(opts.horizon)?;
+    check_steps(opts.horizon, "horizon", WHAT)?;
     check_alpha(opts.alpha)?;
     if !opts.gamma.is_finite() || opts.gamma < 0.0 {
         return Err(ForecastError::InvalidConformalParam {
@@ -759,8 +884,14 @@ where
     // adapted levels below that produce infinite intervals by design.
     check_calib(opts.calib - (opts.horizon - 1), opts.alpha, true, WHAT)?;
 
-    let p = opts.calib + opts.n_eval;
-    let (origins, resid, fc) = residual_grid(y, opts.horizon, p, WHAT, &mut forecaster)?;
+    let (origins, resid, fc) = residual_grid(
+        y,
+        opts.horizon,
+        opts.calib,
+        Some(opts.n_eval),
+        WHAT,
+        &mut forecaster,
+    )?;
 
     let h_max = opts.horizon;
     let mut mean = vec![Vec::with_capacity(opts.n_eval); h_max];
@@ -984,21 +1115,26 @@ impl EnbpiEnsemble {
     /// The Algorithm-1 line-12 test-point predictor: the average over
     /// training rows `i` of the leave-one-out aggregations
     /// `phi({fhat^b(x): i not in S_b})` (`phi` = mean).
+    ///
+    /// The scan runs model-major (each model's `in_bag` row is contiguous),
+    /// so a large ensemble does not pay a cache miss per (row, model) pair;
+    /// every row still adds its models' predictions in model order, so the
+    /// result is bit-identical to the row-major loop.
     fn loo_center(&self, lag_vec: &[f64]) -> f64 {
-        let preds: Vec<f64> = (0..self.coef.len())
-            .map(|b| self.predict_one(b, lag_vec))
-            .collect();
-        let mut total = 0.0;
-        for &i in &self.loo_rows {
-            let mut s = 0.0;
-            let mut c = 0usize;
-            for (b, p) in preds.iter().enumerate() {
-                if !self.in_bag[b][i] {
-                    s += p;
-                    c += 1;
+        let mut sum = vec![0.0_f64; self.loo_rows.len()];
+        let mut count = vec![0usize; self.loo_rows.len()];
+        for (b, bag) in self.in_bag.iter().enumerate() {
+            let p = self.predict_one(b, lag_vec);
+            for ((s, c), &i) in sum.iter_mut().zip(count.iter_mut()).zip(&self.loo_rows) {
+                if !bag[i] {
+                    *s += p;
+                    *c += 1;
                 }
             }
-            total += s / c as f64; // c >= 1 by loo_rows construction
+        }
+        let mut total = 0.0;
+        for (s, c) in sum.iter().zip(&count) {
+            total += s / *c as f64; // c >= 1 by loo_rows construction
         }
         total / self.loo_rows.len() as f64
     }
@@ -1040,26 +1176,30 @@ fn fit_enbpi_ensemble(
         in_bag,
         loo_rows: Vec::new(),
     };
+    // Model-major, as in `loo_center`: each row still sums its out-of-bag
+    // models in model order, so the residuals are bit-identical to a
+    // row-major scan without a cache miss per (row, model) pair.
+    let mut sum = vec![0.0_f64; t_rows];
+    let mut count = vec![0usize; t_rows];
+    for (b, bag) in ens.in_bag.iter().enumerate() {
+        for (i, (s, c)) in sum.iter_mut().zip(count.iter_mut()).enumerate() {
+            if !bag[i] {
+                let t = row_index(i);
+                *s += ens.predict_one(b, &y[t - lags..t]);
+                *c += 1;
+            }
+        }
+    }
     let mut loo_rows = Vec::with_capacity(t_rows);
     let mut residuals = Vec::with_capacity(t_rows);
     let mut excluded = 0usize;
-    for i in 0..t_rows {
-        let t = row_index(i);
-        let lag_vec = &y[t - lags..t];
-        let mut s = 0.0;
-        let mut c = 0usize;
-        for b in 0..opts.n_boot {
-            if !ens.in_bag[b][i] {
-                s += ens.predict_one(b, lag_vec);
-                c += 1;
-            }
-        }
+    for (i, (&s, &c)) in sum.iter().zip(&count).enumerate() {
         if c == 0 {
             excluded += 1;
             continue;
         }
         loo_rows.push(i);
-        residuals.push(y[t] - s / c as f64);
+        residuals.push(y[row_index(i)] - s / c as f64);
     }
     if loo_rows.is_empty() {
         // Only possible in pathological tiny-B cases; refuse loudly.
@@ -1100,9 +1240,75 @@ fn enbpi_offsets(window: &[f64], opts: &EnbpiOptions) -> (f64, f64, Option<f64>)
     }
 }
 
+/// The work budget of one EnbPI call, in multiply-adds (`2^34`, the
+/// `breusch_godfrey_test` work budget); see [`enbpi_cost`].
+pub const ENBPI_WORK_BUDGET: u128 = 1 << 34;
+
+/// The memory budget of one EnbPI call, in `f64` values (`2^28`, 2 GiB);
+/// see [`enbpi_cost`].
+pub const ENBPI_BUDGET_VALUES: u128 = 1 << 28;
+
+/// The cost of an EnbPI call with `n_boot` models of order `lags` on
+/// `rows` lagged-design rows and `steps` prediction steps (the forecast
+/// `horizon`, or the `n_eval` online points): `(work, values)`, counted in
+/// `u128` so no absurd count can overflow the check meant to refuse it.
+///
+/// Per model, the work is the normal equations of its least-squares fit
+/// (`rows (lags + 1)(lags + 2) / 2`) and their Cholesky solve (`(lags +
+/// 1)^3`), its share of the leave-one-out pass (`rows (lags + 1)`), and its
+/// share of every prediction step, each of which averages every model's
+/// prediction over every leave-one-out row (`steps (rows + lags + 1)`).
+/// The memory per model is its row-membership flags (`rows` bytes), its
+/// coefficients and one random-stream state (`lags + 16` values), and the
+/// allocator's chunk headers and rounding of its two heap blocks (3
+/// values; measured, the release wheel's peak at the budget is within it);
+/// on top come one model's transient resample (`2 rows`), the per-row
+/// leave-one-out sums and counts (`2 rows`), its normal equations
+/// (`(lags + 1)^2`) and the reported paths (`4 steps`).
+pub fn enbpi_cost(n_boot: usize, lags: usize, rows: usize, steps: usize) -> (u128, u128) {
+    let (b, l, r, h) = (
+        n_boot as u128,
+        lags as u128 + 1,
+        rows as u128,
+        steps as u128,
+    );
+    let per_model_work = r * l * (l + 1) / 2 + l * l * l + r * l + h * (r + l);
+    let per_model_values = r.div_ceil(8) + l + 18;
+    let fixed_values = 4 * r + l * l + 4 * h;
+    (
+        b.saturating_mul(per_model_work),
+        b.saturating_mul(per_model_values)
+            .saturating_add(fixed_values),
+    )
+}
+
+/// `true` when an EnbPI call of these sizes fits both budgets.
+fn enbpi_fits(n_boot: usize, lags: usize, rows: usize, steps: usize) -> bool {
+    let (work, values) = enbpi_cost(n_boot, lags, rows, steps);
+    work <= ENBPI_WORK_BUDGET && values <= ENBPI_BUDGET_VALUES
+}
+
+/// The largest `x` in `lo..=hi` with `fits(x)`, for a `fits` that holds on
+/// a prefix of the range; `None` when not even `lo` fits.
+fn largest_fitting(lo: usize, hi: usize, fits: impl Fn(usize) -> bool) -> Option<usize> {
+    if lo > hi || !fits(lo) {
+        return None;
+    }
+    let (mut lo, mut hi) = (lo, hi);
+    while lo < hi {
+        let mid = lo + (hi - lo).div_ceil(2);
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    Some(lo)
+}
+
 fn check_enbpi(y: &[f64], opts: &EnbpiOptions, reserve: usize) -> Result<(), ForecastError> {
     const WHAT: &str = "EnbPI";
-    check_steps(opts.horizon)?;
+    check_steps(opts.horizon, "horizon", WHAT)?;
     check_alpha(opts.alpha)?;
     if opts.lags == 0 {
         return Err(ForecastError::InvalidConformalParam {
@@ -1128,9 +1334,120 @@ fn check_enbpi(y: &[f64], opts: &EnbpiOptions, reserve: usize) -> Result<(), For
     // Training rows after reserving `reserve` evaluation points: need at
     // least lags + 2 rows to identify the lags + 1 OLS coefficients with a
     // residual degree of freedom.
-    let needed = 2 * opts.lags + 2 + reserve;
-    check_series(y, needed, WHAT)?;
+    check_finite(y, WHAT)?;
+    let n = y.len();
+    let lag_part = 2 * opts.lags as u128 + 2;
+    let needed = lag_part + reserve as u128;
+    if needed > n as u128 {
+        return Err(enbpi_too_short(n, opts.lags, reserve, needed));
+    }
+    // The ensemble's work and memory, sized before any bootstrap stream is
+    // drawn: the n_boot models are the cost, the prediction steps (horizon,
+    // or the online n_eval points) multiply it.
+    let rows = n - reserve - opts.lags;
+    let (steps, steps_name) = if reserve > 0 {
+        (reserve, "n_eval")
+    } else {
+        (opts.horizon, "horizon")
+    };
+    if !enbpi_fits(opts.n_boot, opts.lags, rows, steps) {
+        let max_boot = largest_fitting(2, opts.n_boot, |b| enbpi_fits(b, opts.lags, rows, steps));
+        return Err(match max_boot {
+            Some(max) => ForecastError::TooLarge {
+                what: WHAT,
+                name: "n_boot",
+                value: opts.n_boot,
+                requirement: format!(
+                    "the ensemble ({} least-squares AR({}) fits on {rows} rows, their \
+                     leave-one-out pass, and {steps} {steps_name} prediction step(s) that each \
+                     average every model over every row) would pass the 2^34 multiply-add \
+                     work budget or the 2^28-value (2 GiB) memory budget, checked before any \
+                     bootstrap stream is drawn (the paper's regime is a few dozen models)",
+                    opts.n_boot, opts.lags
+                ),
+                max: Some(max),
+            },
+            // Not even the smallest ensemble fits: the steps are the cost.
+            None => ForecastError::TooLarge {
+                what: WHAT,
+                name: steps_name,
+                value: steps,
+                requirement: format!(
+                    "each of the {steps} prediction step(s) averages all n_boot = {} models over \
+                     all {rows} leave-one-out rows, which even for the smallest ensemble \
+                     (n_boot = 2) would pass the 2^34 multiply-add work budget or the \
+                     2^28-value (2 GiB) memory budget, checked before any bootstrap stream is \
+                     drawn",
+                    opts.n_boot
+                ),
+                max: largest_fitting(1, steps, |h| enbpi_fits(opts.n_boot, opts.lags, rows, h)),
+            },
+        });
+    }
     Ok(())
+}
+
+/// The refusal of an EnbPI design that does not fit the series: names
+/// `lags` (or, online, `n_eval` when the evaluation window asks for more, or
+/// when no lag order fits but a shorter window would) and its largest
+/// admissible value; a series too short for even one lag keeps the plain
+/// too-short refusal.
+fn enbpi_too_short(n: usize, lags: usize, reserve: usize, needed: u128) -> ForecastError {
+    const WHAT: &str = "EnbPI";
+    let lag_part = 2 * lags as u128 + 2;
+    // n_eval + lag_part <= n  =>  n_eval <= n - lag_part (at least 1).
+    let eval_max = (n as u128)
+        .checked_sub(lag_part)
+        .filter(|&m| m >= 1)
+        .map(|m| m as usize);
+    // 2 lags + 2 + reserve <= n  =>  lags <= (n - reserve - 2) / 2 (at least 1).
+    let lags_max = (n as u128)
+        .checked_sub(reserve as u128 + 2)
+        .map(|m| m / 2)
+        .filter(|&m| m >= 1)
+        .map(|m| m as usize);
+    // Blame the online evaluation window when it asks for more than the
+    // design, or when no lag order fits but a shorter window would.
+    let blame_eval =
+        reserve > 0 && (reserve as u128 > lag_part || (lags_max.is_none() && eval_max.is_some()));
+    let requirement = if reserve > 0 {
+        format!(
+            "the ensemble is trained on the observations before the n_eval evaluation points \
+             and needs 2 * lags + 2 of them (lags presample values, then lags + 1 coefficients \
+             and one residual degree of freedom), so the series needs 2 * lags + 2 + n_eval = \
+             {lag_part} + {reserve} = {needed} observations, but has {n}"
+        )
+    } else {
+        format!(
+            "the bootstrap AR(lags) design needs 2 * lags + 2 = {needed} observations (lags \
+             presample values, then lags + 1 coefficients and one residual degree of \
+             freedom), but the series has {n}"
+        )
+    };
+    if blame_eval {
+        return ForecastError::TooLarge {
+            what: WHAT,
+            name: "n_eval",
+            value: reserve,
+            requirement,
+            max: eval_max,
+        };
+    }
+    if lags_max.is_none() && lags == 1 {
+        // Not even one lag fits: the series itself is too short.
+        return ForecastError::SeriesTooShort {
+            what: WHAT,
+            n,
+            needed: usize::try_from(needed).unwrap_or(usize::MAX),
+        };
+    }
+    ForecastError::TooLarge {
+        what: WHAT,
+        name: "lags",
+        value: lags,
+        requirement,
+        max: lags_max,
+    }
 }
 
 /// EnbPI forecast intervals (Xu & Xie 2021, Algorithm 1) from the end of
@@ -1143,8 +1460,13 @@ fn check_enbpi(y: &[f64], opts: &EnbpiOptions, reserve: usize) -> Result<(), For
 ///
 /// [`ForecastError::InvalidSteps`], [`ForecastError::InvalidAlpha`],
 /// [`ForecastError::InvalidConformalParam`] (`lags = 0`, `n_boot < 2`,
-/// degenerate `n_beta`), [`ForecastError::SeriesTooShort`],
-/// [`ForecastError::NonFinite`], or
+/// degenerate `n_beta`), [`ForecastError::TooLarge`] (a `horizon` past
+/// [`crate::MAX_FORECAST_STEPS`]; `lags` too long for the series; or an
+/// ensemble past [`ENBPI_WORK_BUDGET`] / [`ENBPI_BUDGET_VALUES`] — see
+/// [`enbpi_cost`] — naming `n_boot`, or `horizon` when not even two models
+/// fit; each refusal quotes the largest admissible value and comes before
+/// any bootstrap stream is drawn), [`ForecastError::SeriesTooShort`] (too
+/// short for even one lag), [`ForecastError::NonFinite`], or
 /// [`ForecastError::SingularArDesign`] if a bootstrap sample's lagged
 /// design is collinear (e.g. a constant series).
 pub fn enbpi(y: &[f64], opts: &EnbpiOptions) -> Result<EnbpiForecast, ForecastError> {
@@ -1189,9 +1511,11 @@ pub fn enbpi(y: &[f64], opts: &EnbpiOptions) -> Result<EnbpiForecast, ForecastEr
 ///
 /// # Errors
 ///
-/// As [`enbpi`], plus `n_eval = 0` or `batch = 0` are
-/// [`ForecastError::InvalidConformalParam`], and `n_eval` must leave
-/// enough training rows.
+/// As [`enbpi`] (with `n_eval` in the role of the prediction steps), plus
+/// `n_eval = 0` or `batch = 0` are [`ForecastError::InvalidConformalParam`],
+/// and `n_eval` must leave `2 * lags + 2` training observations (refused as
+/// [`ForecastError::TooLarge`] naming `n_eval` or `lags`, whichever asks for
+/// more).
 pub fn enbpi_online(
     y: &[f64],
     opts: &EnbpiOptions,
@@ -1366,11 +1690,15 @@ fn solve_spd(a: &mut [Vec<f64>], b: &mut [f64]) -> Option<Vec<f64>> {
 ///
 /// [`ForecastError::InvalidSteps`], [`ForecastError::NonFinite`],
 /// [`ForecastError::InvalidConformalParam`] (`lags = 0`),
-/// [`ForecastError::SeriesTooShort`] (needs `2 * lags + 2` observations),
-/// or [`ForecastError::SingularArDesign`] (collinear design, e.g. a
-/// constant series).
+/// [`ForecastError::TooLarge`] (`steps` past
+/// [`crate::MAX_FORECAST_STEPS`], or `lags` with `2 * lags + 2` past the
+/// series length, naming the largest `lags` that fits),
+/// [`ForecastError::SeriesTooShort`] (fewer than 4 observations: not even
+/// one lag fits), or [`ForecastError::SingularArDesign`] (collinear design,
+/// e.g. a constant series).
 pub fn ar_forecast(y: &[f64], lags: usize, steps: usize) -> Result<Vec<f64>, ForecastError> {
-    check_steps(steps)?;
+    const WHAT: &str = "AR least-squares forecast";
+    check_steps(steps, "steps", WHAT)?;
     if lags == 0 {
         return Err(ForecastError::InvalidConformalParam {
             what: "lags",
@@ -1379,9 +1707,34 @@ pub fn ar_forecast(y: &[f64], lags: usize, steps: usize) -> Result<Vec<f64>, For
                 "lags >= 1 (an AR(0) base would be the historical mean; use base \"mean\")",
         });
     }
-    // lags + 2 design rows for lags + 1 coefficients plus one residual df.
-    check_series(y, 2 * lags + 2, "AR least-squares forecast")?;
+    // lags + 2 design rows for lags + 1 coefficients plus one residual df,
+    // counted in u128 so an absurd lags cannot overflow the check.
+    check_finite(y, WHAT)?;
     let n = y.len();
+    let needed = 2 * lags as u128 + 2;
+    if needed > n as u128 {
+        // Not even one lag fits: the series itself is too short.
+        if n < 4 && lags == 1 {
+            return Err(ForecastError::SeriesTooShort {
+                what: WHAT,
+                n,
+                needed: 4,
+            });
+        }
+        return Err(ForecastError::TooLarge {
+            what: WHAT,
+            name: "lags",
+            value: lags,
+            requirement: format!(
+                "a least-squares AR(lags) fit needs 2 * lags + 2 = {needed} observations (lags \
+                 presample values, then lags + 1 coefficients and one residual degree of \
+                 freedom), but the training window has {n} (inside a conformal grid the first \
+                 training window holds n - horizon - calib + 1 observations, so a smaller calib \
+                 leaves more)"
+            ),
+            max: (n >= 4).then(|| (n - 2) / 2),
+        });
+    }
     let rows: Vec<usize> = (lags..n).collect();
     let coef = fit_ar_ols_rows(y, lags, &rows)?;
     let mut path: Vec<f64> = y[n - lags..].to_vec();

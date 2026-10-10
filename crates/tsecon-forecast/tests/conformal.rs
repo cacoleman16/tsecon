@@ -6,8 +6,8 @@
 
 use tsecon_forecast::{
     aci, ar_forecast, conformal_quantile, enbpi, enbpi_online, split_conformal,
-    split_conformal_online, AciOptions, EnbpiOptions, ForecastError, SplitConformalOptions,
-    SplitOnlineOptions,
+    split_conformal_online, theta_forecast, AciOptions, EnbpiOptions, ForecastError,
+    SplitConformalOptions, SplitOnlineOptions,
 };
 
 /// Deterministic pseudo-random N(0,1)-ish draws from a splitmix-style
@@ -295,13 +295,25 @@ fn split_conformal_teaching_errors() {
         err,
         ForecastError::CalibrationTooSmall { needed: 19, .. }
     ));
-    // horizon = 0, bad alpha, NaN input, series too short.
-    assert!(split_conformal(
+    // horizon = 0 (refused under the conformal keyword, not `steps`), bad
+    // alpha, NaN input, series too short.
+    let err = split_conformal(
         &y,
         &SplitConformalOptions { horizon: 0, ..base },
-        naive_base
+        naive_base,
     )
-    .is_err());
+    .unwrap_err();
+    assert!(matches!(
+        err,
+        ForecastError::InvalidSteps {
+            steps: 0,
+            name: "horizon"
+        }
+    ));
+    assert!(
+        err.to_string().starts_with("horizon = 0 is invalid"),
+        "{err}"
+    );
     assert!(split_conformal(
         &y,
         &SplitConformalOptions { alpha: 0.0, ..base },
@@ -314,9 +326,17 @@ fn split_conformal_teaching_errors() {
         split_conformal(&bad, &base, naive_base),
         Err(ForecastError::NonFinite { .. })
     ));
+    // A grid longer than the series names the window that asks for the
+    // most (calib) and its largest admissible value: 15 observations hold at
+    // most 15 - horizon - 1 = 13 calibration origins.
     assert!(matches!(
         split_conformal(&y[..15], &base, naive_base),
-        Err(ForecastError::SeriesTooShort { .. })
+        Err(ForecastError::TooLarge {
+            name: "calib",
+            value: 20,
+            max: Some(13),
+            ..
+        })
     ));
     // A forecaster that returns the wrong number of steps is caught.
     let err = split_conformal(&y, &base, |_t, h| Ok(vec![0.0; h + 1])).unwrap_err();
@@ -329,6 +349,50 @@ fn split_conformal_teaching_errors() {
     })
     .unwrap_err();
     assert!(matches!(err, ForecastError::BaseForecaster { .. }));
+    // A grid that fits the series but starves the base forecaster's first
+    // window names the grid keyword, not "reduce the seasonal period /
+    // horizon": 30 observations with horizon 1 and calib 28 leave a first
+    // window of 2, the Theta method needs 4, so calib can be at most 26 —
+    // and at 26 the call runs.
+    let theta = |t: &[f64], h: usize| theta_forecast(t, 1, h).map(|r| r.forecast);
+    let starved = SplitConformalOptions { calib: 28, ..base };
+    let err = split_conformal(&y[..30], &starved, theta).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            ForecastError::TooLarge {
+                name: "calib",
+                value: 28,
+                max: Some(26),
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("first training window holds"), "{msg}");
+    assert!(!msg.contains("seasonal period"), "{msg}");
+    let ok = SplitConformalOptions { calib: 26, ..base };
+    assert!(split_conformal(&y[..30], &ok, theta).is_ok());
+    // A too-short refusal from a later (longer) window is the base's own
+    // business and passes through unchanged.
+    let first_window = y.len() - base.horizon - base.calib + 1;
+    let err = split_conformal(&y, &base, |t, h| {
+        if t.len() > first_window {
+            Err(ForecastError::SeriesTooShort {
+                what: "custom",
+                n: t.len(),
+                needed: t.len() + 1,
+            })
+        } else {
+            naive_base(t, h)
+        }
+    })
+    .unwrap_err();
+    assert!(
+        matches!(err, ForecastError::SeriesTooShort { what: "custom", .. }),
+        "{err:?}"
+    );
 }
 
 // ------------------------------------------------------------------- online
@@ -757,6 +821,23 @@ fn enbpi_teaching_errors() {
     assert!(matches!(
         enbpi_online(&y, &base, 10, 0),
         Err(ForecastError::InvalidConformalParam { what: "batch", .. })
+    ));
+    // Online, a design that cannot shrink (lags = 1) blames n_eval when a
+    // shorter evaluation window fits: 5 observations hold the 2 * 1 + 2 = 4
+    // training points plus one evaluation point.
+    assert!(matches!(
+        enbpi_online(&y[..5], &base, 2, 1),
+        Err(ForecastError::TooLarge {
+            name: "n_eval",
+            value: 2,
+            max: Some(1),
+            ..
+        })
+    ));
+    // Four observations leave no evaluation point at all: too short.
+    assert!(matches!(
+        enbpi_online(&y[..4], &base, 1, 1),
+        Err(ForecastError::SeriesTooShort { .. })
     ));
 }
 

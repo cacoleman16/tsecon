@@ -1,0 +1,9 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+specifications past the budgets (each must be refused, fast)
+
+method     n   p   q  P  Q    s    m    k         W    values  seconds  ns per W  outcome
+   mle   200   1   0 50  0    4  201   53  4.74e+13  2.44e+07     0.00         -  ValueError: the ARIMA orders (p, q and seasonal=(P, D, Q, s)) are too large to estimate: the exact likelihood runs a Kalman filter on a state of dimen
+   mle   200   1   0  1  0  199  200    4  3.92e+11  2.41e+07     0.00         -  ValueError: the ARIMA orders (p, q and seasonal=(P, D, Q, s)) are too large to estimate: the exact likelihood runs a Kalman filter on a state of dimen
+   mle  2000 1000   0  0  0    0 1000 1002  1.65e+19  6.00e+09     0.00         -  ValueError: the ARIMA orders (p, q and seasonal=(P, D, Q, s)) are too large to estimate: the exact likelihood runs a Kalman filter on a state of dimen
+   css  2000   0 900  0  0    0  901  902  8.94e+12  4.87e+09     0.00         -  ValueError: arima_fit(method="css"): the ARIMA orders (p, q and seasonal=(P, D, Q, s)) are too large to estimate: the exact likelihood runs a Kalman f

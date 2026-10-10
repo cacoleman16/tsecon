@@ -528,6 +528,17 @@ def arima_fit(
     forecast_steps is capped at 1,000,000 (as ets_fit's horizon is) and
     refused past that before anything is fitted.
 
+    Absurd orders are refused before anything is allocated: with
+    m = max(p + s*P, q + s*Q + 1) the Kalman state dimension, one likelihood
+    evaluation costs about (4 n + 200) m^3 multiply-adds and holds
+    3 (n + 1) m^2 values, and every fit evaluates it at least
+    2k(k + 2) + 1 times (one gradient and the Hessian behind bse). A
+    specification whose guaranteed work passes 2^37 multiply-adds (CSS: its
+    recursion plus one exact filter pass) or whose filter would hold more than
+    2^28 values raises a ValueError naming p, q and seasonal and the largest
+    state dimension that fits. When the seasonal part is what leaves too few
+    observations, the refusal names seasonal=(P, D, Q, s).
+
     Returned keys: `aic`, `bic`, `boundary`, `boundary_note`, `bse`,
     `conf_alpha`, `converged`, `cov_ok`, `drift_uncertainty`,
     `forecast_lower`, `forecast_mean`, `forecast_se`, `forecast_upper`,
@@ -568,7 +579,13 @@ def auto_arima(
     Every candidate is fit by the exact-MLE engine behind arima_fit, so
     the search is deterministic. No exogenous regressors in this slice.
     forecast_steps is capped at 1,000,000 (as in arima_fit), refused past
-    that before the search starts.
+    that before the search starts. max_P / max_Q above 6 are refused naming
+    the keyword; a seasonal_period longer than half the series (when D comes
+    from the seasonal-strength rule), a fixed D whose D * seasonal_period
+    differences consume the series, and (D=0 fixed) a seasonal_period not
+    shorter than the series are refused before the search, naming the option
+    and its largest admissible value. A candidate past arima_fit's
+    estimation budget is recorded as fit_failed.
 
     Returns the arima_fit result dict for the selected model (less
     arima_fit's own drift_uncertainty, method and nobs echoes) plus:
@@ -632,7 +649,9 @@ def garch_fit(
     EGARCH has no closed-form multi-step variance forecast: with
     `vol="egarch"` only `forecast_horizon` 0 or 1 is accepted, and
     `forecast_horizon >= 2` raises a teaching ValueError (GARCH and GJR
-    forecast analytically at every horizon).
+    forecast analytically at every horizon). `forecast_horizon` is capped at
+    1,000,000 steps (as in arima_fit and ets_fit) and refused past that, by
+    name, before anything is fitted.
 
     Returned keys: `aic`, `bic`, `boundary`, `boundary_note`,
     `conditional_volatility`, `converged`, `loglik`, `param_names`,
@@ -1233,7 +1252,8 @@ def theta_forecast(y: _ArrayLike, steps: int, period: int = ...) -> _F64:
     Matches statsmodels `ThetaModel(deseasonalize=True, use_test=False)`;
     statsmodels' default additionally pre-tests seasonality and skips
     deseasonalization when the test fails, so the two defaults diverge on
-    weakly-seasonal data declared with `period > 1`."""
+    weakly-seasonal data declared with `period > 1`. `steps` is capped at
+    1,000,000 (as in arima_fit and ets_fit) and refused past that."""
 
 # ------------------------------------------------------- local projections
 def lp(
@@ -3084,6 +3104,10 @@ def ccc_garch(
     approximation), with the variance forecasts identical to each series'
     own garch_fit forecast path. The univariate stage inherits garch_fit's
     EGARCH limit: vol="egarch" with forecast_horizon >= 2 raises.
+    forecast_horizon is capped at 1,000,000 steps and at a 2^28-value
+    (2 GiB) working set for the forecast matrices and their nested lists,
+    so the largest admissible horizon shrinks with k; past that it is
+    refused, naming the largest horizon for k, before anything is fitted.
     """
 
 def dcc_garch(
@@ -3131,7 +3155,11 @@ def dcc_garch(
     normalized each step (an approximation), converging to corr(qbar).
     The univariate stage inherits garch_fit's EGARCH limit: vol="egarch"
     with forecast_horizon >= 2 raises. The default call is bit-identical to
-    earlier releases.
+    earlier releases. forecast_horizon is capped at 1,000,000 steps and at a
+    2^28-value (2 GiB) working set for the two forecast paths and their
+    nested lists, so the largest admissible horizon shrinks with k; past
+    that it is refused, naming the largest horizon for k, before anything
+    is fitted.
     """
 
 def dcc_test(
@@ -3153,7 +3181,12 @@ def dcc_test(
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant
-    correlation), lags, nobs, n_stacked.
+    correlation), lags, nobs, n_stacked. lags must leave the
+    (T - lags) * k(k-1)/2 stacked rows one residual degree of freedom beyond
+    the lags + 1 coefficients and keep the pooled regression within 2^26
+    normal-equation entries and 2^34 multiply-adds
+    (T * k(k-1)/2 * (lags + 1)^2); a longer lag length is refused naming
+    lags and the largest that fits.
     """
 
 # ------------------------------------------------ realized volatility / HAR
@@ -3397,7 +3430,10 @@ def backtest(
     re-raise naming the failing origin and window, with the original chained
     as __cause__; wrong-length / non-finite returns raise teaching errors.
     Returns origins, per-horizon forecasts and
-    targets, and a per-horizon accuracy table.
+    targets, and a per-horizon accuracy table. insample_period must leave
+    the first training window insample_period + 1 observations
+    (1 <= insample_period <= train - 1); it is checked before the forecaster
+    runs and refused naming insample_period and its largest admissible value.
 
     Returned keys: `accuracy`, `forecasts`, `horizon`, `n_origins`,
     `origins`, `targets`.
@@ -3445,6 +3481,17 @@ def conformal_forecast(
     q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
     aci: alpha_final/alpha_trajectory/err/realized_coverage).
 
+    Sizes are checked before anything runs: horizon is capped at 1,000,000;
+    a calibration grid that does not fit (horizon + calib + 1 observations,
+    plus n_eval for aci) is refused naming the largest of those keywords and
+    its largest admissible value, as is one whose first training window
+    (n - horizon - calib + 1 observations) is shorter than the base
+    forecaster needs (4 for "theta"); lags likewise when the AR design's
+    2 * lags + 2 observations do not fit. Under "enbpi" the ensemble is sized
+    before any random stream is drawn: past 2^34 multiply-adds or 2^28
+    values, n_boot is refused with the largest that fits (or horizon, when
+    not even two models fit).
+
     Returned keys: `alpha`, `base`, `finite_sample_level`, `horizon`,
     `level`, `lower`, `mean`, `method`, `mode`, `n_calib`, `q_lower`,
     `q_upper`, `scores`, `upper`.
@@ -3480,7 +3527,13 @@ def conformal_backtest(
     under "enbpi", not fresh entropy (`n_boot=None` means 25). The same inert-kwarg refusals as
     conformal_forecast apply (order/lags/gamma/n_boot/seed/optimize_beta,
     EnbPI's calib), plus batch, which is EnbPI-only; n_eval is live for
-    every method here. Defaults stay bit-identical.
+    every method here. Defaults stay bit-identical. Sizes are checked before
+    anything runs, as in conformal_forecast: the grid horizon + calib +
+    n_eval + 1 and its first training window against what the base
+    forecaster needs, the AR design's 2 * lags + 2 observations, and under
+    "enbpi"
+    the ensemble budget, each refused naming the keyword (calib, n_eval,
+    lags, n_boot) and its largest admissible value.
 
     Returned keys: `alpha`, `base`, `err`, `horizon`, `level`, `lower`,
     `mean`, `method`, `n_eval`, `origins`, `realized_coverage`, `upper`.
@@ -3682,7 +3735,8 @@ def gas_volatility(
     density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
     variance, std_resid, loglik, aic, bic, next_variance, `converged` and
     `iterations` (the optimizer's certificate and step count), and
-    (horizon>0) a forecast.
+    (horizon>0) a forecast. horizon is capped at 1,000,000 steps and refused
+    past that, by name, before anything is fitted.
 
     Returned keys: `a`, `aic`, `b`, `bic`, `converged`, `forecast`,
     `iterations`, `loglik`, `next_variance`, `omega`, `std_resid`,

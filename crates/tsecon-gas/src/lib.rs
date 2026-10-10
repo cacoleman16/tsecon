@@ -97,5 +97,5 @@ pub use kernel::Density;
 pub use level::{
     steady_state_gain, DcsDensity, DcsFiltered, DcsModel, DcsParams, DcsResults, DcsStdErrors,
 };
-pub use model::{forecast_from, GasModel, GasParams};
+pub use model::{check_forecast_horizon, forecast_from, GasModel, GasParams, MAX_FORECAST_HORIZON};
 pub use results::{GasFiltered, GasResults};

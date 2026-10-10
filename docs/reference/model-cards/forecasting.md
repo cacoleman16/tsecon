@@ -164,6 +164,10 @@ beats another without a test that accounts for dependent forecast errors.
   approach zero, and it penalizes over- and under-prediction asymmetrically.
   Prefer MASE / RMSSE.
 - **Forgetting `insample`.** `accuracy` cannot return MASE/RMSSE without it.
+- **A scale period longer than the first window.** `backtest`'s MASE/RMSSE
+  scale is the seasonal-naive error of the first training window, so
+  `insample_period` must be at most `train - 1`; it is checked before the
+  forecaster runs and refused naming `insample_period` and that maximum.
 - **Wrong `h`.** `dm_test` sets its HAC lag to `h−1`; passing `h=1` for a
   12-step forecast under-corrects the variance and overstates significance.
 - **In-sample errors.** Every test here assumes genuine out-of-sample errors;
@@ -496,7 +500,19 @@ useful ones. ACI with an aggressive γ oscillates (its `alpha_trajectory` is
 returned — look at it); when `α_t` collapses to 0 the interval is infinite
 by the paper's convention, and past 1 it is the degenerate point interval.
 EnbPI's guarantee arguments lean on its stationarity assumptions; under
-shifts it degrades fastest of the three (measured above).
+shifts it degrades fastest of the three (measured above). Sizes are checked
+before anything runs: `horizon` is capped at 1,000,000 steps; a calibration
+grid that does not fit the series (`horizon + calib + 1` observations, plus
+`n_eval` for ACI and `conformal_backtest`) is refused naming the largest of
+those keywords and the largest value it may take — as is a grid whose first
+training window is shorter than the base forecaster needs (4 observations for
+`"theta"`) — and `lags` likewise when
+the AR design's `2 * lags + 2` observations do not fit. EnbPI's bootstrap
+ensemble is sized before any random stream is drawn — `n_boot` least-squares
+fits plus `horizon` (or `n_eval`) prediction steps that each average every
+model over every row — and refused past 2^34 multiply-adds or 2^28 values,
+naming `n_boot` and the largest that fits (`horizon` when not even two
+models do); `n_boot=2**31` used to abort the interpreter.
 
 **Validated against.** Property-MC (the tables above, seeded and asserted
 in CI) plus the exchangeable-case exactness anchor, and — for the split

@@ -135,8 +135,14 @@ pub use ccc::{CccFit, CccGarch};
 pub use dcc::{DccFit, DccGarch};
 pub use dynamics::{CorrDist, DccVariant};
 pub use error::MgarchError;
-pub use estest::{constant_correlation_test, DccTestResult};
-pub use forecast::DccForecast;
+pub use estest::{
+    constant_correlation_test, dcc_test_max_lags, DccTestResult, DCC_TEST_MAX_XTX_CELLS,
+    DCC_TEST_WORK_BUDGET,
+};
+pub use forecast::{
+    check_forecast_horizon, forecast_footprint, max_forecast_horizon, DccForecast, ForecastKind,
+    FORECAST_BUDGET_VALUES, MAX_FORECAST_HORIZON,
+};
 pub use stage::UnivariateStage;
 
 // Re-export the shared dense backend so callers manipulate the returned

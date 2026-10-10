@@ -123,11 +123,19 @@ impl CccFit {
     /// # Errors
     ///
     /// * [`MgarchError::InvalidHorizon`] if `horizon == 0`;
+    /// * [`MgarchError::ForecastTooLarge`] if `horizon` is past
+    ///   [`crate::max_forecast_horizon`] for these `k` series (checked
+    ///   before anything is allocated);
     /// * [`MgarchError::Univariate`] if a univariate forecast fails.
     pub fn forecast_covariance(&self, horizon: usize) -> Result<Vec<Mat<f64>>, MgarchError> {
         if horizon == 0 {
             return Err(MgarchError::InvalidHorizon);
         }
+        crate::forecast::check_forecast_horizon(
+            crate::forecast::ForecastKind::Ccc,
+            self.stage.k,
+            horizon,
+        )?;
         // Per-series variance forecast paths (each length `horizon`).
         let mut var_paths = Vec::with_capacity(self.stage.k);
         for (i, res) in self.stage.univariate.iter().enumerate() {

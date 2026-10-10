@@ -101,9 +101,10 @@ pub use backtest::{Backtest, BacktestResult, Window};
 pub use benchmarks::{drift, historical_mean, naive, seasonal_naive, BenchmarkForecast};
 pub use comparison::{AccuracyRow, CwPair, DmPair, ForecastComparison};
 pub use conformal::{
-    aci, ar_forecast, conformal_quantile, enbpi, enbpi_online, split_conformal,
+    aci, ar_forecast, conformal_quantile, enbpi, enbpi_cost, enbpi_online, split_conformal,
     split_conformal_online, AciForecast, AciOptions, ConformalOnline, EnbpiForecast, EnbpiOptions,
-    SplitConformalForecast, SplitConformalOptions, SplitOnlineOptions,
+    SplitConformalForecast, SplitConformalOptions, SplitOnlineOptions, ENBPI_BUDGET_VALUES,
+    ENBPI_WORK_BUDGET,
 };
 pub use cw::{cw_test, CwResult};
 pub use dm::{dm_test, dm_test_with_loss, DmLoss, DmResult};
@@ -117,4 +118,5 @@ pub use spa::{
     SpaOptions, SpaResult, StepmOptions, StepmResult,
 };
 pub use theta::{theta_forecast, theta_forecast_with, ThetaForecast};
+pub use validate::MAX_FORECAST_STEPS;
 pub use var_backtest::{var_backtest, var_backtest_hits, VarBacktestResult};
