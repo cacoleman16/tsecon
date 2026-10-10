@@ -99,6 +99,18 @@ pub enum SpecTestError {
         /// `true` when the order fits the sample but not the budgets.
         over_budget: bool,
     },
+    /// A fitted-value power `yhat^power` (`power <= max_power`) overflows to
+    /// infinity, so RESET's augmented regression cannot be formed. RESET is
+    /// invariant to the scale of `y`, so rescaling `y` (or a smaller
+    /// `max_power`) avoids it.
+    ResetPowerOverflow {
+        /// The offending `max_power`.
+        max_power: usize,
+        /// The first power that overflows.
+        power: usize,
+        /// The largest absolute fitted value.
+        max_abs_fitted: f64,
+    },
     /// A design (original, auxiliary, or a recursive-residual window) was rank
     /// deficient — collinear columns — so the normal equations have no unique
     /// solution.
@@ -253,6 +265,28 @@ impl fmt::Display for SpecTestError {
                         "; even max_power = 2 does not fit, so supply a longer series or \
                          fewer design columns"
                     ),
+                }
+            }
+            Self::ResetPowerOverflow {
+                max_power,
+                power,
+                max_abs_fitted,
+            } => {
+                write!(
+                    f,
+                    "max_power = {max_power}: the fitted-value power yhat^{power} overflows to \
+                     infinity (max |yhat| = {max_abs_fitted:.4e}), so the augmented RESET \
+                     regression cannot be formed; "
+                )?;
+                if *power > 2 {
+                    write!(
+                        f,
+                        "pass max_power <= {}, or rescale y (RESET is invariant to the scale \
+                         of y)",
+                        power - 1
+                    )
+                } else {
+                    write!(f, "rescale y (RESET is invariant to the scale of y)")
                 }
             }
             Self::SingularDesign { what } => write!(

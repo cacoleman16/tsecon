@@ -210,3 +210,42 @@ fn singular_design_rejected() {
         SpecTestError::SingularDesign { .. }
     ));
 }
+
+/// A fitted-value power that overflows to infinity is refused naming
+/// max_power and the largest power that stays finite; it used to reach the
+/// OLS engine as an inf "in the design column", blaming the data.
+#[test]
+fn reset_power_overflow_names_max_power() {
+    let (y, x) = design(); // n = 20, k = 3
+                           // Scale y so that |yhat| is about 1e40: yhat^8 overflows (1e320).
+    let big: Vec<f64> = y.iter().map(|v| v * 1e40).collect();
+    let err = reset_test(&big, &x, 12).unwrap_err();
+    let SpecTestError::ResetPowerOverflow {
+        max_power: 12,
+        power,
+        max_abs_fitted,
+    } = err
+    else {
+        panic!("expected an overflow refusal, got {err:?}");
+    };
+    assert!((7..=8).contains(&power), "power {power}");
+    assert!(max_abs_fitted.powi(power as i32).is_infinite());
+    assert!(max_abs_fitted.powi(power as i32 - 1).is_finite());
+    let msg = err.to_string();
+    assert!(
+        msg.starts_with("max_power = 12: the fitted-value power yhat^"),
+        "{msg}"
+    );
+    assert!(
+        msg.ends_with(&format!(
+            "pass max_power <= {}, or rescale y (RESET is invariant to the scale of y)",
+            power - 1
+        )),
+        "{msg}"
+    );
+    // Below the overflow the test runs, and it is invariant to the scale of
+    // y, as the remedy says.
+    let small = reset_test(&y, &x, 3).unwrap();
+    let scaled = reset_test(&big, &x, 3).unwrap();
+    assert!((small.fstat - scaled.fstat).abs() <= 1e-8 * small.fstat.abs().max(1.0));
+}

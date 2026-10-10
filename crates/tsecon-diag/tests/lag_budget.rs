@@ -60,6 +60,15 @@ fn arch_formula(n: usize, p: usize) -> (u128, u128) {
     ((n - p) * p, (n - p) * p * p / 2 + p * p * p)
 }
 
+/// The documented size of the Zivot-Andrews break-date scan: one
+/// `(n - 1 - l) x (s + l)` design, refit by QR at each of `c` candidate
+/// breaks, `c rows k^2` multiply-adds.
+fn za_formula(n: usize, s: usize, c: usize, l: usize) -> (u128, u128) {
+    let (n, s, c, l) = (n as u128, s as u128, c as u128, l as u128);
+    let (rows, k) = (n - 1 - l, s + l);
+    (rows * k, c * rows * k * k)
+}
+
 /// Whether order `p` with size `(cells, work)` is admissible when orders up
 /// to `free` are exempt from the work budget.
 fn admissible(p: usize, free: usize, (cells, work): (u128, u128)) -> bool {
@@ -261,6 +270,56 @@ fn zivot_andrews_lag_search_inherits_the_budget_under_its_own_name() {
         }) => {}
         other => panic!("expected the re-attributed budget refusal, got {other:?}"),
     }
+}
+
+#[test]
+fn zivot_andrews_break_scan_is_sized_before_its_design_is_built() {
+    // n = 1e5, trim 0.15: int(n trim) = 15000, so lags = 14000 passes the
+    // trimmed-window bound, but the scan's design is 85999 x 14004 = 1.2e9
+    // entries (9.6 GB): it used to abort the process in the allocator.
+    let n = 100_000;
+    let y = walk(n, 21);
+    let (param, value, defaulted, max, text) = budget_refusal(zivot_andrews(
+        &y,
+        ZaRegression::Constant,
+        0.15,
+        ZaLagSelection::Fixed(14_000),
+    ));
+    assert_eq!((param, value, defaulted), ("lags", 14_000, false));
+    let (free, c) = (schwert(n), n - 2 * 15_000);
+    assert!(admissible(max, free, za_formula(n, 4, c, max)), "max {max}");
+    assert!(
+        !admissible(max + 1, free, za_formula(n, 4, c, max + 1)),
+        "max {max}"
+    );
+    assert!(
+        text.starts_with("zivot_andrews: lags = 14000 needs a lag design of"),
+        "{text}"
+    );
+    assert!(text.ends_with(&format!("pass lags <= {max}, or a shorter series")));
+}
+
+#[test]
+fn zivot_andrews_break_scan_work_is_budgeted_past_the_default_lag() {
+    // n = 3000, trim 0.15: 2100 candidate breaks. lags = 400 fits the
+    // trimmed window (<= 449) and memory, but the scan costs about
+    // 2100 x 2599 x 404^2 = 8.9e11 multiply-adds (about 20 minutes): past
+    // the work budget. Lags up to the default cap (29 here) are exempt.
+    let n = 3000;
+    let y = walk(n, 23);
+    let (param, value, _, max, text) = budget_refusal(zivot_andrews(
+        &y,
+        ZaRegression::ConstantTrend,
+        0.15,
+        ZaLagSelection::Fixed(400),
+    ));
+    assert_eq!((param, value), ("lags", 400));
+    let (free, c) = (schwert(n), n - 2 * 450);
+    assert_eq!(free, 29);
+    assert!(max > free, "the work budget binds past the default here");
+    assert!(admissible(max, free, za_formula(n, 5, c, max)), "max {max}");
+    assert!(!admissible(max + 1, free, za_formula(n, 5, c, max + 1)));
+    assert!(text.contains("past the work budget"), "{text}");
 }
 
 #[test]

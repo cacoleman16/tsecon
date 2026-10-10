@@ -1,6 +1,7 @@
 //! Size budgets of the lag regressions shared by [`crate::arch_lm`],
-//! [`crate::adf`], [`crate::dfgls`] and [`crate::ng_perron`] (and, through
-//! the base-ADF lag search, [`crate::zivot_andrews`]).
+//! [`crate::adf`], [`crate::dfgls`], [`crate::ng_perron`] and
+//! [`crate::zivot_andrews`] (its base-ADF lag search and its break-date
+//! regressions).
 //!
 //! A lag order the sample admits can still ask for a design no machine
 //! holds, or a lag search that runs for hours: the statsmodels bound lets
@@ -19,9 +20,11 @@
 //! `rows x k` design costs `rows k^2` multiply-adds, so a search over
 //! `0..=L` lags from `s` fixed columns costs `rows (s^2 + ... + (s+L)^2)`
 //! plus the final refit; the centered normal equations of `arch_lm` cost
-//! `rows p^2 / 2 + p^3`. Measured at 1.1 to 1.5 ns per multiply-add for
-//! the `adf` QR search and 1.7 ns for the `arch_lm` normal equations
-//! (`lab/unitroot_cost/lag_cost.py`), so the budget is under a minute: the
+//! `rows p^2 / 2 + p^3`; the Zivot-Andrews break-date scan refits one
+//! `rows x k` design at every candidate break, `candidates rows k^2`.
+//! Measured at 1.1 to 1.5 ns per multiply-add for the `adf` QR search and
+//! 1.7 ns for the `arch_lm` normal equations
+//! (`lab/unitroot_cost/lag_cost.py`), so the budget is about a minute: the
 //! largest admissible `adf` search at n = 20,000 ran in 36 s, the largest
 //! `arch_lm` order at n = 30,000 in 57 s.
 //!
@@ -39,7 +42,7 @@ use crate::error::{DiagError, LagLimit};
 pub const LAG_DESIGN_MAX_CELLS: u128 = 1 << 26;
 
 /// Work budget of one lag regression or lag search, in multiply-adds
-/// (`2^35`, under a minute at the measured rates).
+/// (`2^35`, about a minute at the measured rates).
 pub const LAG_WORK_BUDGET: u128 = 1 << 35;
 
 /// The phrase a refusal quotes for the budget(s) a design exceeds, or
@@ -48,10 +51,10 @@ pub fn lag_budget_exceeded(cells: u128, work: u128) -> Option<&'static str> {
     match (cells > LAG_DESIGN_MAX_CELLS, work > LAG_WORK_BUDGET) {
         (true, true) => Some(
             "both the memory budget of 2^26 = 67108864 entries (512 MiB) and the work \
-             budget of 2^35 multiply-adds (under a minute)",
+             budget of 2^35 multiply-adds (about a minute)",
         ),
         (true, false) => Some("the memory budget of 2^26 = 67108864 entries (512 MiB)"),
-        (false, true) => Some("the work budget of 2^35 multiply-adds (under a minute)"),
+        (false, true) => Some("the work budget of 2^35 multiply-adds (about a minute)"),
         (false, false) => None,
     }
 }
@@ -102,6 +105,24 @@ pub(crate) fn arch_cost(n: usize, p: usize) -> (u128, u128) {
     let cells = rows.saturating_mul(p);
     let work = (rows.saturating_mul(p2) / 2).saturating_add(p2.saturating_mul(p));
     (cells, work)
+}
+
+/// Size of the Zivot-Andrews break-date regressions of `n` observations on
+/// `basecols` deterministic and level columns plus `lags` lagged
+/// differences: one `(n - 1 - lags) x (basecols + lags)` design, refit by a
+/// Householder QR at each of `candidates` break dates — `(cells, work)`
+/// with `work = candidates rows k^2`.
+pub(crate) fn za_cost(n: usize, basecols: usize, candidates: usize, lags: usize) -> (u128, u128) {
+    let (n, s, l, c) = (
+        n as u128,
+        basecols as u128,
+        lags as u128,
+        candidates as u128,
+    );
+    let rows = n.saturating_sub(1).saturating_sub(l);
+    let k = s.saturating_add(l);
+    let cells = rows.saturating_mul(k);
+    (cells, c.saturating_mul(cells).saturating_mul(k))
 }
 
 /// The largest order in `lo..=hi` whose `cost` fits both budgets, or
@@ -182,6 +203,7 @@ pub(crate) fn check_lag_order(
                 cells: u64::try_from(cells).unwrap_or(u64::MAX),
                 work: u64::try_from(cost(value).1).unwrap_or(u64::MAX),
                 work_exempt: value <= free,
+                selected: None,
             },
         });
     }
@@ -207,6 +229,8 @@ mod tests {
         let (c, w) = adf_cost(usize::MAX, 3, usize::MAX / 2, true);
         assert!(lag_budget_exceeded(c, w).is_some());
         let (c, w) = arch_cost(usize::MAX, usize::MAX / 3);
+        assert!(lag_budget_exceeded(c, w).is_some());
+        let (c, w) = za_cost(usize::MAX, 5, usize::MAX / 3, usize::MAX / 4);
         assert!(lag_budget_exceeded(c, w).is_some());
     }
 

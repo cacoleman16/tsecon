@@ -86,7 +86,8 @@
 //! Stata module ZANDREWS; Schwert (1989), JBES 7(2); Perron (1989),
 //! Econometrica 57(6); Lee & Strazicich (2003), REStat 85(4).
 
-use crate::error::DiagError;
+use crate::budget::{check_lag_order, za_cost};
+use crate::error::{DiagError, LagLimit};
 use crate::ols::ols_detailed;
 use crate::unitroot::{adf, AdfLagSelection, AdfRegression};
 use crate::validate::check_series;
@@ -449,6 +450,89 @@ fn reattribute(err: DiagError) -> DiagError {
     }
 }
 
+/// Size the break-date scan before building its design: one `rows x k`
+/// design, `rows = n - 1 - lags` and `k = basecols + lags`, refit by QR at
+/// each of the `n - 2 trimcnt` candidate breaks, against the shared lag
+/// budgets ([`crate::LAG_DESIGN_MAX_CELLS`], [`crate::LAG_WORK_BUDGET`]).
+/// Lags up to the ADF default cap `ceil(12 (n/100)^(1/4))` are exempt from
+/// the work budget, so a default call is refused only when its design would
+/// not fit in memory. A lag chosen by the automatic search is charged to
+/// the search cap that admitted it (`maxlag`, `max_lags` in Python), with
+/// the selected lag reported; the quoted maximum is the longest lag whose
+/// scan fits, so a cap no larger than it always runs. The sample bounds
+/// (`lags <= int(n trim) - 1`, a residual degree of freedom) are checked
+/// by the caller first.
+fn check_break_scan_budget(
+    n: usize,
+    basecols: usize,
+    trimcnt: usize,
+    lags: usize,
+    lag_selection: ZaLagSelection,
+) -> Result<(), DiagError> {
+    let nf = n as f64;
+    let default_cap = (12.0 * (nf / 100.0).powf(0.25)).ceil() as usize;
+    let candidates = n - 2 * trimcnt;
+    let sample_max = (trimcnt - 1).min((n - basecols - 2) / 2);
+    // The search cap that admitted the lag: the caller's, or the base ADF's
+    // default (Schwert's rule capped at its "ct" bound n/2 - 3).
+    let (param, defaulted, cap) = match lag_selection {
+        ZaLagSelection::Fixed(_) => ("lags", false, None),
+        ZaLagSelection::SchwertTrunc => ("lags", true, None),
+        ZaLagSelection::Aic(m) | ZaLagSelection::Bic(m) | ZaLagSelection::TStat(m) => (
+            "maxlag",
+            m.is_none(),
+            Some(m.unwrap_or(default_cap.min((n / 2).saturating_sub(3)))),
+        ),
+    };
+    check_lag_order(
+        WHAT,
+        param,
+        lags,
+        defaulted,
+        n,
+        0,
+        Some(sample_max),
+        default_cap,
+        "the break-date regressions need lags <= int(n * trim) - 1 and a residual \
+         degree of freedom",
+        |p| za_cost(n, basecols, candidates, p),
+    )
+    .map_err(|e| match (e, cap) {
+        (
+            DiagError::LagOrderTooLong {
+                what,
+                param,
+                value,
+                defaulted,
+                n,
+                max,
+                limit:
+                    LagLimit::Budget {
+                        cells,
+                        work,
+                        work_exempt,
+                        ..
+                    },
+            },
+            Some(cap),
+        ) => DiagError::LagOrderTooLong {
+            what,
+            param,
+            value: cap,
+            defaulted,
+            n,
+            max,
+            limit: LagLimit::Budget {
+                cells,
+                work,
+                work_exempt,
+                selected: Some(value),
+            },
+        },
+        (e, _) => e,
+    })
+}
+
 /// Zivot-Andrews (1992) unit-root test with one endogenous break,
 /// matching `statsmodels.tsa.stattools.zivot_andrews` (see the module docs
 /// for the exact conventions, including the Baum single up-front lag
@@ -484,7 +568,14 @@ fn reattribute(err: DiagError) -> DiagError {
 /// * [`DiagError::LagOrderTooLong`] from the automatic lag search (the base
 ///   [`crate::adf`] on the `"ct"` regression, re-attributed to this test):
 ///   a search cap past `n/2 - 3`, or one whose search exceeds the size
-///   budgets, naming `maxlag` and the largest cap that fits.
+///   budgets, naming `maxlag` and the largest cap that fits; and when the
+///   break-date scan at the chosen lag — a `(n - 1 - lags) x (basecols +
+///   lags)` design refit at each of the `n - 2 trimcnt` candidate breaks —
+///   exceeds the size budgets ([`crate::LAG_DESIGN_MAX_CELLS`],
+///   [`crate::LAG_WORK_BUDGET`]; lags up to the ADF default cap are exempt
+///   from the work budget), checked before the design is built, naming
+///   `lags` (fixed or the truncated-Schwert default) or the search cap
+///   `maxlag` that admitted the selected lag, and the longest lag that fits.
 /// * [`DiagError::SingularDesign`] / [`DiagError::NumericalBreakdown`]
 ///   if any candidate design is collinear or fits exactly (the reference
 ///   rank-checks only the first candidate; this library checks all).
@@ -559,6 +650,7 @@ pub fn zivot_andrews(
             needed: 2 * lags + basecols + 2,
         });
     }
+    check_break_scan_budget(n, basecols, trimcnt, lags, lag_selection)?;
 
     // ---- statsmodels' exact numerical scaling (bit-parity; the t-ratio
     // is scale-invariant in exact arithmetic).
@@ -661,4 +753,45 @@ pub fn zivot_andrews(
         regression,
         trim,
     })
+}
+
+#[cfg(test)]
+mod budget_tests {
+    use super::*;
+
+    /// A lag chosen by the automatic search is charged to the cap that
+    /// admitted it: the refusal names `maxlag` (the cap), reports the
+    /// selected lag, and quotes the longest lag whose scan fits.
+    #[test]
+    fn a_searched_lag_is_charged_to_its_cap() {
+        let err =
+            check_break_scan_budget(3000, 5, 450, 300, ZaLagSelection::Aic(Some(400))).unwrap_err();
+        let DiagError::LagOrderTooLong {
+            param: "maxlag",
+            value: 400,
+            defaulted: false,
+            max: Some(max),
+            limit:
+                LagLimit::Budget {
+                    selected: Some(300),
+                    ..
+                },
+            ..
+        } = err
+        else {
+            panic!("expected the cap-charged refusal, got {err:?}");
+        };
+        let text = err.to_string();
+        assert!(
+            text.starts_with(
+                "zivot_andrews: maxlag = 400 let the lag search select 300 lags, whose \
+                 regressions need a lag design of"
+            ),
+            "{text}"
+        );
+        assert!(text.ends_with(&format!("pass maxlag <= {max}, or a shorter series")));
+        // The quoted lag itself, and anything up to the default cap, fit.
+        assert!(check_break_scan_budget(3000, 5, 450, max, ZaLagSelection::Aic(Some(400))).is_ok());
+        assert!(check_break_scan_budget(3000, 5, 450, 29, ZaLagSelection::Fixed(29)).is_ok());
+    }
 }

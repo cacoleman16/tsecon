@@ -36,7 +36,9 @@ use crate::results::FTest;
 /// none (`n <= k + q`) or its design would exceed the auxiliary-regression
 /// budgets of [`crate::breusch_godfrey_test`] ([`crate::BG_MAX_AUX_CELLS`],
 /// [`crate::BG_WORK_BUDGET`]) — checked before any power column is built,
-/// naming `max_power` and the largest that fits; the usual
+/// naming `max_power` and the largest that fits;
+/// [`SpecTestError::ResetPowerOverflow`] if a fitted-value power overflows
+/// to infinity (rescale `y`, to which RESET is invariant); the usual
 /// empty/dimension/finite validation errors; and propagates
 /// [`SpecTestError::SingularDesign`] if a design is collinear.
 pub fn reset_test(
@@ -86,6 +88,15 @@ pub fn reset_test(
     let mut aug: Vec<Vec<f64>> = x_cols.to_vec();
     for power in 2..=max_power {
         let col: Vec<f64> = yhat.iter().map(|&v| v.powi(power as i32)).collect();
+        // A power of a large fitted value overflows: refuse naming
+        // max_power rather than letting the OLS blame the data for an inf.
+        if col.iter().any(|v| !v.is_finite()) {
+            return Err(SpecTestError::ResetPowerOverflow {
+                max_power,
+                power,
+                max_abs_fitted: yhat.iter().fold(0.0_f64, |m, &v| m.max(v.abs())),
+            });
+        }
         aug.push(col);
     }
 

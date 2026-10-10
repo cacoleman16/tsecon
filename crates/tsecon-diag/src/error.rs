@@ -125,6 +125,10 @@ pub enum LagLimit {
         /// `true` when the order is no longer than the default rule's, so
         /// only the memory budget applies to it.
         work_exempt: bool,
+        /// The lag an automatic search selected, when the refused order is
+        /// the search cap but the oversized design is that of the selected
+        /// lag (`zivot_andrews`' break-date regressions); `None` otherwise.
+        selected: Option<usize>,
     },
 }
 
@@ -207,18 +211,27 @@ impl fmt::Display for DiagError {
                         cells,
                         work,
                         work_exempt,
-                    } => write!(
-                        f,
-                        "{what}: {order} needs a lag design of {cells} entries and about \
-                         {:.2e} multiply-adds for a series of length {n}, past {} \
-                         (checked before any lag column is built)",
-                        *work as f64,
-                        crate::budget::lag_budget_exceeded(
-                            u128::from(*cells),
-                            if *work_exempt { 0 } else { u128::from(*work) }
-                        )
-                        .unwrap_or("the budget"),
-                    )?,
+                        selected,
+                    } => {
+                        let needs = match selected {
+                            Some(l) => format!(
+                                "let the lag search select {l} lags, whose regressions need"
+                            ),
+                            None => "needs".to_string(),
+                        };
+                        write!(
+                            f,
+                            "{what}: {order} {needs} a lag design of {cells} entries and \
+                             about {:.2e} multiply-adds for a series of length {n}, past {} \
+                             (checked before any lag column is built)",
+                            *work as f64,
+                            crate::budget::lag_budget_exceeded(
+                                u128::from(*cells),
+                                if *work_exempt { 0 } else { u128::from(*work) }
+                            )
+                            .unwrap_or("the budget"),
+                        )?
+                    }
                 }
                 match (max, limit) {
                     (Some(m), LagLimit::Sample { sample_max, .. }) => {

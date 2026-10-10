@@ -52,41 +52,34 @@ fn vec1(a: &PyReadonlyArray1<'_, f64>) -> Vec<f64> {
 /// A `tsecon_diag` refusal with the lag order renamed to the Python keyword
 /// the caller passed: the core names its orders by their Rust-side names
 /// (`maxlag` for an ADF search cap, `lags` for a fixed DF-GLS lag), and
-/// `rename` maps each to the keyword (`max_lags`, ...). A fixed-lag
-/// `InvalidLags` (whose message prints the core's shared `nlags = ...`) is
-/// rebuilt naming `fixed`, when given.
-fn diag_lag_err(
-    e: tsecon_diag::DiagError,
-    rename: impl Fn(&'static str) -> &'static str,
-    fixed: Option<&str>,
-) -> PyErr {
-    PyValueError::new_err(diag_lag_msg(e, rename, fixed))
+/// `rename` maps each to the keyword (`max_lags`, ...).
+fn diag_lag_err(e: tsecon_diag::DiagError, rename: impl Fn(&'static str) -> &'static str) -> PyErr {
+    PyValueError::new_err(diag_lag_msg(e, rename))
 }
 
 /// The message of [`diag_lag_err`], for callers that wrap it.
 fn diag_lag_msg(
     mut e: tsecon_diag::DiagError,
     rename: impl Fn(&'static str) -> &'static str,
-    fixed: Option<&str>,
 ) -> String {
-    use tsecon_diag::DiagError;
-    if let DiagError::LagOrderTooLong { param, .. } = &mut e {
+    if let tsecon_diag::DiagError::LagOrderTooLong { param, .. } = &mut e {
         *param = rename(param);
     }
-    match (e, fixed) {
-        (
-            DiagError::InvalidLags {
-                what,
-                nlags,
-                n,
-                requirement,
-            },
-            Some(keyword),
-        ) => format!(
-            "{what}: {keyword} = {nlags} is invalid for a series of length {n}: \
-             requires {requirement}"
-        ),
-        (e, _) => e.to_string(),
+    e.to_string()
+}
+
+/// A `tsecon_diag` refusal from a workflow that runs `adf` at its default
+/// lag search and takes no lag keyword itself (`check_stationarity`,
+/// `ndiffs`): an order refused by the lag budgets is remedied by a shorter
+/// series, or by calling `adf` with an explicit `maxlag`.
+fn diag_default_lag_err(e: tsecon_diag::DiagError, callable: &str) -> PyErr {
+    match e {
+        tsecon_diag::DiagError::LagOrderTooLong { .. } => PyValueError::new_err(format!(
+            "{callable}: {e}. {callable} itself takes no lag keyword (its ADF leg runs \
+             the default lag search), so supply a shorter series, or call tsecon.adf \
+             with an explicit maxlag"
+        )),
+        other => to_py(other),
     }
 }
 
@@ -382,7 +375,7 @@ fn adf_regression(s: &str) -> PyResult<tsecon_diag::AdfRegression> {
 /// regression "n" on an even n, which must keep a residual degree of
 /// freedom) is refused naming `maxlag` and the largest that fits, as is one
 /// whose lag design exceeds 2^26 entries (512 MiB) or whose lag search
-/// exceeds 2^35 multiply-adds (under a minute) — checked before any lag
+/// exceeds 2^35 multiply-adds (about a minute) — checked before any lag
 /// column is built. Orders up to the default cap ceil(12*(n/100)^(1/4)) are
 /// exempt from the work budget, so a default call is refused only when its
 /// design would not fit in memory (above about 610,000 observations).
@@ -479,7 +472,10 @@ fn kpss<'py>(
 
 /// The stationarity decision workflow: ADF and KPSS run together and
 /// classified into the confirmatory quadrant, with a teaching
-/// interpretation and a concrete recommendation.
+/// interpretation and a concrete recommendation. The ADF leg runs the
+/// default lag search, so a series whose default lag design exceeds the
+/// lag budget of `adf` (2^26 entries, above about 610,000 observations) is
+/// refused; run `adf` with an explicit `maxlag` there.
 ///
 /// Returned keys: `adf_p_value`, `adf_statistic`, `alpha`, `interpretation`,
 /// `kpss_p_value`, `kpss_statistic`, `quadrant`, `recommendation`.
@@ -492,7 +488,8 @@ fn check_stationarity<'py>(
     y: PyReadonlyArray1<'py, f64>,
     alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::check_stationarity_at(&vec1(&y), alpha).map_err(to_py)?;
+    let r = tsecon_diag::check_stationarity_at(&vec1(&y), alpha)
+        .map_err(|e| diag_default_lag_err(e, "check_stationarity"))?;
     let d = PyDict::new(py);
     d.set_item("quadrant", format!("{:?}", r.quadrant))?;
     d.set_item("recommendation", format!("{:?}", r.recommendation))?;
@@ -619,7 +616,7 @@ fn dfgls<'py>(
         },
     };
     let r = tsecon_diag::dfgls(&vec1(&y), trend, selection)
-        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }, None))?;
+        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }))?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("p_value", r.p_value)?;
@@ -699,7 +696,7 @@ fn ng_perron<'py>(
         }
     };
     let r = tsecon_diag::ng_perron(&vec1(&y), trend_spec, selection)
-        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }, None))?;
+        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }))?;
     let d = PyDict::new(py);
     d.set_item("mza", r.mza)?;
     d.set_item("mzt", r.mzt)?;
@@ -807,8 +804,15 @@ fn phillips_ouliaris<'py>(
 /// (statsmodels, 100k MC reps) — read at most two decimals into them.
 /// Matches statsmodels `zivot_andrews` (statistic 1e-10, break/lag exact).
 /// A `max_lags` past the base ADF's bound n//2 - 3, or past its size budgets
-/// (see `adf`), is refused naming `max_lags`; a fixed `lags` past
-/// int(n*trim) - 1 is refused naming `lags`.
+/// (see `adf`), is refused naming `max_lags`. The lag the break regressions
+/// use must satisfy `lags <= int(n*trim) - 1`: a fixed `lags` past it is
+/// refused naming `lags`, a searched one naming `max_lags`. The break-date
+/// scan refits a `(n - 1 - lags) x (k + lags)` design at each of the
+/// `n - 2*int(n*trim)` candidate breaks and shares the lag budgets of `adf`
+/// (2^26 design entries, 2^35 multiply-adds; lags up to the default cap
+/// ceil(12*(n/100)^(1/4)) are exempt from the work budget): a lag past them
+/// is refused before the design is built, naming `lags` or the `max_lags`
+/// that admitted it and the longest lag that fits.
 ///
 /// Returns dict keys: `stat`, `pvalue`, `crit` {"1%","5%","10%"},
 /// `break_index`, `lags` (the shared augmentation lag), `nobs`, `trim`,
@@ -865,14 +869,45 @@ fn zivot_andrews<'py>(
         }
     };
     // The automatic search's cap is `max_lags` here (the base ADF calls it
-    // maxlag); the fixed lag, explicit or the truncated-Schwert default, is
-    // `lags`.
-    let r = tsecon_diag::zivot_andrews(&vec1(&y), reg, trim, sel).map_err(|e| {
-        diag_lag_err(
-            e,
-            |p| if p == "maxlag" { "max_lags" } else { p },
-            Some("lags"),
-        )
+    // maxlag). The trimmed-window bound int(n*trim) - 1 binds the lag the
+    // break regressions use: `lags` when fixed or the truncated-Schwert
+    // default, and the lag the search selected — remedied by `max_lags` —
+    // otherwise.
+    let r = tsecon_diag::zivot_andrews(&vec1(&y), reg, trim, sel).map_err(|e| match e {
+        tsecon_diag::DiagError::InvalidLags {
+            what,
+            nlags,
+            n,
+            requirement,
+        } => {
+            let (order, keyword) = match (sel, max_lags) {
+                (L::Fixed(_), _) => (format!("lags = {nlags}"), "lags"),
+                (L::SchwertTrunc, _) => (
+                    format!(
+                        "the default lags = {nlags} (int(12*(n/100)^(1/4)), used when \
+                         autolag=None and lags=None)"
+                    ),
+                    "lags",
+                ),
+                (_, Some(m)) => (
+                    format!("lags = {nlags}, chosen by the lag search capped at max_lags = {m},"),
+                    "max_lags",
+                ),
+                (_, None) => (
+                    format!("lags = {nlags}, chosen by the default lag search,"),
+                    "max_lags",
+                ),
+            };
+            let remedy = match ((n as f64 * trim) as usize).checked_sub(1) {
+                Some(m) => format!("; pass {keyword} <= {m}"),
+                None => "; with int(n * trim) = 0 no lag order fits".to_string(),
+            };
+            PyValueError::new_err(format!(
+                "{what}: {order} is invalid for a series of length {n}: requires \
+                 {requirement}{remedy}"
+            ))
+        }
+        other => diag_lag_err(other, |p| if p == "maxlag" { "max_lags" } else { p }),
     })?;
     let d = PyDict::new(py);
     d.set_item("stat", r.statistic)?;
@@ -973,7 +1008,9 @@ fn nsdiffs_result_dict<'py>(
 /// KPSS differences while `p < alpha`, ADF/PP while `p > alpha`.
 /// Composition over the shipped tests at their conventional defaults
 /// (constant term; automatic bandwidth / AIC lag selection), so the
-/// per-order numbers match statsmodels/arch to 1e-13.
+/// per-order numbers match statsmodels/arch to 1e-13. With `test="adf"`
+/// a series whose default lag design exceeds the lag budget of `adf`
+/// (2^26 entries, above about 610,000 observations) is refused.
 ///
 /// Returns dict keys: `d`, `test`, `alpha`, `max_d`, `stop`
 /// ("Stationary" | "MaxD" | "Constant"), `steps` (one dict per order
@@ -988,7 +1025,11 @@ fn ndiffs<'py>(
     alpha: f64,
     max_d: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::ndiffs(&vec1(&y), ndiffs_test(test)?, alpha, max_d).map_err(to_py)?;
+    let r =
+        tsecon_diag::ndiffs(&vec1(&y), ndiffs_test(test)?, alpha, max_d).map_err(|e| match e {
+            tsecon_diag::AdvisorError::Diag(d) => diag_default_lag_err(d, "ndiffs"),
+            other => to_py(other),
+        })?;
     ndiffs_result_dict(py, &r)
 }
 
@@ -10885,7 +10926,7 @@ fn panel_unit_root<'py>(
     };
     let r = run(&units, test_enum, reg, sel, &opts).map_err(|e| match e {
         tsecon_panelroot::PanelRootError::Adf { unit, source } => {
-            let inner = diag_lag_msg(source, |_| lag_keyword, None);
+            let inner = diag_lag_msg(source, |_| lag_keyword);
             PyValueError::new_err(format!("per-unit ADF failed for unit {unit}: {inner}"))
         }
         other => to_py(other),
@@ -11456,7 +11497,9 @@ fn heteroskedasticity_test<'py>(
 /// `max_power` must leave `T > k + max_power - 1` and the augmented design
 /// within the Breusch-Godfrey auxiliary-regression budgets (2^26 entries,
 /// 2^34 multiply-adds); a larger one is refused before any power column is
-/// built, naming `max_power` and the largest that fits.
+/// built, naming `max_power` and the largest that fits. A power of a large
+/// fitted value that overflows to infinity is refused naming `max_power`
+/// (RESET is invariant to the scale of `y`, so rescaling it also helps).
 ///
 /// Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
 #[pyfunction]
