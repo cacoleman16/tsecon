@@ -118,10 +118,10 @@ pub enum LagLimit {
     /// The size budgets: the lag design's entries and the multiply-adds of
     /// its regression (or lag search) that the order asks for.
     Budget {
-        /// Entries of the lag design.
-        cells: u128,
-        /// Multiply-adds of the regression or lag search.
-        work: u128,
+        /// Entries of the lag design (saturating at `u64::MAX`).
+        cells: u64,
+        /// Multiply-adds of the regression or lag search (saturating).
+        work: u64,
         /// `true` when the order is no longer than the default rule's, so
         /// only the memory budget applies to it.
         work_exempt: bool,
@@ -214,8 +214,8 @@ impl fmt::Display for DiagError {
                          (checked before any lag column is built)",
                         *work as f64,
                         crate::budget::lag_budget_exceeded(
-                            *cells,
-                            if *work_exempt { 0 } else { *work }
+                            u128::from(*cells),
+                            if *work_exempt { 0 } else { u128::from(*work) }
                         )
                         .unwrap_or("the budget"),
                     )?,

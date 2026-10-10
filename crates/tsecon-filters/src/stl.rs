@@ -1042,14 +1042,18 @@ mod budget_tests {
             outer_iter: 0,
             ..c
         };
-        match check_iteration_budget("stl", n, &[one_more], 1, false) {
-            Err(FiltersError::IterationBudget {
-                param: "inner_iter",
-                max,
-                ..
-            }) => assert_eq!(max, 32, "the free count is the largest admissible"),
-            other => panic!("expected IterationBudget, got {other:?}"),
-        }
+        let r = check_iteration_budget("stl", n, &[one_more], 1, false);
+        assert!(
+            matches!(
+                r,
+                Err(FiltersError::IterationBudget {
+                    param: "inner_iter",
+                    max: 32,
+                    ..
+                })
+            ),
+            "the free count is the largest admissible: {r:?}"
+        );
     }
 
     #[test]

@@ -19,14 +19,19 @@
 //! `rows x k` design costs `rows k^2` multiply-adds, so a search over
 //! `0..=L` lags from `s` fixed columns costs `rows (s^2 + ... + (s+L)^2)`
 //! plus the final refit; the centered normal equations of `arch_lm` cost
-//! `rows p^2 / 2 + p^3`. Measured rates are in `lab/unitroot_cost/`.
+//! `rows p^2 / 2 + p^3`. Measured at 1.1 to 1.5 ns per multiply-add for
+//! the `adf` QR search and 1.7 ns for the `arch_lm` normal equations
+//! (`lab/unitroot_cost/lag_cost.py`), so the budget is under a minute: the
+//! largest admissible `adf` search at n = 20,000 ran in 36 s, the largest
+//! `arch_lm` order at n = 30,000 in 57 s.
 //!
 //! The budgets police the lag order, not the series length: an order no
 //! longer than the default rule's (Schwert's `ceil(12 (n/100)^(1/4))`,
 //! capped, for the unit-root tests) is exempt from the work budget, so a
 //! default call — and the internal callers that use the default
 //! (`check_stationarity`, `ndiffs`, the panel tests) — is refused only when
-//! its design would not fit the memory budget.
+//! its design would not fit the memory budget (a default `adf` search above
+//! about 610,000 observations).
 
 use crate::error::{DiagError, LagLimit};
 
@@ -174,8 +179,8 @@ pub(crate) fn check_lag_order(
             n,
             max: max(),
             limit: LagLimit::Budget {
-                cells,
-                work: cost(value).1,
+                cells: u64::try_from(cells).unwrap_or(u64::MAX),
+                work: u64::try_from(cost(value).1).unwrap_or(u64::MAX),
                 work_exempt: value <= free,
             },
         });
