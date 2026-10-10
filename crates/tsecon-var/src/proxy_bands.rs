@@ -557,8 +557,9 @@ pub fn position_centering(
     let n = u.ncols();
     if block_length == 0 || block_length >= t {
         return Err(VarError::InvalidArgument {
-            what: "the moving-block length must satisfy 1 <= ell < T so that at least two \
-                   overlapping candidate blocks exist; shorten the block or lengthen the sample",
+            what: "block_length (the moving-block length) must satisfy 1 <= block_length < T, \
+                   the residual rows, so that at least two overlapping candidate blocks exist; \
+                   shorten the block or lengthen the sample",
         });
     }
     if proxy.len() != t {

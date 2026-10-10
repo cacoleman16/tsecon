@@ -342,6 +342,25 @@ fn base_window_too_short(
             needed,
         };
     }
+    // The longest first window the grid can give, with horizon, calib and
+    // n_eval all at 1. When even that cannot hold what the forecaster needs,
+    // no grid parameter is the cause: the base's own settings are.
+    let longest = got
+        .saturating_add(horizon.saturating_sub(1))
+        .saturating_add(calib.saturating_sub(1))
+        .saturating_add(n_eval.map_or(0, |e| e.saturating_sub(1)));
+    if needed > longest {
+        return ForecastError::BaseForecaster {
+            message: format!(
+                "the base forecaster ({base}) needs at least {needed} observations, more \
+                 than even the longest first training window this series allows ({longest}, \
+                 with horizon, calib and n_eval at 1): its own settings ask for more data \
+                 than the series holds (a seasonal period — base=\"theta\" needs 2 * period \
+                 and at least 4, base=\"seasonal_naive\" needs period — or lags or order); \
+                 lower them or supply more data"
+            ),
+        };
+    }
     let (name, value) = grid_culprit(horizon, calib, n_eval);
     let window = if n_eval.is_some() {
         "n - horizon - calib - n_eval + 1"
