@@ -4309,6 +4309,7 @@ fn resolve_lp_se(se: Option<&str>, cumulation: tsecon_lp::Cumulation) -> PyResul
 /// band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
 /// naming `band_n_sim` and the largest count that fits (19173961 at the
 /// default 12 horizons).
+///
 /// A `horizons` the sample cannot reach (a horizon that would keep no
 /// more usable rows than regressors) is refused before anything is sized
 /// by it, naming the largest admissible `horizons`.
