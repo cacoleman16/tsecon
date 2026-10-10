@@ -260,6 +260,14 @@ fn select_lags(
     Ok(best_lag)
 }
 
+/// The default lag-search cap of [`dfgls`] and [`crate::ng_perron`]:
+/// Schwert's `ceil(12 (n/100)^(1/4))` capped at arch's bound `(n-1)/2 - 1`.
+pub(crate) fn gls_default_maxlag(n: usize) -> usize {
+    let max_max = ((n - 1) / 2).saturating_sub(1);
+    let schwert = (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize;
+    schwert.min(max_max)
+}
+
 /// Size a GLS-detrended ADF lag order — a fixed lag (`ntrend` its arch
 /// minimum `3 + ntrend + lags`) or, with `search`, the cap of the lag search
 /// (`ntrend = 0`) — against the sample (`n >= 2 lags + 3`) and the size
@@ -275,7 +283,8 @@ pub(crate) fn check_gls_lag_order(
     search: bool,
 ) -> Result<(), DiagError> {
     // n >= 3 + ntrend + p (arch) and n >= 2p + 3 (a residual degree of
-    // freedom); the caller has checked n >= 3 + ntrend.
+    // freedom); the caller has checked n >= 3 + ntrend. Orders up to the
+    // default search cap are exempt from the work budget.
     let sample_max = (n - 3 - ntrend).min((n - 3) / 2);
     check_lag_order(
         what,
@@ -285,6 +294,7 @@ pub(crate) fn check_gls_lag_order(
         n,
         0,
         Some(sample_max),
+        gls_default_maxlag(n),
         "the ADF regression on the GLS-detrended series with p lagged differences has \
          n - 1 - p rows and p + 1 coefficients and needs a residual degree of freedom \
          (n >= 2p + 3, and n >= 3 + ntrend + p for a fixed lag)",
@@ -464,11 +474,7 @@ pub fn dfgls(
         AdfLagSelection::Aic(user) | AdfLagSelection::Bic(user) | AdfLagSelection::TStat(user) => {
             let (m, defaulted) = match user {
                 Some(m) => (m, false),
-                None => {
-                    let max_max = ((n - 1) / 2).saturating_sub(1);
-                    let schwert = (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize;
-                    (schwert.min(max_max), true)
-                }
+                None => (gls_default_maxlag(n), true),
             };
             check_gls_lag_order(WHAT, "maxlag", m, defaulted, n, 0, true)?;
             m

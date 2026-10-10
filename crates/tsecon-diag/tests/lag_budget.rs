@@ -4,7 +4,9 @@
 //! is built (it used to abort the process when the allocator refused, or run
 //! for hours), and the refusal quotes the largest order that fits — checked
 //! here against the documented work and size formulas, transcribed
-//! independently of the crate's own arithmetic.
+//! independently of the crate's own arithmetic. Orders up to the default
+//! rule's (Schwert's `ceil(12 (n/100)^(1/4))`, capped) are exempt from the
+//! work budget: only the memory budget can refuse them.
 
 use tsecon_diag::{
     adf, arch_lm, dfgls, lag_budget_exceeded, ng_perron, zivot_andrews, AdfLagSelection,
@@ -29,12 +31,18 @@ fn walk(n: usize, seed: u64) -> Vec<f64> {
         .collect()
 }
 
+/// Schwert's rule, the statsmodels/arch default search cap before capping.
+fn schwert(n: usize) -> usize {
+    (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize
+}
+
 /// The documented size of an ADF-type lag regression with `s` fixed
 /// columns and `l` lagged differences on `n` observations: the design has
 /// `(n - 1 - l) (s + l)` entries; one QR costs `rows k^2` multiply-adds, and
 /// a search over `0..=l` costs `rows (s^2 + ... + (s + l)^2)` plus the
 /// longest refit `(n - 1) (s + l)^2`.
-fn adf_formula(n: u128, s: u128, l: u128, search: bool) -> (u128, u128) {
+fn adf_formula(n: usize, s: usize, l: usize, search: bool) -> (u128, u128) {
+    let (n, s, l) = (n as u128, s as u128, l as u128);
     let rows = n - 1 - l;
     let k = s + l;
     let work = if search {
@@ -47,15 +55,18 @@ fn adf_formula(n: u128, s: u128, l: u128, search: bool) -> (u128, u128) {
 
 /// The documented size of the ARCH-LM auxiliary regression: `(n - p) p`
 /// entries and `(n - p) p^2 / 2 + p^3` multiply-adds.
-fn arch_formula(n: u128, p: u128) -> (u128, u128) {
+fn arch_formula(n: usize, p: usize) -> (u128, u128) {
+    let (n, p) = (n as u128, p as u128);
     ((n - p) * p, (n - p) * p * p / 2 + p * p * p)
 }
 
-fn fits((cells, work): (u128, u128)) -> bool {
-    cells <= LAG_DESIGN_MAX_CELLS && work <= LAG_WORK_BUDGET
+/// Whether order `p` with size `(cells, work)` is admissible when orders up
+/// to `free` are exempt from the work budget.
+fn admissible(p: usize, free: usize, (cells, work): (u128, u128)) -> bool {
+    cells <= LAG_DESIGN_MAX_CELLS && (p <= free || work <= LAG_WORK_BUDGET)
 }
 
-/// Unwrap a budget refusal: `(param, value, defaulted, max)`.
+/// Unwrap a budget refusal: `(param, value, defaulted, max, message)`.
 fn budget_refusal(
     r: Result<impl std::fmt::Debug, DiagError>,
 ) -> (&'static str, usize, bool, usize, String) {
@@ -108,8 +119,11 @@ fn arch_lm_refuses_an_order_whose_design_exceeds_the_budget() {
     // 600000 x 400000 = 2.4e11 entries (1.9 TB).
     let (param, value, defaulted, max, text) = budget_refusal(arch_lm(&e, 400_000));
     assert_eq!((param, value, defaulted), ("nlags", 400_000, false));
-    assert!(fits(arch_formula(n as u128, max as u128)), "max {max}");
-    assert!(!fits(arch_formula(n as u128, max as u128 + 1)), "max {max}");
+    assert!(admissible(max, 0, arch_formula(n, max)), "max {max}");
+    assert!(
+        !admissible(max + 1, 0, arch_formula(n, max + 1)),
+        "max {max}"
+    );
     assert!(
         text.starts_with("arch_lm: nlags = 400000 needs a lag design of"),
         "{text}"
@@ -127,8 +141,13 @@ fn adf_refuses_a_fixed_lag_whose_design_exceeds_the_budget() {
         AdfLagSelection::Fixed(400_000),
     ));
     assert_eq!((param, value, defaulted), ("maxlag", 400_000, false));
-    assert!(fits(adf_formula(n as u128, 2, max as u128, false)));
-    assert!(!fits(adf_formula(n as u128, 2, max as u128 + 1, false)));
+    let free = schwert(n);
+    assert!(admissible(max, free, adf_formula(n, 2, max, false)));
+    assert!(!admissible(
+        max + 1,
+        free,
+        adf_formula(n, 2, max + 1, false)
+    ));
     assert!(text.contains("memory budget of 2^26"), "{text}");
 }
 
@@ -144,51 +163,81 @@ fn adf_refuses_a_search_whose_work_exceeds_the_budget() {
         AdfLagSelection::Aic(Some(3000)),
     ));
     assert_eq!((param, value, defaulted), ("maxlag", 3000, false));
-    assert!(fits(adf_formula(n as u128, 3, max as u128, true)));
-    assert!(!fits(adf_formula(n as u128, 3, max as u128 + 1, true)));
+    let free = schwert(n);
+    assert!(max > free, "the work budget binds past the default here");
+    assert!(admissible(max, free, adf_formula(n, 3, max, true)));
+    assert!(!admissible(max + 1, free, adf_formula(n, 3, max + 1, true)));
     assert!(text.contains("past the work budget"), "{text}");
 }
 
 #[test]
-fn adf_names_the_default_search_cap_when_it_exceeds_the_budget() {
+fn orders_up_to_the_default_are_exempt_from_the_work_budget() {
+    // At n = 3e5 the default search (maxlag = 89) costs about 7.6e10
+    // multiply-adds, past the work budget, but a default order is never
+    // refused for work (its design fits memory). One lag more than the
+    // default is charged, refused, and quotes the default as the largest.
+    let n = 300_000;
+    let y = walk(n, 19);
+    let d = schwert(n);
+    assert_eq!(d, 89);
+    let (cells, work) = adf_formula(n, 2, d, true);
+    assert!(work > LAG_WORK_BUDGET && cells <= LAG_DESIGN_MAX_CELLS);
+    let (param, value, defaulted, max, text) = budget_refusal(adf(
+        &y,
+        AdfRegression::Constant,
+        AdfLagSelection::Aic(Some(d + 1)),
+    ));
+    assert_eq!((param, value, defaulted, max), ("maxlag", d + 1, false, d));
+    assert!(text.ends_with(&format!("pass maxlag <= {d}, or a shorter series")));
+}
+
+#[test]
+fn adf_names_the_default_search_cap_when_its_design_exceeds_memory() {
     // The statsmodels default ceil(12 (n/100)^(1/4)) = 143 at n = 2e6: a
-    // search of about 2e12 multiply-adds (hours), refused naming the
+    // design of 2.9e8 entries, past the memory budget — refused naming the
     // default and the largest cap that fits.
     let n = 2_000_000;
     let y = walk(n, 9);
-    let schwert = (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize;
-    assert_eq!(schwert, 143);
+    let d = schwert(n);
+    assert_eq!(d, 143);
     let (param, value, defaulted, max, text) =
         budget_refusal(adf(&y, AdfRegression::Constant, AdfLagSelection::Aic(None)));
-    assert_eq!((param, value, defaulted), ("maxlag", schwert, true));
-    assert!(fits(adf_formula(n as u128, 2, max as u128, true)));
-    assert!(!fits(adf_formula(n as u128, 2, max as u128 + 1, true)));
+    assert_eq!((param, value, defaulted), ("maxlag", d, true));
+    assert!(admissible(max, d, adf_formula(n, 2, max, true)));
+    assert!(!admissible(max + 1, d, adf_formula(n, 2, max + 1, true)));
     assert!(
         text.starts_with("adf: the default maxlag = 143 needs"),
         "{text}"
     );
+    // Only the memory budget applies to the default order.
+    assert!(text.contains("past the memory budget of 2^26"), "{text}");
 }
 
 #[test]
 fn gls_tests_share_the_budget() {
     let n = 1_000_000;
     let y = walk(n, 11);
+    let free = schwert(n);
     let (param, value, _, max, _) = budget_refusal(dfgls(
         &y,
         DfglsTrend::Constant,
         AdfLagSelection::Fixed(300_000),
     ));
     assert_eq!((param, value), ("lags", 300_000));
-    assert!(fits(adf_formula(n as u128, 1, max as u128, false)));
-    assert!(!fits(adf_formula(n as u128, 1, max as u128 + 1, false)));
+    assert!(admissible(max, free, adf_formula(n, 1, max, false)));
+    assert!(!admissible(
+        max + 1,
+        free,
+        adf_formula(n, 1, max + 1, false)
+    ));
     let (param, value, _, max, _) = budget_refusal(ng_perron(
         &y,
         DfglsTrend::ConstantTrend,
         NgPerronLagSelection::Maic(Some(300_000)),
     ));
     assert_eq!((param, value), ("maxlag", 300_000));
-    assert!(fits(adf_formula(n as u128, 1, max as u128, true)));
-    assert!(!fits(adf_formula(n as u128, 1, max as u128 + 1, true)));
+    assert!(admissible(max, free, adf_formula(n, 1, max, true)));
+    assert!(!admissible(max + 1, free, adf_formula(n, 1, max + 1, true)));
 }
 
 #[test]
@@ -232,8 +281,9 @@ fn sample_refusal_quotes_the_budget_capped_maximum_on_a_long_series() {
                 ..
             },
         ) => {
-            assert!(fits(adf_formula(n as u128, 2, m as u128, false)));
-            assert!(!fits(adf_formula(n as u128, 2, m as u128 + 1, false)));
+            let free = schwert(n);
+            assert!(admissible(m, free, adf_formula(n, 2, m, false)));
+            assert!(!admissible(m + 1, free, adf_formula(n, 2, m + 1, false)));
             let text = e.to_string();
             assert!(
                 text.contains(&format!("pass maxlag <= {m} (orders {}", m + 1)),

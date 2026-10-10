@@ -122,6 +122,9 @@ pub enum LagLimit {
         cells: u128,
         /// Multiply-adds of the regression or lag search.
         work: u128,
+        /// `true` when the order is no longer than the default rule's, so
+        /// only the memory budget applies to it.
+        work_exempt: bool,
     },
 }
 
@@ -200,13 +203,21 @@ impl fmt::Display for DiagError {
                         f,
                         "{what}: {order} is too long for a series of length {n}: {rule}"
                     )?,
-                    LagLimit::Budget { cells, work } => write!(
+                    LagLimit::Budget {
+                        cells,
+                        work,
+                        work_exempt,
+                    } => write!(
                         f,
                         "{what}: {order} needs a lag design of {cells} entries and about \
                          {:.2e} multiply-adds for a series of length {n}, past {} \
                          (checked before any lag column is built)",
                         *work as f64,
-                        crate::budget::lag_budget_exceeded(*cells, *work).unwrap_or("the budget"),
+                        crate::budget::lag_budget_exceeded(
+                            *cells,
+                            if *work_exempt { 0 } else { *work }
+                        )
+                        .unwrap_or("the budget"),
                     )?,
                 }
                 match (max, limit) {

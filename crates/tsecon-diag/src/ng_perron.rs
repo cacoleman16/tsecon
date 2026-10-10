@@ -60,7 +60,7 @@
 //! bitwise cross-pin to the shared `dfgls` detrending engine. See
 //! `tests/ng_perron_properties.rs` and the validation matrix.
 
-use crate::dfgls::{check_gls_lag_order, gls_detrend, DfglsTrend};
+use crate::dfgls::{check_gls_lag_order, gls_default_maxlag, gls_detrend, DfglsTrend};
 use crate::error::DiagError;
 use crate::mackinnon::AdfCriticalValues;
 use crate::ols::ols_detailed;
@@ -295,11 +295,7 @@ pub fn ng_perron(
         NgPerronLagSelection::Maic(user) => {
             let (m, defaulted) = match user {
                 Some(m) => (m, false),
-                None => {
-                    let max_max = ((n - 1) / 2).saturating_sub(1);
-                    let schwert = (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize;
-                    (schwert.min(max_max), true)
-                }
+                None => (gls_default_maxlag(n), true),
             };
             check_gls_lag_order(WHAT, "maxlag", m, defaulted, n, 0, true)?;
             m

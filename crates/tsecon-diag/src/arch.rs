@@ -72,6 +72,7 @@ pub fn arch_lm(resid: &[f64], nlags: usize) -> Result<ArchLmResult, DiagError> {
         n,
         1,
         n.checked_sub(2).map(|m| m / 2),
+        0,
         "the auxiliary regression of the squared residuals on p of their own lags has \
          n - p rows and p + 1 coefficients and needs a residual degree of freedom \
          (n >= 2p + 2)",

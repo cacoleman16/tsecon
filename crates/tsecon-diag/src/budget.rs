@@ -19,10 +19,14 @@
 //! `rows x k` design costs `rows k^2` multiply-adds, so a search over
 //! `0..=L` lags from `s` fixed columns costs `rows (s^2 + ... + (s+L)^2)`
 //! plus the final refit; the centered normal equations of `arch_lm` cost
-//! `rows p^2 / 2 + p^3`. Measured at 1.3 to 1.6 ns per multiply-add for
-//! `adf` and about 1 ns for `arch_lm` (`lab/unitroot_cost/lag_cost.py`), so
-//! the budget is under a minute; the statsmodels-default `adf` lag search
-//! fits it up to about 150,000 observations.
+//! `rows p^2 / 2 + p^3`. Measured rates are in `lab/unitroot_cost/`.
+//!
+//! The budgets police the lag order, not the series length: an order no
+//! longer than the default rule's (Schwert's `ceil(12 (n/100)^(1/4))`,
+//! capped, for the unit-root tests) is exempt from the work budget, so a
+//! default call — and the internal callers that use the default
+//! (`check_stationarity`, `ndiffs`, the panel tests) — is refused only when
+//! its design would not fit the memory budget.
 
 use crate::error::{DiagError, LagLimit};
 
@@ -125,8 +129,10 @@ pub(crate) fn largest_within_budget(
 /// Refuse a lag order past the sample bound `max_sample` (with `rule` the
 /// bound's statement; `None` when the sample admits no order), or one whose
 /// design `cost` exceeds the budgets — before anything is allocated. `min`
-/// is the smallest admissible order; the refusal quotes the largest order
-/// within both the sample bound and the budgets.
+/// is the smallest admissible order; orders up to `free` (the default
+/// rule's order) are exempt from the work budget, so a default call is
+/// refused only when its design would not fit in memory. The refusal quotes
+/// the largest order within the sample bound and the budgets.
 #[allow(clippy::too_many_arguments)]
 pub(crate) fn check_lag_order(
     what: &'static str,
@@ -136,11 +142,17 @@ pub(crate) fn check_lag_order(
     n: usize,
     min: usize,
     max_sample: Option<usize>,
+    free: usize,
     rule: &'static str,
     cost: impl Fn(usize) -> (u128, u128),
 ) -> Result<(), DiagError> {
+    // The work an order is charged against the budget: none up to `free`.
+    let charged = |p: usize| {
+        let (c, w) = cost(p);
+        (c, if p <= free { 0 } else { w })
+    };
     let sample_max = max_sample.filter(|&m| m >= min);
-    let max = || sample_max.and_then(|m| largest_within_budget(min, m, &cost));
+    let max = || sample_max.and_then(|m| largest_within_budget(min, m, charged));
     if sample_max.is_none_or(|m| value > m) {
         return Err(DiagError::LagOrderTooLong {
             what,
@@ -152,17 +164,20 @@ pub(crate) fn check_lag_order(
             limit: LagLimit::Sample { rule, sample_max },
         });
     }
-    let (cells, work) = cost(value);
-    if lag_budget_exceeded(cells, work).is_some() {
-        let max = max();
+    let (cells, charged_work) = charged(value);
+    if lag_budget_exceeded(cells, charged_work).is_some() {
         return Err(DiagError::LagOrderTooLong {
             what,
             param,
             value,
             defaulted,
             n,
-            max,
-            limit: LagLimit::Budget { cells, work },
+            max: max(),
+            limit: LagLimit::Budget {
+                cells,
+                work: cost(value).1,
+                work_exempt: value <= free,
+            },
         });
     }
     Ok(())

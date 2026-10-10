@@ -183,6 +183,10 @@ pub fn adf(
     let max_allowed = n / 2 - ntrend - 1;
     let sample_max = max_allowed.min((n - 3 - ntrend) / 2);
     let fixed_cols = ntrend + 1;
+    // The default search cap: the Schwert (1989) rule as in statsmodels
+    // (ceil, then cap at the statsmodels bound). Orders up to it are exempt
+    // from the work budget.
+    let default_maxlag = ((12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize).min(max_allowed);
     let check = |p: usize, defaulted: bool, search: bool| {
         check_lag_order(
             "adf",
@@ -192,22 +196,19 @@ pub fn adf(
             n,
             0,
             Some(sample_max),
+            default_maxlag,
             "an ADF lag order p is capped at n/2 - ntrend - 1 lagged differences (the \
              statsmodels bound, with ntrend the number of deterministic terms) and must \
              leave the regression a residual degree of freedom",
             |q| adf_cost(n, fixed_cols, q, search),
         )
     };
-    // The search cap: the caller's, or the Schwert (1989) rule as in
-    // statsmodels (ceil, then cap at the statsmodels bound) — sized against
-    // the sample and the budgets before any lag column is built.
+    // The search cap: the caller's or the default — sized against the
+    // sample and the budgets before any lag column is built.
     let resolve_maxlag = |user: Option<usize>| -> Result<usize, DiagError> {
         let (m, defaulted) = match user {
             Some(m) => (m, false),
-            None => {
-                let schwert = (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize;
-                (schwert.min(max_allowed), true)
-            }
+            None => (default_maxlag, true),
         };
         check(m, defaulted, true)?;
         Ok(m)
