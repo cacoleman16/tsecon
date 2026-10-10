@@ -171,17 +171,17 @@ impl fmt::Display for ArimaError {
                 max_state_dim,
             } => write!(
                 f,
-                "the ARIMA specification is too large to estimate: the exact likelihood runs \
-                 a Kalman filter on a state of dimension max(p + s*P, q + s*Q + 1) = \
-                 {state_dim}, whose cost grows with the cube of that dimension, and with \
-                 {k_params} free parameters on {n_eff} usable observations even the work every \
-                 fit is guaranteed to do (one gradient and the observed-information Hessian \
-                 behind bse, 2k(k + 2) + 1 likelihood evaluations) would pass {exceeded}, \
-                 checked before anything is allocated. At this sample size and parameter \
-                 count the state dimension can be at most {max_state_dim}. Lower p or q, or \
-                 the seasonal orders P, Q or the period s (seasonal=(P, D, Q, s)); a long \
-                 seasonal period is usually better handled by seasonal adjustment (stl) than \
-                 by seasonal ARMA lags."
+                "the ARIMA orders (p, q and seasonal=(P, D, Q, s)) are too large to \
+                 estimate: the exact likelihood runs a Kalman filter on a state of dimension \
+                 max(p + s*P, q + s*Q + 1) = {state_dim}, whose cost grows with the cube of \
+                 that dimension, and with {k_params} free parameters on {n_eff} usable \
+                 observations even the work every fit is guaranteed to do (one gradient and \
+                 the observed-information Hessian behind bse, 2k(k + 2) + 1 likelihood \
+                 evaluations) would pass {exceeded}, checked before anything is allocated. At \
+                 this sample size and parameter count the state dimension can be at most \
+                 {max_state_dim}: lower p or q, or the seasonal orders P, Q or the period s; a \
+                 long seasonal period is usually better handled by seasonal adjustment (stl) \
+                 than by seasonal ARMA lags."
             ),
             Self::EstimationFailed { what } => write!(f, "ARIMA estimation failed: {what}"),
             Self::CovarianceFailed { what } => write!(

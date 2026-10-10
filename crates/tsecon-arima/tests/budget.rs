@@ -121,8 +121,15 @@ fn absurd_specifications_are_refused_by_name() {
         assert!(fits(max_state_dim as u128) && !fits(max_state_dim as u128 + 1));
         let msg = err.to_string();
         assert!(msg.contains("seasonal=(P, D, Q, s)"), "{msg}");
-        assert!(msg.contains(&format!("at most {max_state_dim}")), "{msg}");
-        assert!(msg.contains("Lower p or q"), "{msg}");
+        assert!(
+            msg.contains(&format!("can be at most {max_state_dim}:")),
+            "{msg}"
+        );
+        assert!(
+            msg.starts_with("the ARIMA orders (p, q and seasonal=(P, D, Q, s))"),
+            "{msg}"
+        );
+        assert!(msg.contains("lower p or q"), "{msg}");
     }
 
     // The memory budget: p = 600 on 1000 observations would hold
