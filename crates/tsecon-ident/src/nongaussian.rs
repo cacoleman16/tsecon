@@ -64,7 +64,7 @@ use tsecon_linalg::faer::{Mat, MatRef, Side};
 use tsecon_linalg::LinalgError;
 
 use crate::error::IdentError;
-use crate::summary::structural_ma;
+use crate::summary::{check_irf_horizon, structural_ma};
 
 /// Non-Gaussianity contrast driving the FastICA fixed point.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -134,9 +134,12 @@ pub struct NonGaussianSvar {
 ///
 /// # Errors
 ///
-/// * [`IdentError::InvalidArgument`] if `n == 0`, `T < 2`, `max_iter == 0`,
-///   `tol` is not a positive finite number, or `sigma` is not positive
-///   definite;
+/// * [`IdentError::InvalidArgument`] if `n == 0`, `T < 2`, `p == 0`,
+///   `max_iter == 0`, `tol` is not a positive finite number, or `sigma` is
+///   not positive definite;
+/// * [`IdentError::Bayes`] ([`tsecon_bayes::BayesError::TooLarge`]), naming
+///   `horizon`, when the `horizon + 1` response matrices exceed
+///   [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`];
 /// * [`IdentError::Dimension`] if `sigma` is not `n x n` square, `resid` does
 ///   not have `n` columns, or `b_coefs` is not `(1 + n p) x n`;
 /// * [`IdentError::NonFinite`] on any NaN/infinite entry in `resid`, `sigma`,
@@ -192,6 +195,15 @@ pub fn nongaussian_svar(
             what: "tol must be a positive finite number",
         });
     }
+    // Refused here, before the FastICA iterations, rather than by the IRF
+    // step at the end.
+    if p == 0 {
+        return Err(IdentError::InvalidArgument {
+            what: "lags = 0: the structural impulse responses need a VAR with at least one \
+                   lag; pass lags >= 1",
+        });
+    }
+    check_irf_horizon(n, horizon)?;
     for j in 0..n {
         for i in 0..n {
             if !sigma[(i, j)].is_finite() {

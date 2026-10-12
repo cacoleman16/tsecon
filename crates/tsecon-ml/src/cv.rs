@@ -35,7 +35,8 @@
 
 use tsecon_linalg::faer::MatRef;
 
-use crate::coordinate_descent::{cd_engine, CoordDescentOptions};
+use crate::budget::{check_count, fits};
+use crate::coordinate_descent::{cd_engine, check_cd_options, CoordDescentOptions};
 use crate::error::MlError;
 use crate::util::{check_xy, columns};
 
@@ -76,7 +77,13 @@ pub struct Split {
 ///
 /// [`MlError::InvalidArgument`] if `initial_train == 0`, `horizon == 0`,
 /// `step == 0`, `initial_train + horizon > n` (no split fits), or
-/// `purge >= initial_train` (the first training window would be empty).
+/// `purge >= initial_train` (the first training window would be empty);
+/// [`MlError::InvalidValue`] naming `n` (or `initial_train` / `horizon`,
+/// as the binding's `train` / `horizon`, when not even one fold fits) when
+/// the splits would materialize more than the crate's
+/// [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, counting 6 values per
+/// index and 80 per fold for the lists the Python binding returns (checked
+/// before any fold is built).
 pub fn expanding_origin_splits(
     n: usize,
     initial_train: usize,
@@ -85,6 +92,7 @@ pub fn expanding_origin_splits(
     purge: usize,
 ) -> Result<Vec<Split>, MlError> {
     validate_origin(n, initial_train, horizon, step, purge)?;
+    check_origin_budget(n, initial_train, horizon, step, purge, true)?;
     let mut splits = Vec::new();
     let mut origin = initial_train;
     while origin + horizon <= n {
@@ -111,7 +119,10 @@ pub fn expanding_origin_splits(
 /// # Errors
 ///
 /// [`MlError::InvalidArgument`] if `window == 0`, `horizon == 0`,
-/// `step == 0`, `window + horizon > n`, or `purge >= window`.
+/// `step == 0`, `window + horizon > n`, or `purge >= window`;
+/// [`MlError::InvalidValue`] naming `n` beyond the
+/// [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, as for
+/// [`expanding_origin_splits`].
 pub fn rolling_origin_splits(
     n: usize,
     window: usize,
@@ -120,6 +131,7 @@ pub fn rolling_origin_splits(
     purge: usize,
 ) -> Result<Vec<Split>, MlError> {
     validate_origin(n, window, horizon, step, purge)?;
+    check_origin_budget(n, window, horizon, step, purge, false)?;
     let mut splits = Vec::new();
     let mut origin = window;
     while origin + horizon <= n {
@@ -129,6 +141,110 @@ pub fn rolling_origin_splits(
         origin += step;
     }
     Ok(splits)
+}
+
+/// `f64`-sized values one materialized fold index costs while the splits are
+/// handed out: its `usize` in the [`Split`], and in the list the Python
+/// binding returns a boxed integer and its slot (40 bytes on CPython).
+/// Counting the `usize` alone admitted splits whose Python lists needed five
+/// times the budget, and the largest admitted `n` aborted the process.
+const VALUES_PER_INDEX: u128 = 6;
+
+/// `f64`-sized values one fold costs on top of its indices: two `Vec`
+/// headers, and in Python its dict and two list objects (about 560 bytes
+/// measured on CPython 3.13).
+const VALUES_PER_FOLD: u128 = 80;
+
+/// The values `indices` fold indices in `folds` folds cost, or `None` when the
+/// count does not fit a `usize`.
+fn split_values(indices: u128, folds: u128) -> Option<usize> {
+    let total = indices
+        .checked_mul(VALUES_PER_INDEX)?
+        .checked_add(folds.checked_mul(VALUES_PER_FOLD)?)?;
+    usize::try_from(total).ok()
+}
+
+/// The values the walk-forward splits of `n` rows materialize (see
+/// [`VALUES_PER_INDEX`] and [`VALUES_PER_FOLD`]). With
+/// `F = (n - train_size - horizon) / step + 1` folds whose origins are
+/// `train_size + i step`, each fold holds `horizon` test indices, and an
+/// expanding window `origin - purge` training indices, a rolling one
+/// `train_size - purge`. Counted in `u128`, so the quadratic expanding total
+/// cannot overflow; `None` when it does not fit a `usize` (or `n` admits no
+/// fold).
+fn origin_split_values(
+    n: usize,
+    train_size: usize,
+    horizon: usize,
+    step: usize,
+    purge: usize,
+    expanding: bool,
+) -> Option<usize> {
+    let first = train_size.checked_add(horizon)?;
+    let folds = (n.checked_sub(first)? / step.max(1)) as u128 + 1;
+    let base = (train_size - purge.min(train_size)) as u128;
+    let mut indices = folds.checked_mul(base + horizon as u128)?;
+    if expanding {
+        // sum_{i < F} i * step on top of the base window.
+        let growth = (folds.checked_mul(folds - 1)? / 2).checked_mul(step as u128)?;
+        indices = indices.checked_add(growth)?;
+    }
+    split_values(indices, folds)
+}
+
+/// Refuses walk-forward splits whose materialized indices exceed the crate's
+/// [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget before any fold is built (a
+/// `2^31`-row request used to grow for many seconds and abort). The refusal
+/// names `n` with the largest `n` that fits; when not even a single fold
+/// (`n = train + horizon`) fits, it names the window that is too wide
+/// instead, `train` or `horizon`, since no `n` can help.
+fn check_origin_budget(
+    n: usize,
+    train_size: usize,
+    horizon: usize,
+    step: usize,
+    purge: usize,
+    expanding: bool,
+) -> Result<(), MlError> {
+    let scheme = if expanding { "expanding" } else { "rolling" };
+    let values = |n, t, h| origin_split_values(n, t, h, step, purge, expanding);
+    let one_fold = train_size.saturating_add(horizon);
+    if !fits(values(one_fold, train_size, horizon)) {
+        let what = format!(
+            "a single {scheme}-window fold (its training window and test block, with \
+             train = {train_size}, horizon = {horizon}, purge = {purge}, at n = train + \
+             horizon)"
+        );
+        return if train_size - purge >= horizon {
+            check_count("train", train_size, purge + 1, &what, |t| {
+                values(t.checked_add(horizon)?, t, horizon)
+            })
+        } else {
+            check_count("horizon", horizon, 1, &what, |h| {
+                values(train_size.checked_add(h)?, train_size, h)
+            })
+        };
+    }
+    check_count(
+        "n",
+        n,
+        one_fold,
+        &format!(
+            "the {scheme}-window splits (every training and test index of every fold, as \
+             the returned lists hold them, with train = {train_size}, horizon = {horizon}, \
+             step = {step}, purge = {purge})"
+        ),
+        |n| values(n, train_size, horizon),
+    )
+}
+
+/// The values the `k` purged folds of `n` rows materialize: at most `n`
+/// training and test indices per fold (see [`VALUES_PER_INDEX`] and
+/// [`VALUES_PER_FOLD`]) and the `k + 1` block bounds.
+fn purged_split_values(n: usize, k: usize) -> Option<usize> {
+    let (n, k) = (n as u128, k as u128);
+    let folds = split_values(k.checked_mul(n)?, k)?;
+    folds.checked_add(usize::try_from(k + 1).ok()?)
 }
 
 fn validate_origin(
@@ -153,7 +269,7 @@ fn validate_origin(
             what: "step must be at least 1",
         });
     }
-    if train_size + horizon > n {
+    if train_size.checked_add(horizon).is_none_or(|v| v > n) {
         return Err(MlError::InvalidArgument {
             what: "initial training window plus horizon exceeds the sample size",
         });
@@ -199,7 +315,12 @@ fn validate_origin(
 ///
 /// # Errors
 ///
-/// [`MlError::InvalidArgument`] if `k < 2` or `k > n`.
+/// [`MlError::InvalidArgument`] if `k < 2` or `k > n`;
+/// [`MlError::InvalidValue`] naming `n` (or `k`, when not even `n = k`
+/// fits) when the `k` folds would materialize more than the
+/// [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget (counted as
+/// `k (6 n + 80) + k + 1` values, the Python lists included; checked before
+/// any fold is built).
 pub fn purged_kfold_splits(
     n: usize,
     k: usize,
@@ -216,6 +337,28 @@ pub fn purged_kfold_splits(
             what: "k must not exceed the sample size",
         });
     }
+    // Each fold materializes at most n indices: refuse before any fold is
+    // built, naming n, or k when not even n = k (one row per fold) fits.
+    if !fits(purged_split_values(k, k)) {
+        check_count(
+            "k",
+            k,
+            2,
+            "the purged folds at n = k (k folds, each listing all n = k rows once \
+             as training or test)",
+            |k| purged_split_values(k, k),
+        )?;
+    }
+    check_count(
+        "n",
+        n,
+        k,
+        &format!(
+            "the k = {k} purged folds (up to n training and test indices per fold, as the \
+             returned lists hold them)"
+        ),
+        |n| purged_split_values(n, k),
+    )?;
 
     // Contiguous block boundaries; the first `n % k` blocks are one longer.
     let base = n / k;
@@ -363,6 +506,7 @@ where
             });
         }
     }
+    check_cd_options(cd)?;
     for s in splits {
         if s.train.iter().chain(&s.test).any(|&i| i >= n) {
             return Err(MlError::InvalidArgument {

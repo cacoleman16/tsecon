@@ -8,6 +8,7 @@
 
 use core::fmt;
 
+use crate::budget::{adf_cost, check_lag_order};
 use crate::error::DiagError;
 use crate::mackinnon::{mackinnon_crit, mackinnon_p, AdfCriticalValues};
 use crate::ols::ols_detailed;
@@ -152,10 +153,15 @@ pub(crate) fn adf_design(
 ///
 /// * [`DiagError::NonFinite`] if the series contains NaN or infinities.
 /// * [`DiagError::ConstantSeries`] if the series is constant.
-/// * [`DiagError::SeriesTooShort`] if too few observations remain after
-///   differencing and trimming for the requested specification.
-/// * [`DiagError::InvalidLags`] if a requested lag order exceeds the
-///   statsmodels bound `n/2 - ntrend - 1`.
+/// * [`DiagError::SeriesTooShort`] if the series is too short for even a
+///   lag-free regression of the requested specification.
+/// * [`DiagError::LagOrderTooLong`] if the lag order — fixed, or the cap
+///   of the automatic search, supplied or defaulted — exceeds the
+///   statsmodels bound `n/2 - ntrend - 1` or leaves the regression no
+///   residual degree of freedom, or when its lag design or lag search
+///   exceeds the size budgets ([`crate::LAG_DESIGN_MAX_CELLS`],
+///   [`crate::LAG_WORK_BUDGET`]); checked before any lag column is built,
+///   naming `maxlag` and the largest order that fits.
 /// * [`DiagError::SingularDesign`] /
 ///   [`DiagError::NumericalBreakdown`] for (near-)deterministic series
 ///   whose lag design is collinear or fits exactly.
@@ -165,55 +171,56 @@ pub fn adf(
     lags: AdfLagSelection,
 ) -> Result<AdfResult, DiagError> {
     let ntrend = regression.ntrend();
-    let n = check_series(y, 2 * (ntrend + 1), "adf")?;
+    // A lag-free regression needs n - 1 rows > ntrend + 1 coefficients.
+    let n = check_series(y, (2 * (ntrend + 1)).max(ntrend + 3), "adf")?;
     if y.iter().all(|&v| v == y[0]) {
         return Err(DiagError::ConstantSeries { what: "adf" });
     }
 
-    // statsmodels bound: maxlag <= n//2 - ntrend - 1.
-    let max_allowed = (n / 2 - ntrend - 1) as u64;
-    let check_maxlag = |m: usize| -> Result<(), DiagError> {
-        if m as u64 > max_allowed {
-            return Err(DiagError::InvalidLags {
-                what: "adf",
-                nlags: m,
-                n,
-                requirement: "maxlag <= n/2 - ntrend - 1, with ntrend the \
-                              number of deterministic terms (statsmodels bound)",
-            });
-        }
-        Ok(())
+    // statsmodels bound: maxlag <= n//2 - ntrend - 1. The regression also
+    // needs a residual degree of freedom, n - 1 - p > ntrend + 1 + p, which
+    // binds one lag sooner only for regression "n" on an even n.
+    let max_allowed = n / 2 - ntrend - 1;
+    let sample_max = max_allowed.min((n - 3 - ntrend) / 2);
+    let fixed_cols = ntrend + 1;
+    // The default search cap: the Schwert (1989) rule as in statsmodels
+    // (ceil, then cap at the statsmodels bound). Orders up to it are exempt
+    // from the work budget.
+    let default_maxlag = ((12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize).min(max_allowed);
+    let check = |p: usize, defaulted: bool, search: bool| {
+        check_lag_order(
+            "adf",
+            "maxlag",
+            p,
+            defaulted,
+            n,
+            0,
+            Some(sample_max),
+            default_maxlag,
+            "an ADF lag order p is capped at n/2 - ntrend - 1 lagged differences (the \
+             statsmodels bound, with ntrend the number of deterministic terms) and must \
+             leave the regression a residual degree of freedom",
+            |q| adf_cost(n, fixed_cols, q, search),
+        )
     };
+    // The search cap: the caller's or the default — sized against the
+    // sample and the budgets before any lag column is built.
     let resolve_maxlag = |user: Option<usize>| -> Result<usize, DiagError> {
-        match user {
-            Some(m) => {
-                check_maxlag(m)?;
-                Ok(m)
-            }
-            None => {
-                // Schwert (1989) rule, as in statsmodels: ceil, then cap.
-                let schwert = (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as u64;
-                Ok(schwert.min(max_allowed) as usize)
-            }
-        }
+        let (m, defaulted) = match user {
+            Some(m) => (m, false),
+            None => (default_maxlag, true),
+        };
+        check(m, defaulted, true)?;
+        Ok(m)
     };
 
     let used_lag = match lags {
         AdfLagSelection::Fixed(l) => {
-            check_maxlag(l)?;
+            check(l, false, false)?;
             l
         }
         AdfLagSelection::Aic(user) | AdfLagSelection::Bic(user) => {
             let maxlag = resolve_maxlag(user)?;
-            let rows = n - 1 - maxlag;
-            let k_max = ntrend + 1 + maxlag;
-            if rows < k_max + 1 {
-                return Err(DiagError::SeriesTooShort {
-                    what: "adf",
-                    n,
-                    needed: 2 * maxlag + ntrend + 3,
-                });
-            }
             let (cols, dy) = adf_design(y, maxlag, ntrend, true);
             let startlag = ntrend + 1;
             let mut best_lag = 0usize;
@@ -233,15 +240,6 @@ pub fn adf(
         }
         AdfLagSelection::TStat(user) => {
             let maxlag = resolve_maxlag(user)?;
-            let rows = n - 1 - maxlag;
-            let k_max = ntrend + 1 + maxlag;
-            if rows < k_max + 1 {
-                return Err(DiagError::SeriesTooShort {
-                    what: "adf",
-                    n,
-                    needed: 2 * maxlag + ntrend + 3,
-                });
-            }
             let (cols, dy) = adf_design(y, maxlag, ntrend, true);
             let startlag = ntrend + 1;
             let mut best_lag = 0usize;
@@ -258,16 +256,9 @@ pub fn adf(
     };
 
     // Final regression on the longest sample for the chosen lag, with the
-    // deterministics appended (statsmodels column order: level first).
+    // deterministics appended (statsmodels column order: level first). The
+    // lag check above guarantees n - 1 - used_lag > ntrend + 1 + used_lag.
     let rows = n - 1 - used_lag;
-    let k = ntrend + 1 + used_lag;
-    if rows < k + 1 {
-        return Err(DiagError::SeriesTooShort {
-            what: "adf",
-            n,
-            needed: 2 * used_lag + ntrend + 3,
-        });
-    }
     let (cols, dy) = adf_design(y, used_lag, ntrend, false);
     let fit = ols_detailed(&cols, &dy, "adf")?;
     let statistic = fit.t_values[0];

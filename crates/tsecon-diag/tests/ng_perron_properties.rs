@@ -449,20 +449,31 @@ fn error_surface() {
         ng_perron(&short, DfglsTrend::ConstantTrend, MAIC),
         Err(DiagError::SeriesTooShort { .. })
     ));
-    // Fixed lag too large for the sample.
+    // Fixed lag too large for the sample: named, with the largest that
+    // fits (n >= 2 lags + 3 -> lags <= 8 at n = 20).
     let y = walk(20, 5);
     assert!(matches!(
         ng_perron(&y, DfglsTrend::Constant, NgPerronLagSelection::Fixed(10)),
-        Err(DiagError::SeriesTooShort { .. })
+        Err(DiagError::LagOrderTooLong {
+            param: "lags",
+            value: 10,
+            max: Some(8),
+            ..
+        })
     ));
-    // A user max_lag too large for the sample.
+    // A user max_lag too large for the sample, named as the search cap.
     assert!(matches!(
         ng_perron(
             &y,
             DfglsTrend::Constant,
             NgPerronLagSelection::Maic(Some(12))
         ),
-        Err(DiagError::SeriesTooShort { .. })
+        Err(DiagError::LagOrderTooLong {
+            param: "maxlag",
+            value: 12,
+            max: Some(8),
+            ..
+        })
     ));
     // An exact linear trend: the GLS fit is exact and the regression
     // degenerates — a teaching error, not a garbage number.

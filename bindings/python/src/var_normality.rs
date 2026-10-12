@@ -1,0 +1,215 @@
+//! Python bindings for the residual-normality family of `tsecon-var`
+//! (0.11.0): the `multivariate_normality` entry point on a residual matrix,
+//! and the shared key builders `var_diagnostics` uses for the symmetric-root
+//! Jarque-Bera (JMulTi's "Doornik & Hansen (1994)" block) and the
+//! Doornik-Hansen (2008) omnibus test. Registered into `_core` through
+//! [`register`].
+
+use numpy::ndarray::Ix2;
+use numpy::PyReadonlyArrayDyn;
+use pyo3::exceptions::PyValueError;
+use pyo3::prelude::*;
+use pyo3::types::PyDict;
+use tsecon_var::tsecon_linalg::faer::Mat;
+use tsecon_var::{DoornikHansenTest, NormalityTest};
+
+use crate::to_py;
+
+/// The `*_symmetric` keys: the symmetric-root Jarque-Bera, or `None` per key
+/// when it was not computed.
+pub(crate) fn set_symmetric_keys(d: &Bound<'_, PyDict>, n: Option<&NormalityTest>) -> PyResult<()> {
+    d.set_item("jarque_bera_symmetric", n.map(|n| n.statistic))?;
+    d.set_item("jarque_bera_symmetric_pvalue", n.map(|n| n.pvalue))?;
+    d.set_item("skewness_symmetric", n.map(|n| n.skewness))?;
+    d.set_item("skewness_symmetric_pvalue", n.map(|n| n.skewness_pvalue))?;
+    d.set_item("kurtosis_symmetric", n.map(|n| n.kurtosis))?;
+    d.set_item("kurtosis_symmetric_pvalue", n.map(|n| n.kurtosis_pvalue))?;
+    d.set_item(
+        "skewness_symmetric_components",
+        n.map(|n| n.skewness_components.clone()),
+    )?;
+    d.set_item(
+        "kurtosis_symmetric_components",
+        n.map(|n| n.kurtosis_components.clone()),
+    )?;
+    Ok(())
+}
+
+/// The `doornik_hansen*` keys, or `None` per key when the test was not
+/// computed (fewer than 8 observations).
+pub(crate) fn set_doornik_hansen_keys(
+    d: &Bound<'_, PyDict>,
+    t: Option<&DoornikHansenTest>,
+) -> PyResult<()> {
+    d.set_item("doornik_hansen", t.map(|t| t.statistic))?;
+    d.set_item("doornik_hansen_pvalue", t.map(|t| t.pvalue))?;
+    d.set_item("doornik_hansen_df", t.map(|t| t.df))?;
+    d.set_item("doornik_hansen_skewness", t.map(|t| t.skewness))?;
+    d.set_item(
+        "doornik_hansen_skewness_pvalue",
+        t.map(|t| t.skewness_pvalue),
+    )?;
+    d.set_item("doornik_hansen_kurtosis", t.map(|t| t.kurtosis))?;
+    d.set_item(
+        "doornik_hansen_kurtosis_pvalue",
+        t.map(|t| t.kurtosis_pvalue),
+    )?;
+    d.set_item("doornik_hansen_z_skewness", t.map(|t| t.z_skewness.clone()))?;
+    d.set_item("doornik_hansen_z_kurtosis", t.map(|t| t.z_kurtosis.clone()))?;
+    Ok(())
+}
+
+/// The Cholesky (statsmodels) keys, named as in `var_diagnostics`.
+fn set_cholesky_keys(d: &Bound<'_, PyDict>, n: &NormalityTest) -> PyResult<()> {
+    d.set_item("jarque_bera", n.statistic)?;
+    d.set_item("jarque_bera_pvalue", n.pvalue)?;
+    d.set_item("jarque_bera_df", n.df)?;
+    d.set_item("skewness", n.skewness)?;
+    d.set_item("skewness_pvalue", n.skewness_pvalue)?;
+    d.set_item("kurtosis", n.kurtosis)?;
+    d.set_item("kurtosis_pvalue", n.kurtosis_pvalue)?;
+    d.set_item("skewness_components", n.skewness_components.clone())?;
+    d.set_item("kurtosis_components", n.kurtosis_components.clone())?;
+    Ok(())
+}
+
+/// Residual normality tests on a residual matrix — the three statistics
+/// `var_diagnostics` reports, for residuals from ANY multivariate model
+/// (a VECM, a structural VAR, a factor model) or for one series.
+///
+/// `resid` is a `T x k` residual matrix, or a 1-D length-`T` series taken as
+/// `k = 1`; it is column-centred here, and the covariance uses the ML divisor
+/// `T`. Three statistics on the same centred residuals:
+///
+/// * CHOLESKY (the statsmodels `VARResults.test_normality` convention, and
+///   JMulTi's block labelled "Lütkepohl (1993)"): orthogonalise with the lower
+///   Cholesky factor of the residual covariance, then `skewness = T b1'b1 / 6`
+///   and `kurtosis = T b2'b2 / 24` (each `chi2(k)`) add up to `jarque_bera`
+///   (`chi2(2k)`, `jarque_bera_df = 2k`). Depends on the column order.
+/// * SYMMETRIC ROOT (what JMulTi prints under "Doornik & Hansen (1994)"): the
+///   same with the symmetric inverse square root `S^{-1/2}` instead of the
+///   Cholesky factor and NO further transforms; invariant to the column order
+///   and to sign flips but NOT to rescaling a column — it depends on units.
+///   All 16 JMulTi outputs bundled with statsmodels 0.15 are reproduced to
+///   their printed four decimals.
+/// * DOORNIK-HANSEN (2008), the recommended test: the correlation-matrix
+///   symmetric root, then D'Agostino's skewness transform and the
+///   Shenton-Bowman / Wilson-Hilferty kurtosis transform per component, so the
+///   z-scores are close to N(0, 1) in small samples; `doornik_hansen =
+///   z1'z1 + z2'z2 ~ chi2(2k)`. Invariant to column order, rescaling, sign
+///   flips and shifts. With a 1-D input it is the UNIVARIATE Doornik-Hansen
+///   omnibus, better sized in small samples than the asymptotic
+///   Jarque-Bera: the crate's seeded Monte Carlo (n = 50, 20 000 Gaussian
+///   samples) rejects at 4.89% against 3.73% for `jarque_bera` at a nominal
+///   5%.
+///
+/// At `k = 1` the three Jarque-Bera forms coincide and equal
+/// `tsecon.jarque_bera(x)["statistic"]`, and `doornik_hansen_z_skewness[0]`
+/// equals `scipy.stats.skewtest(x).statistic`.
+///
+/// Returned keys: the Cholesky block `jarque_bera`, `jarque_bera_pvalue`,
+/// `jarque_bera_df`, `skewness`, `skewness_pvalue`, `kurtosis`,
+/// `kurtosis_pvalue`, `skewness_components` (per-component `b1`),
+/// `kurtosis_components` (per-component excess `b2`); the symmetric block
+/// `jarque_bera_symmetric`, `jarque_bera_symmetric_pvalue`,
+/// `skewness_symmetric`, `skewness_symmetric_pvalue`, `kurtosis_symmetric`,
+/// `kurtosis_symmetric_pvalue`, `skewness_symmetric_components`,
+/// `kurtosis_symmetric_components` (its df is `jarque_bera_df`); the
+/// Doornik-Hansen block `doornik_hansen`, `doornik_hansen_pvalue`,
+/// `doornik_hansen_df` (`2k`), `doornik_hansen_skewness` (`z1'z1`, `chi2(k)`),
+/// `doornik_hansen_skewness_pvalue`, `doornik_hansen_kurtosis` (`z2'z2`,
+/// `chi2(k)`), `doornik_hansen_kurtosis_pvalue`, `doornik_hansen_z_skewness`
+/// and `doornik_hansen_z_kurtosis` (the per-component z-scores); `nobs`
+/// (`T`), `k`.
+///
+/// Refusals (ValueError naming `resid`): fewer than 8 rows (the
+/// Doornik-Hansen skewness transform degenerates at T = 7), `T <= k`, a 0-D
+/// or 3-D (or higher) array, zero columns, a NaN or infinity, entries so
+/// large or so small that their squares overflow or underflow (rescale:
+/// every statistic is invariant to a common factor), a constant column,
+/// collinear columns (a correlation-matrix eigenvalue `<= 1e-12 x` its
+/// trace), and columns on scales so different that the covariance's
+/// smallest eigenvalue is `<= 1e-12 x` its trace (the floor of the
+/// unit-dependent symmetric root, which above it is computed to relative
+/// accuracy: a Cholesky factor and a one-sided Jacobi SVD).
+///
+/// Cost: the three statistics share one validation, and cost about
+/// `5 T k^2 + 20 k^3` nanoseconds (the `k^3` term is the symmetric root's
+/// one-sided Jacobi iteration): 0.06 s at T = 1000, k = 100, 2.3 s at
+/// 2000 x 400, 11 s at 1000 x 800. Past a budget of 2^34 such units (about
+/// 17 s) or a working set of `3 T k + 6 k^2` values above 2^28 (2 GiB) the
+/// call is refused before any work, naming `resid`, the largest column count
+/// at that T and the largest row count at that k.
+///
+/// Validation: JMulTi (independent program) — the symmetric block against
+/// its "Doornik & Hansen (1994)" block, the Cholesky block against its
+/// "Lütkepohl (1993)" block and the 1-D case against its per-variable
+/// Jarque-Bera rows, at the printed 5e-5 on 16 residual matrices; the
+/// Doornik-Hansen (2008) formulas transcribed in fixtures/var_diag.json at
+/// 1e-10 (z1 matched to `scipy.stats.skewtest`; the kurtosis coefficients
+/// checked by an exact identity).
+#[pyfunction]
+#[pyo3(signature = (resid))]
+fn multivariate_normality<'py>(
+    py: Python<'py>,
+    resid: PyReadonlyArrayDyn<'py, f64>,
+) -> PyResult<Bound<'py, PyDict>> {
+    let v = resid.as_array();
+    let (t, k) = match v.ndim() {
+        1 => (v.len(), 1),
+        2 => (v.shape()[0], v.shape()[1]),
+        d => {
+            return Err(PyValueError::new_err(format!(
+                "resid must be a 2-D T x k residual matrix (one column per series) or a \
+                 1-D length-T series (taken as k = 1); got {d} dimensions"
+            )))
+        }
+    };
+    // The size and work budgets, before anything is copied or computed.
+    if !tsecon_var::normality_within_budget(t, k) {
+        // The admissible shapes also need T >= 8 rows and T > k.
+        let min_rows = tsecon_var::DOORNIK_HANSEN_MIN_NOBS;
+        let max_k = tsecon_var::normality_max_columns(t).min(t.saturating_sub(1));
+        let max_t = tsecon_var::normality_max_rows(k);
+        let by_columns = if t < min_rows {
+            format!("T = {t} rows is below the {min_rows} the test needs at any k")
+        } else if max_k == 0 {
+            format!("at T = {t} rows not even one column fits")
+        } else {
+            format!("at T = {t} rows pass at most k = {max_k} columns")
+        };
+        let by_rows = if max_t < min_rows.max(k.saturating_add(1)) {
+            format!("at k = {k} columns no row count fits (T must also exceed k)")
+        } else {
+            format!("at k = {k} columns at most T = {max_t} rows")
+        };
+        return Err(PyValueError::new_err(format!(
+            "resid is T = {t} rows by k = {k} columns: the three normality statistics would \
+             cost about 5 T k^2 + 20 k^3 = {work:.2e} work units (about a nanosecond each) and \
+             hold 3 T k + 6 k^2 = {vals:.2e} values, beyond the budgets of 2^34 work units \
+             (about 17 s) and 2^28 values (2 GiB), checked before any work; {by_columns}, or \
+             {by_rows}",
+            work = tsecon_var::normality_work(t, k) as f64,
+            vals = tsecon_var::normality_values(t, k) as f64,
+        )));
+    }
+    let m = if v.ndim() == 1 {
+        Mat::from_fn(t, 1, |i, _| v[[i]])
+    } else {
+        let v2 = v.into_dimensionality::<Ix2>().map_err(to_py)?;
+        Mat::from_fn(t, k, |i, j| v2[(i, j)])
+    };
+    let r = tsecon_var::normality_tests(m.as_ref()).map_err(to_py)?;
+    let d = PyDict::new(py);
+    set_cholesky_keys(&d, &r.cholesky)?;
+    set_symmetric_keys(&d, Some(&r.symmetric))?;
+    set_doornik_hansen_keys(&d, Some(&r.doornik_hansen))?;
+    d.set_item("nobs", m.nrows())?;
+    d.set_item("k", m.ncols())?;
+    Ok(d)
+}
+
+pub(crate) fn register(m: &Bound<'_, PyModule>) -> PyResult<()> {
+    m.add_function(wrap_pyfunction!(multivariate_normality, m)?)?;
+    Ok(())
+}

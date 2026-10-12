@@ -6,9 +6,9 @@ use common::{as_f64_vec, assert_slice_close, load_fixture, Lcg};
 use faer::linalg::solvers::Solve;
 use faer::Mat;
 use tsecon_linalg::{
-    ar_psi_weights, autocovariances_biased, companion_from_ar, companion_from_var, is_stable,
-    jittered_cholesky, levinson_durbin, levinson_durbin_from_series, solve_discrete_lyapunov,
-    spectral_radius, symmetrize, toeplitz_solve, LinalgError,
+    ar_psi_weights, autocovariances_biased, balance, balanced_eigenvalues, companion_from_ar,
+    companion_from_var, is_stable, jittered_cholesky, levinson_durbin, levinson_durbin_from_series,
+    solve_discrete_lyapunov, spectral_radius, symmetrize, toeplitz_solve, LinalgError,
 };
 
 /// Random matrix with entries in (-1, 1), rescaled to a target spectral
@@ -493,4 +493,151 @@ fn lyapunov_agrees_with_psi_expansion() {
         "{} vs {series}",
         x[(0, 0)]
     );
+}
+
+// ---------------------------------------------------------------- balancing
+
+/// A random VAR(p) lag-matrix set with radius `target`, each matrix put
+/// through the similarity `S A S^{-1}` with `S = diag(scales)` — the
+/// coefficients of the same VAR with series `i` in units `scales[i]`.
+fn scaled_var(rng: &mut Lcg, k: usize, p: usize, target: f64, scales: &[f64]) -> Vec<Mat<f64>> {
+    loop {
+        let a: Vec<Mat<f64>> = (0..p)
+            .map(|l| Mat::from_fn(k, k, |_, _| rng.symmetric() * 0.5 / (l + 1) as f64))
+            .collect();
+        let refs: Vec<_> = a.iter().map(|m| m.as_ref()).collect();
+        let rho = spectral_radius(companion_from_var(&refs).unwrap().as_ref()).unwrap();
+        if rho < 1e-6 {
+            continue;
+        }
+        let s = target / rho;
+        return a
+            .iter()
+            .enumerate()
+            .map(|(l, m)| {
+                let f = s.powi(l as i32 + 1);
+                Mat::from_fn(k, k, |i, j| m[(i, j)] * f * scales[i] / scales[j])
+            })
+            .collect();
+    }
+}
+
+fn sorted_moduli(a: &Mat<f64>) -> Vec<f64> {
+    let mut m: Vec<f64> = balanced_eigenvalues(a.as_ref())
+        .unwrap()
+        .iter()
+        .map(|z| z.re.hypot(z.im))
+        .collect();
+    m.sort_by(|x, y| y.partial_cmp(x).unwrap());
+    m
+}
+
+/// The balancing is an EXACT similarity: every factor is a power of two,
+/// and the balanced matrix equals `D^{-1} A D` bit for bit.
+#[test]
+fn balancing_is_an_exact_power_of_two_similarity() {
+    let mut rng = Lcg::new(2016);
+    for (k, p, spread) in [
+        (3usize, 2usize, 1e7f64),
+        (4, 3, 1e6),
+        (2, 4, 1e3),
+        (5, 1, 1e10),
+    ] {
+        let scales: Vec<f64> = (0..k)
+            .map(|i| spread.powf(1.0 - 2.0 * i as f64 / (k - 1) as f64))
+            .collect();
+        let a = scaled_var(&mut rng, k, p, 0.95, &scales);
+        let refs: Vec<_> = a.iter().map(|m| m.as_ref()).collect();
+        let comp = companion_from_var(&refs).unwrap();
+        let (b, d) = balance(comp.as_ref()).unwrap();
+        let n = comp.nrows();
+        assert!(
+            d.iter().any(|&f| f != 1.0),
+            "k={k} p={p}: nothing was balanced"
+        );
+        for &f in &d {
+            assert!(
+                f > 0.0 && f.log2().fract() == 0.0,
+                "factor {f} is not a power of two"
+            );
+        }
+        for j in 0..n {
+            for i in 0..n {
+                let exact = comp[(i, j)] / d[i] * d[j];
+                assert_eq!(
+                    b[(i, j)].to_bits(),
+                    exact.to_bits(),
+                    "k={k} p={p} ({i},{j})"
+                );
+            }
+        }
+    }
+}
+
+/// Rescaling the series of a VAR is a diagonal similarity of its
+/// companion matrix, so the eigenvalue moduli must not move. With units up
+/// to 1e+-7 apart they agree with the unscaled solve to 1e-12 relative
+/// (the unbalanced solve was off by 1e-3 at 1e+-7).
+#[test]
+fn companion_moduli_are_invariant_to_the_units_of_the_series() {
+    let mut rng = Lcg::new(77);
+    for (k, p) in [(3usize, 2usize), (4, 3), (2, 6)] {
+        let ones = vec![1.0; k];
+        let a = scaled_var(&mut rng, k, p, 0.9995, &ones);
+        let refs: Vec<_> = a.iter().map(|m| m.as_ref()).collect();
+        let base = sorted_moduli(&companion_from_var(&refs).unwrap());
+        for spread in [1e3f64, 1e5, 1e7] {
+            let s: Vec<f64> = (0..k)
+                .map(|i| spread.powf(1.0 - 2.0 * i as f64 / (k - 1) as f64))
+                .collect();
+            let scaled: Vec<Mat<f64>> = a
+                .iter()
+                .map(|m| Mat::from_fn(k, k, |i, j| m[(i, j)] * s[i] / s[j]))
+                .collect();
+            let refs: Vec<_> = scaled.iter().map(|m| m.as_ref()).collect();
+            let comp = companion_from_var(&refs).unwrap();
+            let got = sorted_moduli(&comp);
+            for (g, e) in got.iter().zip(&base) {
+                assert!(
+                    (g - e).abs() <= 1e-12 * e,
+                    "k={k} p={p} spread {spread:e}: {g:.17e} vs {e:.17e}"
+                );
+            }
+            let rho = spectral_radius(comp.as_ref()).unwrap();
+            assert!((rho - base[0]).abs() <= 1e-12 * base[0]);
+            assert!(is_stable(comp.as_ref(), 0.0).unwrap());
+        }
+    }
+}
+
+/// A zero column of `A_p` makes a zero companion column; the balancing
+/// leaves that index alone (LAPACK skips it) while scaling the others. (The
+/// mpmath golden `var2_k3_zero_column` pins the eigenvalues of such a
+/// companion.)
+#[test]
+fn balancing_skips_an_isolated_index_and_refuses_bad_shapes() {
+    let a1 = Mat::from_fn(2, 2, |i, j| [[0.5, 3e6], [2e-7, 0.3]][i][j]);
+    let a2 = Mat::from_fn(2, 2, |i, j| [[0.1, 0.0], [1e-8, 0.0]][i][j]);
+    let comp = companion_from_var(&[a1.as_ref(), a2.as_ref()]).unwrap();
+    let (_, d) = balance(comp.as_ref()).unwrap();
+    // Index 3 (lag-2 copy of series 1) has a zero column: never scaled.
+    assert_eq!(d[3], 1.0);
+    assert!(d[..3].iter().any(|&f| f != 1.0), "{d:?}");
+
+    let rect = Mat::<f64>::zeros(2, 3);
+    assert!(matches!(
+        balance(rect.as_ref()),
+        Err(LinalgError::NotSquare { .. })
+    ));
+    let empty = Mat::<f64>::zeros(0, 0);
+    assert!(matches!(
+        balanced_eigenvalues(empty.as_ref()),
+        Err(LinalgError::EmptyInput { .. })
+    ));
+    let mut nan = Mat::<f64>::identity(2, 2);
+    nan[(0, 1)] = f64::NAN;
+    assert!(matches!(
+        balance(nan.as_ref()),
+        Err(LinalgError::NonFinite { .. })
+    ));
 }

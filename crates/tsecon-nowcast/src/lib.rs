@@ -66,6 +66,20 @@
 //!   true factor (`corr > 0.9`), the balanced nowcast is finite, and the
 //!   ragged-edge nowcast moves in the economically expected direction.
 //!
+//! ## Fixed-parameter smoothing (vintage re-smoothing)
+//!
+//! [`smooth_standardized`] runs the Kalman filter/smoother at *given*
+//! parameters over a (ragged) panel after standardizing it with given
+//! moments, and returns the log-likelihood, the smoothed states and their
+//! covariances over the full panel, the edge factor and the edge nowcast.
+//! [`Nowcaster::nowcast_panel`] is that function at the fitted parameters
+//! and training moments, so re-smoothing a new data vintage with a fitted
+//! model's parameters reproduces its nowcast to the bit; with zero centre and
+//! unit scale it is [`smooth_fixed`] on the raw panel, the reference-exact
+//! path (`fixtures/dfm_smooth.json`: two factors, a VAR(2) factor, a ragged
+//! edge, and a non-identity factor-innovation covariance, against
+//! statsmodels' `DynamicFactor` and its generic `KalmanSmoother`).
+//!
 //! ## News / update decomposition
 //!
 //! When a newer data vintage arrives, the target nowcast revises. For fixed
@@ -96,7 +110,7 @@ pub mod twostep;
 pub use error::NowcastError;
 pub use news::{news_decomposition_at, NewsContribution, NewsDecomposition};
 pub use statespace::{smooth_fixed, DfmParams, DfmSmoothing};
-pub use twostep::{NowcastResult, Nowcaster};
+pub use twostep::{smooth_standardized, NowcastResult, Nowcaster};
 
 // Re-export the state-space engine (and, through it, the shared linear-algebra
 // and dense backend) so downstream crates see one faer version and one

@@ -433,3 +433,120 @@ fn engle_sheppard_rejects_on_dcc_fixture() {
         r.stat
     );
 }
+
+/// The multivariate forecast is sized before anything is allocated (audit
+/// round 16: `forecast_horizon=2**31` used to abort the process): the cap is
+/// the univariate 1,000,000 steps, or less when the per-step working set
+/// (`paths * (8 ceil(k/8) k + 8 + 5 k^2 + 11 k) + 6 k + 11` values) times
+/// the horizon passes 2^28 values. Closed forms for k = 2, 3 and 10.
+#[test]
+fn forecast_horizon_budget_closed_form_and_refusal() {
+    use tsecon_mgarch::{
+        check_forecast_horizon, forecast_footprint, max_forecast_horizon, ForecastKind,
+        MgarchError, FORECAST_BUDGET_VALUES, MAX_FORECAST_HORIZON,
+    };
+    assert_eq!(MAX_FORECAST_HORIZON, 1_000_000);
+    assert_eq!(FORECAST_BUDGET_VALUES, 1 << 28);
+    let per_step = |paths: usize, k: usize| {
+        paths * (8 * k.div_ceil(8) * k + 8 + 5 * k * k + 11 * k) + 6 * k + 11
+    };
+    for k in [2usize, 3, 10] {
+        for (kind, paths) in [(ForecastKind::Ccc, 1), (ForecastKind::Dcc, 2)] {
+            assert_eq!(forecast_footprint(kind, k, 1), Some(per_step(paths, k)));
+            let max = ((1usize << 28) / per_step(paths, k)).min(1_000_000);
+            assert_eq!(max_forecast_horizon(kind, k), max, "k = {k}, {kind:?}");
+            assert!(check_forecast_horizon(kind, k, max).is_ok());
+            let err = check_forecast_horizon(kind, k, max + 1).unwrap_err();
+            assert!(
+                matches!(err, MgarchError::ForecastTooLarge { max_horizon, .. } if max_horizon == max)
+            );
+            let msg = err.to_string();
+            assert!(msg.starts_with("forecast_horizon = "), "{msg}");
+            assert!(msg.contains(&format!("can be at most {max}")), "{msg}");
+        }
+    }
+    // k = 2 and 3 are bound by the univariate cap, k = 10 by the budget.
+    assert_eq!(max_forecast_horizon(ForecastKind::Dcc, 3), 1_000_000);
+    assert_eq!(
+        max_forecast_horizon(ForecastKind::Dcc, 10),
+        (1 << 28) / 1627
+    );
+    assert_eq!(forecast_footprint(ForecastKind::Dcc, 10, usize::MAX), None);
+    assert!(check_forecast_horizon(ForecastKind::Ccc, 3, usize::MAX).is_err());
+
+    // The fitted models refuse before allocating, through the same check.
+    let fx = load();
+    let series = returns(&fx);
+    let ccc = CccGarch::new(spec()).fit(&series).unwrap();
+    for h in [1_000_001usize, 1 << 31, 1 << 40] {
+        let err = ccc.forecast_covariance(h).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                MgarchError::ForecastTooLarge {
+                    k: 3,
+                    max_horizon: 1_000_000,
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+    }
+    let dcc = DccGarch::new(spec()).fit(&series).unwrap();
+    let err = dcc.forecast(1 << 31).unwrap_err();
+    assert!(
+        matches!(err, MgarchError::ForecastTooLarge { k: 3, .. }),
+        "{err:?}"
+    );
+}
+
+/// The Engle-Sheppard lag length is checked against the sample (the
+/// `(T - lags) * k(k-1)/2` stacked rows must leave one residual degree of
+/// freedom for the `lags + 1` coefficients) and the pooled regression's
+/// budgets (`(lags + 1)^2 <= 2^26` and `T * k(k-1)/2 * (lags + 1)^2 <=
+/// 2^34`) before the regression is built, naming `lags` and the largest that
+/// fits (audit round 16: `lags=2**31` said only "insufficient data: 500
+/// observations, at least 2147483650 required", and `lags + 1` could
+/// overflow). At the quoted maximum the test runs.
+#[test]
+fn engle_sheppard_lags_refused_by_name() {
+    use tsecon_mgarch::{dcc_test_max_lags, MgarchError};
+    // Closed forms: the data bound floor((T P - 2) / (P + 1)), P = k(k-1)/2,
+    // binds at T = 500, k = 2 (one pair: 249) and T = 300, k = 3 (224); the
+    // work bound at T = 2400, k = 3: floor(sqrt(2^34 / 7200)) - 1 = 1543
+    // (the data bound is 1799 there).
+    assert_eq!(dcc_test_max_lags(500, 2), 249);
+    assert_eq!(dcc_test_max_lags(300, 3), 224);
+    assert_eq!(dcc_test_max_lags(2400, 3), 1543);
+    assert_eq!(dcc_test_max_lags(2, 2), 0);
+    assert_eq!(dcc_test_max_lags(4, 2), 1);
+    let fx = load();
+    let series = returns(&fx);
+    for lags in [2399usize, 1544, 1 << 31, usize::MAX] {
+        let err = constant_correlation_test(&series, spec(), lags).unwrap_err();
+        match &err {
+            MgarchError::LagsTooLong { max_lags, nobs, .. } => {
+                assert_eq!((*max_lags, *nobs), (1543, 2400), "lags = {lags}");
+            }
+            other => panic!("expected LagsTooLong, got {other:?}"),
+        }
+        let msg = err.to_string();
+        assert!(
+            msg.starts_with(&format!("lags = {lags} is invalid")),
+            "{msg}"
+        );
+        assert!(msg.contains("lags can be at most 1543"), "{msg}");
+    }
+    let short: Vec<Vec<f64>> = series.iter().map(|s| s[..300].to_vec()).collect();
+    for lags in [225usize, 298, 299] {
+        let err = constant_correlation_test(&short, spec(), lags).unwrap_err();
+        let msg = err.to_string();
+        assert!(msg.contains("(T - lags) * k(k-1)/2 >= lags + 2"), "{msg}");
+        assert!(msg.contains("lags can be at most 224 here"), "{msg}");
+    }
+    // The largest admissible lag length runs: 76 stacked windows of three
+    // pairs, 228 rows on 225 coefficients.
+    let r = constant_correlation_test(&short, spec(), 224).unwrap();
+    assert_eq!((r.df, r.n_stacked), (225, 228));
+    assert!(r.stat.is_finite() && (0.0..=1.0).contains(&r.p_value));
+}

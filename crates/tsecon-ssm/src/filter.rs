@@ -61,7 +61,8 @@
 //! `F` tests are asked *relative to the scale of the quantity being
 //! tested*; the `P_inf` washout test is absolute, and deliberately so —
 //! see [`TOLERANCE_RANK`], which sets out why the three are not treated
-//! alike.
+//! alike. Each `F` test also has a roundoff companion, read against a
+//! reference the updates cannot collapse ([`TOLERANCE_CANCEL`]).
 //!
 //! An absolute floor on `F_*` is a units bug: `F_*` is a variance in the
 //! units of `y` squared, so a floor of `1e-10` silently declares every
@@ -87,8 +88,8 @@ use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
 
 use crate::dense::{
-    abs_mat, abs_quad_form, axpy, chol_solve, dot, frob_sq, mat_vec, outer_add_abs, outer_sub,
-    row_to_vec, sandwich, symmetrize_in_place,
+    abs_quad_form, axpy, chol_solve, dot, frob_sq, mat_t_vec, mat_vec, outer_sub, row_to_vec,
+    sandwich, symmetrize_in_place,
 };
 use crate::error::SsmError;
 use crate::model::LinearGaussianSSM;
@@ -106,10 +107,12 @@ use crate::model::LinearGaussianSSM;
 ///   skipped exactly like a missing value. The reference is the magnitude
 ///   `Z_i P_* Z_i' + H_ii` would have had with no cancellation, so the test
 ///   reads "did at least `1e-10` of the available magnitude survive the
-///   sum?".
+///   sum?" — and while it passes the second, roundoff test of
+///   [`TOLERANCE_CANCEL`], read against the period's predicted `P_*`.
 /// * **diffuse element.** An element takes the diffuse update while
 ///   `F_inf > TOLERANCE_RANK * |Z_i|' |P_inf| |Z_i|`, the same test applied
-///   to the diffuse part.
+///   to the diffuse part — and while it passes the second, roundoff test
+///   of [`TOLERANCE_CANCEL`].
 /// * **diffuse period.** A step is diffuse while `||P_inf,t||_F^2 >
 ///   TOLERANCE_RANK`, an **absolute** threshold.
 ///
@@ -140,8 +143,9 @@ use crate::model::LinearGaussianSSM;
 /// where the absolute floor is too permissive about cancellation.
 pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 
-/// Roundoff floor for the diffuse-element test, as a fraction of the
-/// *cancellation-free magnitude* `P_inf` would have had (see below).
+/// Floor for the two roundoff tests: the fraction of the variance `Z_i`
+/// could see before the updates that `F_inf` — and `F_*` — must keep (see
+/// below; the `F_*` use is the last section).
 ///
 /// The relative `F_inf` test above asks "did at least `TOLERANCE_RANK` of
 /// the available magnitude survive the sum `Z_i P_inf Z_i'`?", with the
@@ -160,21 +164,159 @@ pub(crate) const TOLERANCE_RANK: f64 = 1e-10;
 /// branch there adds a spurious `-(ln 2*pi + ln F_inf)/2` with
 /// `F_inf ~ 1e-32`, i.e. tens of log-likelihood points of pure noise.
 ///
-/// The second test therefore measures `F_inf` against
-/// `|Z_i|' P_mag |Z_i|`, where `P_mag` is a companion recursion carrying an
-/// upper bound on `|P_inf|` with no cancellation at all: it starts at
-/// `|P_inf,1|`, *adds* `|M_inf| |K0|'` where the exact recursion subtracts
-/// it, and is transported by `|T| P_mag |T|'`. `P_mag >= |P_inf|`
-/// elementwise by construction, so the extra test can only ever make the
-/// diffuse branch harder to enter, never easier.
+/// The second test answers two questions the covariance recursion cannot
+/// answer about itself, with two companions carried through the diffuse
+/// period. Neither feeds the arithmetic of the update, only the branch.
+///
+/// * **What is `F_inf`, without the dust?** A square-root factor `B` of
+///   `P_inf` (`P_inf = B B'`, one column per diffuse state of `P_inf,1`),
+///   moved as `B <- T B`; each diffuse update removes the resolved
+///   direction by the orthogonal projection `B <- B (I - u u' / u'u)`,
+///   `u = B' Z_i'`, and `F_root = u'u`. The covariance downdate
+///   `P_inf - M_inf M_inf' / F_inf` leaves dust of order `eps` relative to
+///   the cancelled terms — and up to `eps / r` after a direction resolved
+///   with `F_inf` only a fraction `r` of them, because it divides by
+///   `F_inf`. The projection divides by nothing, and `F_root` is a sum of
+///   squares of entries that are themselves roundoff once the direction
+///   is gone, so its dust is of order `eps^2` where the covariance form's
+///   is of order `eps / r`.
+/// * **Against what?** `U = Phi P_inf,1 Phi'`, the diffuse covariance with
+///   nothing resolved, carried by the *actual* transition (`U <- T U T'`)
+///   and read as `|Z_i|' |U| |Z_i|`. In exact arithmetic `P_inf = U -
+///   (positive semidefinite downdates)`, so `0 <= F_inf <= Z_i U Z_i'`:
+///   `U` is the most diffuse variance `Z_i` could ever see, a resolved
+///   direction keeps it at full size (which is what refuses the Nyquist
+///   dust), and it grows exactly as fast as `T^t` does — not faster.
+///
+/// An element takes the diffuse branch only when, in addition to the
+/// relative test above, `F_root > TOLERANCE_CANCEL * |Z_i|' |U| |Z_i|`, so
+/// this test can only ever make the diffuse branch harder to enter.
+///
+/// **Why not an elementwise bound.** Until 0.11.0 the reference was an
+/// upper bound on `|P_inf|` with every sign made favourable: `|P_inf,1|`
+/// plus `|M_inf| |K0|'` at each downdate, carried as `|T| P_mag |T|'`. An
+/// elementwise-absolute transport grows like `rho(|T|)^(2t)` even when `T`
+/// preserves norms: the dummy seasonal of period 12 has `T^12 = I` but
+/// `rho(|T|) = 1.9995`, so the bound grew about fourfold per period, and a
+/// rotation (a trigonometric seasonal, a cycle) by up to
+/// `(|cos| + |sin|)^2 = 2`. With the same calendar month missing in two
+/// consecutive years, the genuine `F_inf = 1.091` that resolves it at
+/// `t = 26` met a threshold of `203.8` and was refused, where the
+/// reference above is `|Z_i|' |U| |Z_i| = 2`; `P_inf` never washed out,
+/// `nobs_diffuse` came back as the sample length and the log-likelihood
+/// 0.64 to 2.87 too low. A year or more missing at the start did the same,
+/// the bound compounding through the whole gap
+/// (`tests/uc_extensions_golden.rs`, `long_diffuse`; the replay is
+/// `scripts/uc_long_diffuse_evidence.py`).
 ///
 /// The value `1e-14` is a few dozen multiples of the double-precision
-/// epsilon: it separates genuine diffuse mass that is small only because
-/// `Z_i` sees it weakly (the `1e-10` live `F_inf` at `s = 1e-5` in
-/// `tests/scale.rs`, which must still take the diffuse branch) from
-/// annihilated mass reappearing as roundoff (`1e-32` against an `O(1)`
-/// magnitude), which must not.
+/// epsilon, and it is a floor on what the *update* can resolve rather than
+/// on what `F_root` can see: the update itself still runs on the covariance
+/// form, whose own roundoff is `eps` of the same magnitude, so a direction
+/// `Z_i` sees with `F_inf` below `1e-14 Z_i U Z_i'` cannot be applied
+/// faithfully even when `F_root` says it is there. It keeps genuine diffuse
+/// mass that is small only because `Z_i` sees it weakly (the `1e-10` live
+/// `F_inf` at `s = 1e-5` in `tests/scale.rs`), and it caps the
+/// `lambda -> 0` divergence of a diffuse cycle, whose weakly observed state
+/// shows itself at `F_root` of order `(rho sin lambda)^2` of the reference.
+/// On the series of `tests/uc_properties.rs`
+/// (`scripts/uc_exact_diffuse_reference.py`): at frequency `1e-4` it is
+/// taken at once (`4.9e-11`) and the log-likelihood is the exact one; at
+/// `1e-6` the first sighting (`4.9e-15`) is refused and the next
+/// (`4.1e-14`) taken, `0.010` below the exact log-likelihood; at `1e-8`
+/// every sighting (at most `7.7e-15`) is refused and the state stays
+/// diffuse, as it does at `lambda = 0`.
+///
+/// ## The same dust on `F_*`
+///
+/// The informative-element test has the same blind spot within a period.
+/// When an element with `H_ii = 0` pins the direction a later element of
+/// the same `y_t` sees — two series with zero idiosyncratic variance
+/// loading on one factor, observed together — `P_*` along that direction
+/// is roundoff of the pinning update, so `F_*` and its cancellation-free
+/// reference `|Z_i|' |P_*| |Z_i| + H_ii` are both dust and their ratio is
+/// `O(1)`. Taking the update then adds `-(ln 2*pi + ln F_* + v^2 / F_*)/2`
+/// with `F_*` of order `1e-19`, about `+20` log-likelihood points whose
+/// sign and size follow the roundoff, not the data (a redundant element's
+/// innovation is zero in exact arithmetic: the joint density of `y_t` is
+/// singular, and the value the filter reports is the density on its
+/// support, with the redundant element skipped like a missing value).
+///
+/// The reference that does not collapse is the period's *predicted* `P_*`
+/// (the one stored in `predicted_state_cov`, before any of the period's
+/// sequential updates): in exact arithmetic the updates only remove
+/// variance, so `0 <= F_* <= |Z_i|' |P_{t|t-1}| |Z_i| + H_ii`, and the
+/// covariance downdates leave roundoff of order `eps` of that magnitude.
+/// A standard update is therefore taken only when, in addition to the
+/// relative test of [`TOLERANCE_RANK`], `F_* > TOLERANCE_CANCEL *
+/// (|Z_i|' |P_{t|t-1}| |Z_i| + H_ii)`. For the first element updated in a
+/// period the two references coincide and this test is implied by the
+/// first, so a single observed series per period — every univariate model
+/// — is untouched; it can only ever make the update harder to enter. The
+/// element it refuses is skipped exactly like a missing value, which is
+/// the density on the support: setting the redundant cell to NaN gives the
+/// same log-likelihood and smoothed states (`tests/scale.rs`,
+/// `redundant_zero_variance_element_is_skipped_like_a_missing_value`; the
+/// `dfm_smooth` goldens of `tsecon-nowcast`). An idiosyncratic variance
+/// below `1e-14` of the variance the element could see is, at this
+/// precision, a zero one.
+///
+/// **When the pinning was itself nearly redundant.** "Roundoff of order
+/// `eps`" holds for a downdate that divides by an `F_*` of the size of its
+/// reference. An element that pins a direction an earlier one of the same
+/// period almost pinned — two zero-variance series whose loadings are at
+/// an angle `theta` — has `F_*` of order `theta^2` of its reference, and
+/// its downdate leaves dust of order `eps / theta`, which can pass the
+/// `1e-14` test: with two factors and pinning loadings `0.02` rad apart,
+/// the redundant third zero-variance series was taken in every period, and
+/// each of the 40 column orders that pin with that pair came out 115 to 839
+/// log-likelihood points high over 60 periods (the covariance form cannot
+/// tell that dust from a variance; `tests/scale.rs`). So an `F_*`
+/// that passes the test but sits within [`SUSPECT_DUST`] of the predicted
+/// reference, after an update of the same (non-diffuse) period, is read a
+/// second time off a square-root companion ([`StarRoot`]): a factor `S` of
+/// the predicted `P_*` on the states `Z_t` loads on, downdated by the
+/// period's updates in Potter's form `S <- S (I - g u u')`, `u = S' Z_k'`
+/// — for `H_kk = 0` the orthogonal projection that removes the pinned
+/// direction, dividing by nothing small — and `F = u'u + H_ii`, a sum of
+/// squares whose dust is of order `(eps / theta)^2`. The update is taken
+/// only when that `F` also clears `TOLERANCE_CANCEL` of the reference. The
+/// companion decides only; the update itself runs on the covariance form,
+/// as before, and the companion is built only in a period that has such an
+/// element, so the filter's other paths are bit-identical
+/// (`tests/scale.rs`,
+/// `nearly_collinear_pinning_does_not_let_the_redundant_element_in`).
 pub(crate) const TOLERANCE_CANCEL: f64 = 1e-14;
+
+/// Ceiling of the band, as a fraction of the predicted reference
+/// `|Z_i|' |P_{t|t-1}| |Z_i| + H_ii`, in which an `F_*` that passed both
+/// tests after an earlier update of the period is confirmed on the
+/// square-root companion (see [`TOLERANCE_CANCEL`], "When the pinning was
+/// itself nearly redundant").
+///
+/// A pin whose `F_*` is a fraction `r` of its reference leaves dust of
+/// order `eps / sqrt(r)` of the reference, so dust reaches this ceiling
+/// only behind a pin with `r` below about `1e-19`, which the tests refuse:
+/// the first update of a period must clear `TOLERANCE_RANK` (`1e-10`) of a
+/// reference that is still the predicted one, a later one the companion's
+/// `1e-14`. (Two consecutive pins each near that floor, whose own `F_*`
+/// carry about two correct digits, could compound past it.) Above the
+/// ceiling an `F_*` is taken as computed, so a model whose elements all
+/// carry real idiosyncratic variance never builds the companion: an
+/// element lands in the band only when its `H_ii` is below a millionth of
+/// the variance it could see.
+const SUSPECT_DUST: f64 = 1e-6;
+
+/// Verdict of the predicted-reference test on an `F_*` (see
+/// [`TOLERANCE_CANCEL`]).
+enum Dust {
+    /// Far above roundoff of the period's updates (or no update yet).
+    Clear,
+    /// At most `TOLERANCE_CANCEL` of the reference: roundoff, skipped.
+    Below,
+    /// In the [`SUSPECT_DUST`] band; the reference, for the companion.
+    Suspect(f64),
+}
 
 /// `ln(2 pi)`, the per-element likelihood constant.
 #[inline]
@@ -304,6 +446,148 @@ fn validate_observations(model: &LinearGaussianSSM, y: MatRef<'_, f64>) -> Resul
     Ok(())
 }
 
+/// Square-root factor `B` (`m x r`) of the initial diffuse covariance,
+/// `P_inf,1 = B B'`, one column per diffuse state.
+///
+/// Every initialization builds `P_inf,1` as a nonnegative diagonal (`I`
+/// under [`Initialization::Diffuse`](crate::Initialization::Diffuse), the
+/// flagged unit entries under `Mixed`, zero otherwise), so `B` is the
+/// matching columns of `diag(P_inf,1)^(1/2)`; off-diagonal entries never
+/// occur and are not read.
+fn diffuse_root(p_inf: MatRef<'_, f64>) -> Mat<f64> {
+    let idx: Vec<usize> = (0..p_inf.nrows())
+        .filter(|&i| p_inf[(i, i)] > 0.0)
+        .collect();
+    Mat::from_fn(p_inf.nrows(), idx.len(), |i, j| {
+        if i == idx[j] {
+            p_inf[(i, i)].sqrt()
+        } else {
+            0.0
+        }
+    })
+}
+
+/// Square-root companion of a period's `P_*` for the informative-element
+/// decision only (see [`TOLERANCE_CANCEL`], "When the pinning was itself
+/// nearly redundant"): a factor `S` with `S S' = P_{t|t-1}` restricted to
+/// the states `Z_t` loads on — the only block a quadratic form `Z_i P Z_i'`
+/// reads — downdated in Potter's form by the period's standard updates.
+struct StarRoot {
+    /// The state indices with a nonzero entry in some row of `Z_t`.
+    support: Vec<usize>,
+    /// `|support| x rank` factor of `P_*` on `support`.
+    s: Mat<f64>,
+}
+
+impl StarRoot {
+    /// The factor of the period's predicted `p_pre` on the support of `z`,
+    /// replayed through the standard updates `done` (element indices of
+    /// `z` and `h`) the period has already taken.
+    fn replay(
+        p_pre: MatRef<'_, f64>,
+        z: MatRef<'_, f64>,
+        h: MatRef<'_, f64>,
+        done: &[usize],
+    ) -> Self {
+        let support: Vec<usize> = (0..z.ncols())
+            .filter(|&j| (0..z.nrows()).any(|i| z[(i, j)] != 0.0))
+            .collect();
+        let sub = Mat::from_fn(support.len(), support.len(), |a, b| {
+            p_pre[(support[a], support[b])]
+        });
+        let mut root = StarRoot {
+            s: pivoted_root(sub),
+            support,
+        };
+        for &k in done {
+            root.downdate(&row_to_vec(z, k), h[(k, k)]);
+        }
+        root
+    }
+
+    /// `u = S' Z_i'` and `F = u'u + H_ii`: the element's prediction variance
+    /// read as a sum of squares.
+    fn project(&self, zi: &[f64], h_ii: f64) -> (Vec<f64>, f64) {
+        let u: Vec<f64> = (0..self.s.ncols())
+            .map(|l| {
+                self.support
+                    .iter()
+                    .enumerate()
+                    .map(|(a, &j)| self.s[(a, l)] * zi[j])
+                    .sum()
+            })
+            .collect();
+        let f = dot(&u, &u) + h_ii;
+        (u, f)
+    }
+
+    /// Potter's update for the element `(zi, h_ii)`: `S <- S (I - g u u')`
+    /// with `g = 1 / (F + sqrt(H_ii F))`, so `S S'` becomes `P - M M' / F`
+    /// (`M = P Z_i' = S u`); for `H_ii = 0` it is the orthogonal projection
+    /// that removes the pinned direction.
+    fn downdate(&mut self, zi: &[f64], h_ii: f64) {
+        let (u, f) = self.project(zi, h_ii);
+        if f.is_nan() || f <= 0.0 {
+            return;
+        }
+        let g = 1.0 / (f + (h_ii * f).sqrt());
+        let w: Vec<f64> = (0..self.s.nrows())
+            .map(|a| {
+                u.iter()
+                    .enumerate()
+                    .map(|(l, ul)| self.s[(a, l)] * ul)
+                    .sum()
+            })
+            .collect();
+        for (l, ul) in u.iter().enumerate() {
+            for (a, wa) in w.iter().enumerate() {
+                self.s[(a, l)] -= g * wa * ul;
+            }
+        }
+    }
+}
+
+/// A factor `S` (`n x rank`) of the symmetric positive semidefinite `a`,
+/// `a = S S'` to roundoff, by Cholesky with diagonal pivoting: each step
+/// takes the largest remaining diagonal and the factorization stops when
+/// none is positive, so a singular (or roundoff-indefinite) matrix gets a
+/// factor of its numerical rank instead of a failure.
+fn pivoted_root(mut a: Mat<f64>) -> Mat<f64> {
+    let n = a.nrows();
+    let mut used = vec![false; n];
+    let mut cols: Vec<Vec<f64>> = Vec::new();
+    loop {
+        let mut pivot = None;
+        let mut best = 0.0;
+        for (j, &u) in used.iter().enumerate() {
+            if !u && a[(j, j)] > best {
+                best = a[(j, j)];
+                pivot = Some(j);
+            }
+        }
+        let Some(j) = pivot else { break };
+        used[j] = true;
+        let sd = best.sqrt();
+        // The rows pivoted before are exactly zero in exact arithmetic.
+        let col: Vec<f64> = (0..n)
+            .map(|i| {
+                if used[i] && i != j {
+                    0.0
+                } else {
+                    a[(i, j)] / sd
+                }
+            })
+            .collect();
+        for c in 0..n {
+            for r in 0..n {
+                a[(r, c)] -= col[r] * col[c];
+            }
+        }
+        cols.push(col);
+    }
+    Mat::from_fn(n, cols.len(), |i, k| cols[k][i])
+}
+
 /// Runs the univariate (sequential) Kalman filter with exact diffuse
 /// initialization — the primary filtering path (see the module docs for
 /// the recursions and references).
@@ -334,9 +618,14 @@ pub fn filter_univariate(
     let mut a = init.a1;
     let mut p_star = init.p_star;
     let mut p_inf = init.p_inf;
-    // Cancellation-free magnitude bound on `P_inf`, carried alongside it
-    // through the diffuse period (see TOLERANCE_CANCEL).
-    let mut p_inf_mag = abs_mat(p_inf.as_ref());
+    // Two companions of `P_inf`, carried through the diffuse period for the
+    // diffuse-element decision only (see TOLERANCE_CANCEL): a square-root
+    // factor `B` (`P_inf = B B'`), which reads `F_inf` without the
+    // cancellation dust of the covariance form, and `U = Phi P_inf,1 Phi'`,
+    // the diffuse covariance with nothing resolved, which is the
+    // reference it is read against.
+    let mut p_inf_root = diffuse_root(p_inf.as_ref());
+    let mut p_inf_unres = p_inf.clone();
 
     let mut out = FilterOutput {
         loglik: 0.0,
@@ -385,6 +674,21 @@ pub fn filter_univariate(
         out.predicted_state.push(a.clone());
         out.predicted_state_cov.push(p_star.clone());
         out.predicted_diffuse_state_cov.push(p_inf.clone());
+        // The predicted P_* just stored: the reference the informative-
+        // element test reads once an update has moved `p_star` off it.
+        let p_star_pre = out.predicted_state_cov[t].as_ref();
+        // Its standard deviations, for the O(m) Cauchy-Schwarz bound
+        // `|Z_i|' |P| |Z_i| <= (sum_j |Z_ij| sd_j)^2` that settles the test
+        // without the O(m^2) form whenever F_* is not dust.
+        let p_star_pre_sd: Vec<f64> = (0..p_star_pre.nrows())
+            .map(|j| p_star_pre[(j, j)].max(0.0).sqrt())
+            .collect();
+        let mut updated = false;
+        // The square-root companion, built only if an element of this
+        // period lands in the SUSPECT_DUST band (see TOLERANCE_CANCEL), and
+        // where this period's steps start in `out.steps`.
+        let mut star_root: Option<StarRoot> = None;
+        let step0 = out.steps.len();
 
         // Sequential scalar updates: (a, p_star, p_inf) morph in place
         // from predicted to filtered moments.
@@ -407,13 +711,47 @@ pub fn filter_univariate(
             // a real (if tiny) variance. Direction-aware — a state Z_i does
             // not load on contributes nothing, however large its variance.
             let f_star_scale = abs_quad_form(&zi, p_star.as_ref()) + h[(i, i)];
-            let (f_inf, m_inf, f_inf_scale, f_inf_mag) = if diffuse {
+            // ... and the same magnitude read off the period's PREDICTED
+            // P_* (before any of this period's sequential updates), which
+            // the updates cannot collapse: once an earlier element of y_t
+            // has pinned the direction Z_i sees, both F_* and the scale
+            // above are roundoff of that update (see TOLERANCE_CANCEL).
+            // Until the period's first update the two coincide and the
+            // first test implies this one; after it, the O(m) bound
+            // settles every F_* far above dust and the exact form is read
+            // only for the rest. An F_* that clears the test but stays
+            // within SUSPECT_DUST of the reference is confirmed on the
+            // square-root companion below.
+            let against_predicted = |f: f64| {
+                if !updated {
+                    return Dust::Clear;
+                }
+                let bound: f64 = zi
+                    .iter()
+                    .zip(&p_star_pre_sd)
+                    .map(|(zj, sd)| zj.abs() * sd)
+                    .sum();
+                if f > SUSPECT_DUST * (bound * bound + h[(i, i)]) {
+                    return Dust::Clear;
+                }
+                let reference = abs_quad_form(&zi, p_star_pre) + h[(i, i)];
+                if f <= TOLERANCE_CANCEL * reference {
+                    Dust::Below
+                } else if f > SUSPECT_DUST * reference {
+                    Dust::Clear
+                } else {
+                    Dust::Suspect(reference)
+                }
+            };
+            let (f_inf, m_inf, f_inf_scale, u_root, f_root, f_inf_unres) = if diffuse {
                 let mi = mat_vec(p_inf.as_ref(), &zi);
                 let scale = abs_quad_form(&zi, p_inf.as_ref());
-                let mag = abs_quad_form(&zi, p_inf_mag.as_ref());
-                (dot(&zi, &mi).max(0.0), mi, scale, mag)
+                let u = mat_t_vec(p_inf_root.as_ref(), &zi);
+                let f_root = dot(&u, &u);
+                let unres = abs_quad_form(&zi, p_inf_unres.as_ref());
+                (dot(&zi, &mi).max(0.0), mi, scale, u, f_root, unres)
             } else {
-                (0.0, Vec::new(), 0.0, 0.0)
+                (0.0, Vec::new(), 0.0, Vec::new(), 0.0, 0.0)
             };
 
             // Each reference scale is a sum of nonnegative terms that
@@ -423,9 +761,15 @@ pub fn filter_univariate(
             // implies `f > 0` — including when the scale is itself zero,
             // where the test degenerates to exactly `f > 0`. The branches
             // below therefore never divide by a zero variance.
-            debug_assert!(f_star_scale >= 0.0 && f_inf_scale >= 0.0);
+            // The same holds for `f_root`, a sum of squares, against
+            // `f_inf_unres`, so the root downdate below divides by a
+            // positive `f_root` too.
+            // The predicted-P_* reference dominates `F_*` the same way in
+            // exact arithmetic (the period's updates only remove variance
+            // along `Z_i`).
+            debug_assert!(f_star_scale >= 0.0 && f_inf_scale >= 0.0 && f_inf_unres >= 0.0);
 
-            if f_inf > TOLERANCE_RANK * f_inf_scale && f_inf > TOLERANCE_CANCEL * f_inf_mag {
+            if f_inf > TOLERANCE_RANK * f_inf_scale && f_root > TOLERANCE_CANCEL * f_inf_unres {
                 // Exact-diffuse element update (Koopman & Durbin 2003).
                 let k0: Vec<f64> = m_inf.iter().map(|x| x / f_inf).collect();
                 let f12 = -f_star / f_inf;
@@ -440,11 +784,17 @@ pub fn filter_univariate(
                 outer_sub(&mut p_star, &m_inf, &k1);
                 // P_inf <- P_inf L0' = P_inf - M_inf K0'.
                 outer_sub(&mut p_inf, &m_inf, &k0);
-                // The same downdate with every sign made favourable: an
-                // upper bound on |P_inf| that never cancels.
-                outer_add_abs(&mut p_inf_mag, &m_inf, &k0);
+                // The same downdate on the root: B <- B (I - u u' / u'u),
+                // an orthogonal projection of B's columns that removes the
+                // resolved direction (B' z = 0) without dividing by a
+                // small number, so what is left of it is roundoff of B
+                // itself, not roundoff amplified by 1 / F_inf.
+                let bu = mat_vec(p_inf_root.as_ref(), &u_root);
+                let u_k: Vec<f64> = u_root.iter().map(|x| x / f_root).collect();
+                outer_sub(&mut p_inf_root, &bu, &u_k);
                 out.loglik -= 0.5 * (ln2pi + f_inf.ln());
                 n_informative += 1;
+                updated = true;
                 out.steps.push(ObsStep {
                     observed: true,
                     diffuse: true,
@@ -454,13 +804,38 @@ pub fn filter_univariate(
                     m_star,
                     m_inf,
                 });
-            } else if f_star > TOLERANCE_RANK * f_star_scale {
+            } else if f_star > TOLERANCE_RANK * f_star_scale
+                && match against_predicted(f_star) {
+                    Dust::Clear => true,
+                    Dust::Below => false,
+                    // A diffuse period's updates are not Potter downdates
+                    // of P_*; the companion runs on standard periods only.
+                    Dust::Suspect(_) if diffuse => true,
+                    Dust::Suspect(reference) => {
+                        let root = star_root.get_or_insert_with(|| {
+                            // The standard updates this period has taken.
+                            let done: Vec<usize> = (0..i)
+                                .filter(|&k| {
+                                    let s = &out.steps[step0 + k];
+                                    s.observed && !s.diffuse
+                                })
+                                .collect();
+                            StarRoot::replay(p_star_pre, z, h, &done)
+                        });
+                        root.project(&zi, h[(i, i)]).1 > TOLERANCE_CANCEL * reference
+                    }
+                }
+            {
                 // Standard scalar update (Koopman & Durbin 2000).
                 let k0: Vec<f64> = m_star.iter().map(|x| x / f_star).collect();
                 axpy(&mut a, v, &k0);
                 outer_sub(&mut p_star, &m_star, &k0);
+                if let Some(root) = star_root.as_mut() {
+                    root.downdate(&zi, h[(i, i)]);
+                }
                 out.loglik -= 0.5 * (ln2pi + f_star.ln() + v * v / f_star);
                 n_informative += 1;
+                updated = true;
                 out.steps.push(ObsStep {
                     observed: true,
                     diffuse: false,
@@ -471,7 +846,10 @@ pub fn filter_univariate(
                     m_inf: Vec::new(),
                 });
             } else {
-                // Numerically singular element: carries no information.
+                // Numerically singular element: carries no information —
+                // a zero (or roundoff) variance, or one an earlier element
+                // of y_t has already pinned (a series with zero
+                // idiosyncratic variance that is redundant given another).
                 out.steps.push(ObsStep::skipped());
             }
         }
@@ -495,7 +873,11 @@ pub fn filter_univariate(
         p_star = ps_next;
         p_inf = sandwich(tr, p_inf.as_ref());
         if in_diffuse {
-            p_inf_mag = sandwich(abs_mat(tr).as_ref(), p_inf_mag.as_ref());
+            // Both companions move with the *actual* transition: B <- T B,
+            // U <- T U T'. (Never |T|: an elementwise-absolute transport
+            // compounds like rho(|T|)^(2t) even when T preserves norms.)
+            p_inf_root = tr * p_inf_root.as_ref();
+            p_inf_unres = sandwich(tr, p_inf_unres.as_ref());
         }
         symmetrize_in_place(&mut p_star);
         symmetrize_in_place(&mut p_inf);
@@ -665,5 +1047,70 @@ impl LinearGaussianSSM {
     /// filter.
     pub fn loglike(&self, y: MatRef<'_, f64>) -> Result<f64, SsmError> {
         Ok(filter_univariate(self, y)?.loglik)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// A rank-2 PSD 4 x 4 matrix, `B B'` of a 4 x 2 `B`.
+    fn rank_two() -> Mat<f64> {
+        let b = Mat::from_fn(4, 2, |i, j| {
+            [[1.0, 0.5], [-0.3, 2.0], [0.7, 0.0], [1.2, -0.4]][i][j]
+        });
+        Mat::from_fn(4, 4, |i, j| (0..2).map(|k| b[(i, k)] * b[(j, k)]).sum())
+    }
+
+    #[test]
+    fn the_pivoted_root_factors_a_singular_psd_matrix_to_its_rank() {
+        let a = rank_two();
+        let s = pivoted_root(a.clone());
+        assert!(s.ncols() <= 4);
+        for i in 0..4 {
+            for j in 0..4 {
+                let ss: f64 = (0..s.ncols()).map(|k| s[(i, k)] * s[(j, k)]).sum();
+                assert!(
+                    (ss - a[(i, j)]).abs() <= 1e-14 * 4.0,
+                    "({i}, {j}): {ss} vs {}",
+                    a[(i, j)]
+                );
+            }
+        }
+        // A zero matrix has an empty factor, not a failure.
+        assert_eq!(pivoted_root(Mat::zeros(3, 3)).ncols(), 0);
+    }
+
+    #[test]
+    fn the_potter_downdate_is_the_covariance_downdate() {
+        // S S' after the update by (z, h) is P - M M' / F, M = P z', F = z P z' + h,
+        // for h > 0 and for the projection h = 0.
+        let p = Mat::from_fn(3, 3, |i, j| {
+            [[2.0, 0.3, -0.4], [0.3, 1.0, 0.2], [-0.4, 0.2, 1.5]][i][j]
+        });
+        let z = Mat::from_fn(1, 3, |_, j| [0.5, -1.0, 0.25][j]);
+        for h_ii in [0.7, 0.0] {
+            let h = Mat::from_fn(1, 1, |_, _| h_ii);
+            let root = StarRoot::replay(p.as_ref(), z.as_ref(), h.as_ref(), &[0]);
+            let zi = row_to_vec(z.as_ref(), 0);
+            let m = mat_vec(p.as_ref(), &zi);
+            let f = dot(&zi, &m) + h_ii;
+            for i in 0..3 {
+                for j in 0..3 {
+                    let ss: f64 = (0..root.s.ncols())
+                        .map(|k| root.s[(i, k)] * root.s[(j, k)])
+                        .sum();
+                    let want = p[(i, j)] - m[i] * m[j] / f;
+                    assert!(
+                        (ss - want).abs() <= 1e-14,
+                        "h = {h_ii}, ({i}, {j}): {ss} vs {want}"
+                    );
+                }
+            }
+            // With h = 0 the pinned direction is gone: z S S' z' is roundoff.
+            if h_ii == 0.0 {
+                assert!(root.project(&zi, 0.0).1 <= 1e-28);
+            }
+        }
     }
 }

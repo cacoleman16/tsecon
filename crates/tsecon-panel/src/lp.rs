@@ -345,18 +345,35 @@ pub fn panel_lp(
     // halves of length ceil(T/2) when T is odd (Dhaene-Jochmans 2015).
     let half = t_len.div_ceil(2);
 
+    // A Driscoll-Kraay bandwidth past the periods of horizon h's regression
+    // is refused by `check_dk_bandwidth`; say which horizon ran short.
+    let at_horizon = |h: usize| {
+        move |e: PanelError| match e {
+            PanelError::InsufficientData { what } if what.starts_with("bandwidth:") => {
+                PanelError::InsufficientData {
+                    what: format!(
+                        "{what}; in panel_lp the regression at horizon h = {h} loses h \
+                         leads and the n_lag_controls lags, so lower bandwidth, horizon or \
+                         n_lag_controls"
+                    ),
+                }
+            }
+            other => other,
+        }
+    };
+
     for h in 0..=hmax {
         let full = lp_fit_window(data, shock, config, h, 0, t_len)?;
         match bc {
             LpBiasCorrection::None => {
-                let inference = full.inference(config.cov)?;
+                let inference = full.inference(config.cov).map_err(at_horizon(h))?;
                 irf.push(full.params[0]);
                 se.push(inference.bse[0]);
                 nobs.push(full.nobs);
                 params.push(full.params.clone());
             }
             LpBiasCorrection::DhaeneJochmans => {
-                let inference = full.inference(config.cov)?;
+                let inference = full.inference(config.cov).map_err(at_horizon(h))?;
                 let first = lp_fit_window(data, shock, config, h, 0, half)?;
                 let second = lp_fit_window(data, shock, config, h, t_len - half, t_len)?;
                 let coefs = half_panel_combine(&full.params, &first.params, &second.params);
@@ -366,7 +383,8 @@ pub fn panel_lp(
                 params.push(coefs);
             }
             LpBiasCorrection::Spj => {
-                let (coefs, se_h) = spj_horizon(data, shock, config, h, &full)?;
+                let (coefs, se_h) =
+                    spj_horizon(data, shock, config, h, &full).map_err(at_horizon(h))?;
                 irf.push(coefs[0]);
                 se.push(se_h);
                 nobs.push(full.nobs);
@@ -514,6 +532,7 @@ fn spj_horizon(
             if !bandwidth.is_finite() || bandwidth < 0.0 {
                 return Err(PanelError::InvalidBandwidth { value: bandwidth });
             }
+            crate::fe::check_dk_bandwidth(bandwidth, s_full)?;
             // Per-period cross-sectional sums of the adjusted scores.
             let mut agg = Mat::<f64>::zeros(s_full, k);
             for i in 0..n_ent {

@@ -1,0 +1,1 @@
+16 rows, 4 bounds each; largest move 0.019 at ('output ← supply', '40')

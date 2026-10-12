@@ -49,7 +49,22 @@
 //!   [`FixedEffects`] menu, returning the cumulative (long-run) effect
 //!   with its delta-method standard error, and for the quadratic
 //!   response the marginal effect at chosen points and the turning point
-//!   of the cumulative response (see `distributed_lag.rs`).
+//!   of the cumulative response (see `distributed_lag.rs`);
+//! * the static-panel menu, every convention matching linearmodels 7.0
+//!   (`fixtures/panel_static.json`), on balanced and masked panels alike:
+//!   [`panel_random_effects`] — Swamy-Arora-type feasible GLS with a
+//!   per-entity quasi-demeaning weight `theta_i`, the harmonic-mean `Tbar`
+//!   and linearmodels' optional small-sample variance components (see
+//!   `re.rs`); [`panel_between`] — OLS on the entity means, optionally
+//!   reweighted by `T_i`; [`panel_first_difference`] — OLS on the
+//!   first-differenced data by calendar adjacency, with an optional
+//!   intercept (the plm/Stata default); and
+//!   [`fama_macbeth`](fn@fama_macbeth) — per-period cross-sectional
+//!   regressions averaged over time with the Fama-MacBeth or Newey-West
+//!   standard error. The first three share the
+//!   [`StaticSeType`] covariance menu (nonrobust, HC1, entity-clustered,
+//!   Driscoll-Kraay), whose sandwiches are the fixed-effects code itself
+//!   (see `pooled.rs`).
 //!
 //! ## Nickell bias (read before running dynamic panels with short T)
 //!
@@ -68,23 +83,33 @@
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod between;
 pub mod data;
 pub mod distributed_lag;
 pub mod error;
+pub mod fama_macbeth;
+pub mod fd;
 pub mod fe;
 pub mod lp;
 pub mod lpdid;
 pub mod mean_group;
+pub mod pooled;
+pub mod re;
 
+pub use between::{panel_between, BetweenConfig, BetweenFit};
 pub use data::PanelData;
 pub use distributed_lag::{panel_distributed_lag, DistributedLagConfig, DistributedLagResult};
 pub use error::PanelError;
+pub use fama_macbeth::{fama_macbeth, FamaMacBethFit, FamaMacBethInference, FamaMacBethSe};
+pub use fd::{panel_first_difference, FirstDifferenceFit};
 pub use fe::{
     panel_ols_fe, panel_ols_fe_with, FePanelOls, FixedEffects, PanelInference, PanelSeType,
 };
 pub use lp::{panel_lp, LpBiasCorrection, PanelLpConfig, PanelLpResult};
 pub use lpdid::{lp_did, LpDidConfig, LpDidPooled, LpDidResult};
 pub use mean_group::{mean_group_var, mg_irf_path, MeanGroupVar};
+pub use pooled::{StaticInference, StaticSeType};
+pub use re::{panel_random_effects, RandomEffectsConfig, RandomEffectsFit};
 
 // Re-export the shared linear-algebra layer (and, through it, the dense
 // backend) plus the VAR layer whose `Trend` the mean-group API takes, so

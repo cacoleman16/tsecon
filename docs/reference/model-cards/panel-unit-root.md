@@ -96,7 +96,7 @@ Dickey-Fuller regression ([`adf`](diagnostics.md), matched to statsmodels at
 | `regression` | `"c"` | `"c"` constant, `"ct"` constant + trend, `"n"` none (`"n"` invalid for `ips`) |
 | `lags` | `None` | `None` = per-unit auto-AIC; an `int` = a fixed common lag; or `"aic"`/`"bic"`/`"t-stat"` |
 | `max_lags` | `None` | cap on the per-unit auto lag search |
-| `lrv_kernel` / `lrv_bandwidth` | `"bartlett"` / `None` | the long-run-variance kernel LLC uses to scale each unit; ignored by IPS/Fisher |
+| `lrv_kernel` / `lrv_bandwidth` | `"bartlett"` / `None` | the long-run-variance kernel LLC uses to scale each unit; ignored by IPS/Fisher. `lrv_bandwidth` must be a finite value `>= 0` (refused by name otherwise); one reaching a unit's `T − 1` differences makes even a positive semi-definite kernel's estimate vanish (the demeaned autocovariances sum to zero), and a resulting non-positive estimate is refused naming `lrv_bandwidth` |
 
 ## How to read the output
 

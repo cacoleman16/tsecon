@@ -75,7 +75,9 @@ impl GasResults {
     ///
     /// # Errors
     ///
-    /// * [`GasError::InvalidHorizon`] — `h == 0`.
+    /// * [`GasError::InvalidHorizon`] — `h == 0`;
+    /// * [`GasError::InvalidParameter`] naming `horizon` — `h` past
+    ///   [`crate::MAX_FORECAST_HORIZON`].
     pub fn forecast(&self, h: usize) -> Result<Vec<f64>, GasError> {
         forecast_from(self.next_variance, self.params.omega, self.params.b, h)
     }

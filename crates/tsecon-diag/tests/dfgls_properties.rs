@@ -181,11 +181,33 @@ fn error_surface() {
         dfgls(&short, DfglsTrend::ConstantTrend, AIC),
         Err(DiagError::SeriesTooShort { .. })
     ));
-    // Fixed lag too large for the sample.
+    // Fixed lag too large for the sample: refused naming the order and the
+    // largest that fits (n >= 2 lags + 3 -> lags <= 8 at n = 20).
     let y = walk(20, 5);
+    match dfgls(&y, DfglsTrend::Constant, AdfLagSelection::Fixed(10)) {
+        Err(e @ DiagError::LagOrderTooLong { .. }) => {
+            assert!(matches!(
+                e,
+                DiagError::LagOrderTooLong {
+                    param: "lags",
+                    value: 10,
+                    max: Some(8),
+                    ..
+                }
+            ));
+            assert!(e.to_string().contains("pass lags <= 8"), "{e}");
+        }
+        other => panic!("expected LagOrderTooLong, got {other:?}"),
+    }
+    assert!(dfgls(&y, DfglsTrend::Constant, AdfLagSelection::Fixed(8)).is_ok());
+    // A search cap too large for the sample, named as the cap.
     assert!(matches!(
-        dfgls(&y, DfglsTrend::Constant, AdfLagSelection::Fixed(10)),
-        Err(DiagError::SeriesTooShort { .. })
+        dfgls(&y, DfglsTrend::Constant, AdfLagSelection::Aic(Some(9))),
+        Err(DiagError::LagOrderTooLong {
+            param: "maxlag",
+            max: Some(8),
+            ..
+        })
     ));
     // An exact linear trend: the GLS detrending fit is exact and the
     // regression degenerates — a teaching error, not a garbage number.

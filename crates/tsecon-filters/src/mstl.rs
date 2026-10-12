@@ -50,7 +50,7 @@
 //! golden.
 
 use crate::error::{check_finite, FiltersError};
-use crate::stl::{sample_var, stl, StlParams};
+use crate::stl::{check_iteration_budget, resolve_config, sample_var, stl, StlParams};
 
 // ------------------------------------------------------------- parameters
 
@@ -251,6 +251,13 @@ fn resolve_periods_windows(
 ///   `inner_iter = 0`).
 /// * [`FiltersError::SeriesTooShort`] — every period was `>= n / 2` and
 ///   therefore dropped.
+/// * [`FiltersError::IterationBudget`] — `iterate` rounds of
+///   `inner_iter x (outer_iter + 1)` inner passes per period whose LOESS
+///   work exceeds [`crate::STL_WORK_BUDGET`] (the default counts — at most
+///   [`crate::STL_FREE_PASSES`] passes per fit over at most two rounds —
+///   are never refused); checked before any smoothing, naming the count
+///   (`inner_iter`, `outer_iter` or `iterate`) and its largest admissible
+///   value.
 pub fn mstl(y: &[f64], periods: &[usize], params: &MstlParams) -> Result<MstlResult, FiltersError> {
     check_finite(y)?;
     let n = y.len();
@@ -267,6 +274,21 @@ pub fn mstl(y: &[f64], periods: &[usize], params: &MstlParams) -> Result<MstlRes
     let num = periods.len();
     // statsmodels: a single seasonal component needs no refinement rounds.
     let iterate = if num == 1 { 1 } else { params.iterate };
+    // Resolve (and validate) every per-period STL configuration up front,
+    // then size the whole decomposition against the STL work budget before
+    // any smoothing.
+    let cfgs = periods
+        .iter()
+        .zip(&windows)
+        .map(|(&p, &w)| {
+            let sp = StlParams {
+                seasonal: w,
+                ..params.stl.clone()
+            };
+            resolve_config(n, p, &sp)
+        })
+        .collect::<Result<Vec<_>, _>>()?;
+    check_iteration_budget("mstl", n, &cfgs, iterate, true)?;
 
     let mut seasonal: Vec<Vec<f64>> = vec![vec![0.0; n]; num];
     let mut deseas: Vec<f64> = y.to_vec();

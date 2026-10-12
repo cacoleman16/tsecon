@@ -83,6 +83,7 @@ use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_optim::{lbfgs, LbfgsOptions, ObjectiveFn};
 use tsecon_rng::Stream;
 
+use crate::budget::{check_count, fits};
 use crate::error::MlError;
 use crate::standardize::Scaler;
 use crate::util::check_xy;
@@ -382,17 +383,25 @@ impl Layout {
                 what: "every layer must have at least one unit".to_string(),
             });
         }
+        let overflow = || MlError::InvalidValue {
+            what: "the layer widths imply more weights and intercepts than a usize can \
+                   count; pass widths that fit the data"
+                .to_string(),
+        };
         let n_layers = units.len() - 1;
         let mut coef_off = Vec::with_capacity(n_layers);
         let mut off = 0usize;
         for l in 0..n_layers {
             coef_off.push(off);
-            off += units[l] * units[l + 1];
+            off = units[l]
+                .checked_mul(units[l + 1])
+                .and_then(|c| off.checked_add(c))
+                .ok_or_else(overflow)?;
         }
         let mut bias_off = Vec::with_capacity(n_layers);
         for l in 0..n_layers {
             bias_off.push(off);
-            off += units[l + 1];
+            off = off.checked_add(units[l + 1]).ok_or_else(overflow)?;
         }
         Ok(Self {
             units: units.to_vec(),
@@ -873,6 +882,141 @@ fn check_hidden(hidden: &[usize]) -> Result<(), MlError> {
     Ok(())
 }
 
+/// Weights and intercepts of the net `[p, hidden..., 1]`, or `None` when the
+/// count overflows.
+fn n_parameters_of(p: usize, hidden: &[usize]) -> Option<usize> {
+    let mut fan_in = p;
+    let mut total = 0usize;
+    for &fan_out in hidden.iter().chain(core::iter::once(&1)) {
+        total = total.checked_add(fan_in.checked_mul(fan_out)?.checked_add(fan_out)?)?;
+        fan_in = fan_out;
+    }
+    Some(total)
+}
+
+/// The working set of [`mlp_regression`] in `f64`-sized values, or `None`
+/// on overflow. One member trains with seven parameter-length vectors (the
+/// weights, the best weights, the Adam moments and three gradients) and
+/// the activations and deltas of every hidden and output unit over at most
+/// `3 n + m` rows (training, validation, mini-batch and prediction passes);
+/// every member keeps its weights, its test predictions, its substream and
+/// `path_len` entries of each loss path; the standardized data and the
+/// fitted values are fixed.
+fn mlp_values(
+    n: usize,
+    p: usize,
+    m: usize,
+    hidden: &[usize],
+    n_seeds: usize,
+    path_len: usize,
+) -> Option<usize> {
+    let n_par = n_parameters_of(p, hidden)?;
+    let width = hidden
+        .iter()
+        .try_fold(1usize, |acc, &h| acc.checked_add(h))?;
+    let rows = n.checked_mul(3)?.checked_add(m)?;
+    let member = n_par
+        .checked_add(m)?
+        .checked_add(path_len.checked_mul(2)?)?
+        .checked_add(29)?;
+    n_seeds
+        .checked_mul(member)?
+        .checked_add(n_par.checked_mul(7)?)?
+        .checked_add(width.checked_mul(rows)?.checked_mul(2)?)?
+        .checked_add(n.checked_add(m)?.checked_mul(p.checked_add(1)?)?)?
+        .checked_add(n.checked_mul(3)?)
+}
+
+/// Refuses a network, an ensemble or an epoch count whose working set
+/// exceeds the crate's [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget,
+/// naming `hidden[i]`, `n_seeds`, `max_epochs` or `patience`, before
+/// anything is allocated. A width or an ensemble of `2^31` used to reach the
+/// allocator and abort the process.
+///
+/// Under Adam the loss paths enter at the length every member is certain to
+/// record: all `max_epochs` epochs without a validation split, and with one
+/// at least `min(max_epochs, patience + 1)`, because early stopping fires at
+/// the earliest once `patience` epochs without improvement follow the first.
+/// So `max_epochs = 2^31` with the default patience runs until the rule
+/// fires, while a `patience` that leaves the rule no room to fire before an
+/// unreachable `max_epochs` is refused instead of running for hours and
+/// then aborting.
+fn check_mlp_budget(
+    n: usize,
+    p: usize,
+    m: usize,
+    n_val: usize,
+    patience: usize,
+    opts: &MlpOptions,
+) -> Result<(), MlError> {
+    // L-BFGS records two entries per path.
+    let short_path = if opts.solver == Solver::Lbfgs { 2 } else { 0 };
+    // The network alone, one member: blame the widest layer.
+    let hidden = &opts.hidden;
+    if !fits(mlp_values(n, p, m, hidden, 1, short_path)) {
+        let (i, &w) = hidden
+            .iter()
+            .enumerate()
+            .max_by_key(|&(_, &w)| w)
+            .unwrap_or((0, &0));
+        check_count(
+            &format!("hidden[{i}]"),
+            w,
+            1,
+            "one member of this network (its weights and intercepts, its training \
+             workspace, and the activations and deltas of every unit over the rows of x)",
+            |wi| {
+                let mut h = hidden.clone();
+                h[i] = wi;
+                mlp_values(n, p, m, &h, 1, short_path)
+            },
+        )?;
+    }
+    check_count(
+        "n_seeds",
+        opts.n_seeds,
+        1,
+        "the seed ensemble (per member: its kept weights, test predictions and substream)",
+        |s| mlp_values(n, p, m, hidden, s, short_path),
+    )?;
+    if opts.solver == Solver::Adam {
+        let paths = |len: usize| mlp_values(n, p, m, hidden, opts.n_seeds, len);
+        let stop_floor = patience.saturating_add(1);
+        if n_val == 0 {
+            check_count(
+                "max_epochs",
+                opts.max_epochs,
+                1,
+                "the loss paths, which record every one of max_epochs epochs per member \
+                 when there is no validation split to stop early (validation_fraction = 0),",
+                paths,
+            )?;
+        } else if opts.max_epochs <= stop_floor {
+            check_count(
+                "max_epochs",
+                opts.max_epochs,
+                1,
+                &format!(
+                    "the loss paths, which record every one of max_epochs epochs per member \
+                     because patience = {patience} leaves early stopping no room to fire \
+                     before the last epoch,"
+                ),
+                paths,
+            )?;
+        } else {
+            check_count(
+                "patience",
+                patience,
+                1,
+                "the loss paths, which record at least patience + 1 epochs per member \
+                 before early stopping can fire,",
+                |pt| paths(pt.saturating_add(1)),
+            )?;
+        }
+    }
+    Ok(())
+}
+
 /// Smallest `n` for which the split `n - floor(vf n) >= MIN_TRAIN_ROWS`
 /// (and `floor(vf n) >= 1` when `vf > 0`) is feasible.
 fn required_n(vf: f64) -> usize {
@@ -1120,8 +1264,10 @@ fn train_member(
         }
         Solver::Adam => {
             let mut adam = AdamState::new(layout.len);
-            let mut train_path = Vec::with_capacity(opts.max_epochs);
-            let mut val_path = Vec::with_capacity(opts.max_epochs);
+            // Grown as epochs run, never reserved from max_epochs: with early
+            // stopping a large max_epochs means "until the rule fires".
+            let mut train_path = Vec::new();
+            let mut val_path = Vec::new();
             let mut best_val = f64::INFINITY;
             let mut best_theta = theta.clone();
             let mut best_epoch = 0usize;
@@ -1238,6 +1384,14 @@ fn train_member(
 ///   argument passed under `solver = Lbfgs`;
 /// * [`MlError::InvalidArgument`] for a bad `alpha`, `learning_rate`,
 ///   `validation_fraction`, `max_epochs`, `patience`, or `n_seeds`;
+/// * [`MlError::InvalidValue`] naming `hidden[i]`, `n_seeds`, or (under
+///   Adam) `max_epochs` or `patience` when the working set it sizes exceeds
+///   the crate's [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, checked
+///   before anything is allocated. The loss paths count at the length every
+///   member records for certain: `max_epochs` epochs with
+///   `validation_fraction = 0`, and with a validation split
+///   `min(max_epochs, patience + 1)`, so a large `max_epochs` alone runs
+///   until early stopping fires;
 /// * [`MlError::Diverged`] if a member's loss became non-finite.
 pub fn mlp_regression(
     x: MatRef<'_, f64>,
@@ -1268,6 +1422,14 @@ pub fn mlp_regression(
     }
     let (n_train, n_val) = split_counts(n, opts.validation_fraction)?;
     let res = resolve_solver_args(opts, n_train)?;
+    check_mlp_budget(
+        n,
+        p,
+        x_test.map_or(0, |xt| xt.nrows()),
+        n_val,
+        res.patience,
+        opts,
+    )?;
 
     // --- standardization, fit on the training rows only ---------------
     let (x_all, x_test_rows, x_mean, x_scale) = if opts.standardize {

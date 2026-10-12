@@ -1,0 +1,5 @@
+vib k=3: largest admitted n_boot = 1056780
+memory allocation of 989146080 bytes failed
+   4: <tsecon_var::irf_bootstrap::DrawStore>::new
+   5: tsecon_var::irf_bootstrap::run_bootstrap
+rc=134

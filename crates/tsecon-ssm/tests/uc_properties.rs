@@ -10,11 +10,11 @@
 
 mod common;
 
-use common::Lcg;
+use common::{as_f64_vec, load_fixture, Lcg};
 use tsecon_linalg::faer::Mat;
 use tsecon_ssm::{
-    tvp_regression, unobserved_components, FreqSeasonalSpec, Initialization, LinearGaussianSSM,
-    SsmError, TrendSpec, TvpOptions, UcOptions, UcSpec,
+    tvp_regression, unobserved_components, CycleInit, FreqSeasonalSpec, Initialization,
+    LinearGaussianSSM, SsmError, TrendSpec, TvpOptions, UcOptions, UcSpec,
 };
 
 fn normal(rng: &mut Lcg) -> f64 {
@@ -610,8 +610,9 @@ fn a_nyquist_harmonic_state_cannot_change_the_likelihood() {
 /// with `F_inf ~ (rho sin lambda)^2`, contributing
 /// `-(ln 2 pi + ln F_inf)/2 ~ -ln lambda`. Halving `lambda` therefore buys
 /// `ln 2 ~ 0.69` of log-likelihood for nothing, forever. A free optimizer
-/// on `(0, pi)` reports a "cycle" of period `10^6` and a log-likelihood a
-/// dozen points above any genuine optimum; the default period bound
+/// on `(0, pi)` walks into it — on this series it stops at a "cycle" of
+/// period `2.7e7`, 1.4 points above the fit inside the default bounds
+/// (`scripts/uc_long_diffuse_evidence.py`); the default period bound
 /// `(2, nobs)` keeps it out of that region, and an explicit
 /// `cycle_period_bounds` puts the user back in charge.
 #[test]
@@ -654,24 +655,33 @@ fn the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero() {
         prev = fit.loglik;
     }
     eprintln!("cycle frequency -> 0 divergence: {lls:?}");
-    // Measured at this seed: -188.15 at 1e-2, -183.55 at 1e-4, -162.53 at
-    // 1e-6 — 25 log-likelihood points of pure singularity over four
-    // decades. Assert at least 3 per two decades so the test fails on a
-    // regression, not on noise.
+    // Measured at this seed: -188.153 at 1e-2, -183.546 at 1e-4, -178.951
+    // at 1e-6 — each two decades of frequency buy `ln 100 = 4.605` (4.607
+    // and 4.595), the `-ln(rho sin lambda)` of the one diffuse element that
+    // resolves the weakly observed state. (The exact log-likelihood, in
+    // 90-digit arithmetic, is -188.153, -183.546, -178.941; at 1e-6 the
+    // filter refuses the first sighting of that state and takes the next,
+    // 0.010 short: `scripts/uc_exact_diffuse_reference.py`.) Assert that slope,
+    // from both sides: too little is the divergence gone, too much is
+    // annihilated diffuse mass taken for a diffuse element. (Before the
+    // diffuse-element test was rebuilt on a square-root factor it took
+    // such dust at 1e-6 and reported -162.53, 16.4 points above where the
+    // `ln 100` slope from 1e-4 puts it.)
     for w in lls.windows(2) {
+        let slope = w[1].1 - w[0].1;
         assert!(
-            w[1].1 - w[0].1 > 3.0,
-            "two decades of frequency bought only {}",
-            w[1].1 - w[0].1
+            (slope - 100f64.ln()).abs() < 0.05,
+            "two decades of frequency bought {slope}, not ln 100: {lls:?}"
         );
     }
-    // Below roughly 1e-7 the filter's cancellation guard declares the
-    // direction resolved (`F_inf ~ (rho sin lambda)^2` falls under
-    // `TOLERANCE_CANCEL` times the magnitude `P_inf` would have had
-    // without cancellation), the second cycle state simply stays diffuse
-    // as it does at `lambda = 0` exactly, and the divergence stops. That
-    // is a floor on the damage, not a fix: 1e-6 is already 25 points of
-    // nonsense, which is why the period bound is the answer.
+    // Below roughly 1e-7 the filter's diffuse-element test refuses every
+    // sighting of the direction (`F_root ~ (rho sin lambda)^2` of the
+    // diffuse variance the observation could see with nothing resolved
+    // falls under `TOLERANCE_CANCEL`, where the covariance-form update could
+    // not apply it faithfully anyway), the second cycle state simply stays
+    // diffuse as it does at `lambda = 0` exactly, and the divergence
+    // stops. That is a floor on the damage, not a fix: 1e-6 is already
+    // 9.2 points of nonsense, which is why the period bound is the answer.
     let deep = unobserved_components(
         &y,
         &spec,
@@ -730,6 +740,741 @@ fn the_cycle_log_likelihood_diverges_as_the_frequency_goes_to_zero() {
             );
         }
     }
+}
+
+fn fixture_columns(v: &serde_json::Value) -> Vec<Vec<f64>> {
+    let r: Vec<Vec<f64>> = v.as_array().unwrap().iter().map(as_f64_vec).collect();
+    (0..r[0].len())
+        .map(|j| r.iter().map(|row| row[j]).collect())
+        .collect()
+}
+
+fn assert_bits(tag: &str, what: &str, got: &[f64], want: &[u64]) {
+    assert_eq!(got.len(), want.len(), "{tag} {what}: length");
+    for (i, (g, w)) in got.iter().zip(want).enumerate() {
+        assert_eq!(
+            g.to_bits(),
+            *w,
+            "{tag} {what}[{i}]: {g} is not bit-identical to the 0.10.0 value {}",
+            f64::from_bits(*w)
+        );
+    }
+}
+
+/// Default preservation, bit for bit. The 0.11.0 follow-ups (stationary
+/// cycle, AR component, state-vector regression) touch the shared MLE
+/// layer (`mle.rs`: the joint AR transform, the probe guard and the
+/// identification ties of the standard errors) and the structural model's
+/// initialization and forecast paths. None of that may move a single bit
+/// of a specification that uses none of them. These are the exact
+/// IEEE-754 patterns the 0.10.0 code (`e38965e`) produced, recorded
+/// before any of those files was edited, for three `uc.json` MLE cases
+/// (variance-only, bounded cycle parameters, free regression
+/// coefficients) and the `tvp_regression` MLE — the second user of
+/// `mle.rs`, whose path must stay bit-identical. A golden test at 1e-8
+/// would not notice a reassociated sum; this does.
+#[test]
+fn defaults_are_bit_identical_to_0_10_0() {
+    let fx = load_fixture("uc.json");
+    let nile = as_f64_vec(&fx["nile"]["y"]);
+    let f = unobserved_components(&nile, &UcSpec::default(), &UcOptions::default()).unwrap();
+    assert_bits("nile", "loglik", &[f.loglik], &[0xc083cbb76d23c4ae]);
+    assert_bits(
+        "nile",
+        "params",
+        &f.params,
+        &[0x40cd7d4268b7760b, 0x4096f4b488cc7680],
+    );
+    assert_bits(
+        "nile",
+        "se",
+        &f.se,
+        &[0x40a89317df560f2d, 0x4094017efef6eec5],
+    );
+
+    let y = as_f64_vec(&fx["sim"]["y"]);
+    let x = fixture_columns(&fx["sim"]["x"]);
+    let cycle = UcSpec {
+        cycle: true,
+        damped_cycle: true,
+        stochastic_cycle: true,
+        cycle_period_bounds: (6.0, 20.0),
+        ..UcSpec::default()
+    };
+    let f = unobserved_components(&y, &cycle, &UcOptions::default()).unwrap();
+    assert_bits("cycle", "loglik", &[f.loglik], &[0xc06d06ea76813148]);
+    assert_bits(
+        "cycle",
+        "params",
+        &f.params,
+        &[
+            0x3f76f5544d950667,
+            0x3fc98e28a3e74585,
+            0x40037d3eb1de1443,
+            0x3fd6fc7ec7a74dc9,
+            0x3f8244190a46e63f,
+        ],
+    );
+    assert_bits(
+        "cycle",
+        "se",
+        &f.se,
+        &[
+            0x7ff8000000000000,
+            0x3fbac27dcbe759c6,
+            0x3fd8103af7865c33,
+            0x3f01df92c99cd68c,
+            0x3eafd953229b4795,
+        ],
+    );
+
+    let exog = UcSpec {
+        exog: x,
+        ..UcSpec::default()
+    };
+    let f = unobserved_components(&y, &exog, &UcOptions::default()).unwrap();
+    assert_bits("exog", "loglik", &[f.loglik], &[0xc06cd50c73ebc835]);
+    assert_bits(
+        "exog",
+        "params",
+        &f.params,
+        &[
+            0x4000e96147c3a468,
+            0x3fc3733af84d50e5,
+            0x3fe573489ff70168,
+            0xbfc14b40629504df,
+        ],
+    );
+    assert_bits(
+        "exog",
+        "se",
+        &f.se,
+        &[
+            0x3fd463496d7f4faf,
+            0x3fb4ad24cd708cc0,
+            0x3fc1ddc4e0e28ede,
+            0x3fbe77e67c5d1fe5,
+        ],
+    );
+
+    let tv = &fx["tvp"];
+    let f = tvp_regression(
+        &as_f64_vec(&tv["y"]),
+        &fixture_columns(&tv["x"]),
+        &TvpOptions::default(),
+    )
+    .unwrap();
+    assert_bits("tvp", "loglik", &[f.loglik], &[0xc073968704eb341f]);
+    assert_bits(
+        "tvp",
+        "params",
+        &f.params,
+        &[
+            0x3ff2bfa11a7f9f35,
+            0x3f7fcce3c2d9ada5,
+            0x3f518bc06c303635,
+            0x3b5da4f66ec5b233,
+        ],
+    );
+    assert_bits(
+        "tvp",
+        "se",
+        &f.se,
+        &[
+            0x3fc03479e103b2d1,
+            0x3f7c400ee97e1c14,
+            0x3f53cbd582eee868,
+            0x7ff8000000000000,
+        ],
+    );
+}
+
+/// The stationary cycle initialization removes the `lambda -> 0`
+/// singularity of the diffuse cycle pinned above: on the same series, at
+/// the same parameters and with the same opened-up bounds, the
+/// log-likelihood is flat in the frequency as it goes to zero, because
+/// no cycle state is diffuse and nothing contributes `-ln F_inf`.
+#[test]
+fn the_stationary_cycle_has_no_low_frequency_singularity() {
+    let mut rng = Lcg::new(808);
+    let n = 120;
+    let mut y = Vec::with_capacity(n);
+    let mut level = 0.0;
+    for _ in 0..n {
+        y.push(level + normal(&mut rng));
+        level += 0.3 * normal(&mut rng);
+    }
+    let spec = UcSpec {
+        trend: TrendSpec::LocalLevel,
+        cycle: true,
+        damped_cycle: true,
+        stochastic_cycle: true,
+        cycle_period_bounds: (2.0, 1e9),
+        cycle_init: CycleInit::Stationary,
+        ..UcSpec::default()
+    };
+    let mut lls = Vec::new();
+    for &freq in &[1e-2f64, 1e-4, 1e-6, 1e-8] {
+        let fit = unobserved_components(
+            &y,
+            &spec,
+            &UcOptions {
+                fixed_params: Some(vec![0.8, 0.3, 0.2, freq, 0.9]),
+                ..UcOptions::default()
+            },
+        )
+        .unwrap();
+        assert_eq!(fit.nobs_diffuse, 1, "only the level is diffuse");
+        lls.push(fit.loglik);
+    }
+    let spread = lls.iter().cloned().fold(f64::NEG_INFINITY, f64::max)
+        - lls.iter().cloned().fold(f64::INFINITY, f64::min);
+    eprintln!("stationary cycle, frequency 1e-2 .. 1e-8: {lls:?} (spread {spread:e})");
+    // Measured: the four values agree to 0.01; the diffuse cycle climbs
+    // 9.2 points from 1e-2 to 1e-6 on the same series.
+    assert!(spread < 0.2, "spread {spread}");
+}
+
+/// Seeded Monte Carlo under the stationary cycle initialization: a local
+/// level plus a damped stochastic cycle (period 12, damping 0.9), T = 200,
+/// simulated from the cycle's stationary distribution. The MLE recovers
+/// the period and the damping: the median absolute error is small and no
+/// fit escapes the sampling band.
+///
+/// This is a smoke check at eight seeds, and its medians (0.637 and
+/// 0.0117 here) are not the estimator's recovery property: over 400 seeds
+/// of the same series (`scripts/mc_uc_stationary_cycle_recovery.py`) the
+/// medians are 0.45 and 0.022, and 2 of the 400 fits miss the band
+/// asserted per seed below (seed 47 does not converge, seed 76 lands at
+/// period 15.1).
+#[test]
+fn stationary_cycle_mle_recovers_damping_and_period() {
+    let (period, rho, s2c, s2l, s2e) = (12.0f64, 0.9f64, 0.5f64, 0.01f64, 0.2f64);
+    let lam = 2.0 * std::f64::consts::PI / period;
+    let (n, reps) = (200usize, 8u64);
+    let sd0 = (s2c / (1.0 - rho * rho)).sqrt();
+    let spec = UcSpec {
+        cycle: true,
+        damped_cycle: true,
+        stochastic_cycle: true,
+        cycle_period_bounds: (4.0, 40.0),
+        cycle_init: CycleInit::Stationary,
+        ..UcSpec::default()
+    };
+    let (mut ep, mut ed) = (Vec::new(), Vec::new());
+    for seed in 0..reps {
+        let mut rng = Lcg::new(31_000 + seed);
+        let (mut c, mut cs) = (sd0 * normal(&mut rng), sd0 * normal(&mut rng));
+        let mut level = 0.0;
+        let mut y = Vec::with_capacity(n);
+        for _ in 0..n {
+            y.push(level + c + s2e.sqrt() * normal(&mut rng));
+            let (nc, ncs) = (
+                rho * (lam.cos() * c + lam.sin() * cs) + s2c.sqrt() * normal(&mut rng),
+                rho * (-lam.sin() * c + lam.cos() * cs) + s2c.sqrt() * normal(&mut rng),
+            );
+            c = nc;
+            cs = ncs;
+            level += s2l.sqrt() * normal(&mut rng);
+        }
+        let fit = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+        assert!(fit.converged, "seed {seed}");
+        assert_eq!(fit.k_diffuse, 1, "only the level is diffuse");
+        let p_hat = 2.0 * std::f64::consts::PI / fit.params[3];
+        let d_hat = fit.params[4];
+        assert!(
+            (p_hat - period).abs() < 3.0 && (d_hat - rho).abs() < 0.15,
+            "seed {seed}: period {p_hat}, damping {d_hat}"
+        );
+        assert!(
+            fit.se[3].is_finite() && fit.se[4].is_finite(),
+            "seed {seed}"
+        );
+        ep.push((p_hat - period).abs());
+        ed.push((d_hat - rho).abs());
+    }
+    let (mp, md) = (median(&mut ep), median(&mut ed));
+    eprintln!(
+        "stationary cycle MC ({reps} seeds, T = {n}): median |period - 12| = {mp:.3}, \
+         median |damping - 0.9| = {md:.4}"
+    );
+    assert!(mp < 1.0, "median period error {mp}");
+    assert!(md < 0.06, "median damping error {md}");
+}
+
+fn ar_spec(trend: TrendSpec, p: usize) -> UcSpec {
+    UcSpec {
+        trend,
+        autoregressive: Some(p),
+        ..UcSpec::default()
+    }
+}
+
+/// The AR pile-up and its identification tie, on real data. From the
+/// first rung alone the US-GDP local linear trend + AR(2) search lands on
+/// the local optimum where the AR variance piles up at zero (the level
+/// variance absorbs everything): `sigma2.ar` is flagged, and because a
+/// zero-variance stationary block is identically zero, `ar.L1`/`ar.L2`
+/// carry no information and get NaN standard errors — while the level and
+/// trend variances keep finite ones instead of all of them going NaN with
+/// a singular Hessian. The default three rungs reach the genuine optimum
+/// (-250.18, `uc_extensions_golden.rs`); at a zero AR variance the
+/// likelihood is finite.
+#[test]
+fn a_piled_up_ar_variance_drops_the_ar_coefficients_from_the_se() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["lgdp"]);
+    let spec = ar_spec(TrendSpec::LocalLinearTrend, 2);
+    let fit = unobserved_components(
+        &y,
+        &spec,
+        &UcOptions {
+            n_starts: 1,
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    eprintln!(
+        "lgdp lltrend+AR(2), one rung: loglik {}, params {:?}, se {:?}, at_boundary {:?}",
+        fit.loglik, fit.params, fit.se, fit.at_boundary
+    );
+    let i = |n: &str| fit.param_names.iter().position(|p| p == n).unwrap();
+    assert!(fit.loglik < -255.0, "the local optimum: {}", fit.loglik);
+    assert!(fit.at_boundary[i("sigma2.ar")]);
+    assert!(fit.se[i("ar.L1")].is_nan() && fit.se[i("ar.L2")].is_nan());
+    assert!(!fit.at_boundary[i("ar.L1")] && !fit.at_boundary[i("ar.L2")]);
+    assert!(fit.se[i("sigma2.level")].is_finite() && fit.se[i("sigma2.trend")].is_finite());
+    let mut p = fit.params.clone();
+    p[i("sigma2.ar")] = 0.0;
+    let zero = unobserved_components(
+        &y,
+        &spec,
+        &UcOptions {
+            fixed_params: Some(p),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    assert!(zero.loglik.is_finite() && (zero.loglik - fit.loglik).abs() < 1e-4);
+}
+
+/// The degenerate "likelihood" of a stationary block at the edge of the
+/// stationarity region in floating point. A search on inflation (local
+/// level + AR(2), five rungs) once reached a partial autocorrelation of
+/// exactly 1 from a saturated `tanh`: the Lyapunov solve still passes
+/// (spectral radius 1 - 1e-16), the unconditional variance is 1e16 times
+/// the one-step variance, the filter skips every later observation as
+/// numerically singular, and the "log-likelihood" read -0.92 — one
+/// `-ln(2 pi)/2` term — against a genuine optimum of -453.74. Such a
+/// likelihood is now undefined in the search and refused at fixed
+/// parameters, so the five-rung fit reaches the genuine optimum.
+#[test]
+fn a_root_within_roundoff_of_the_unit_circle_cannot_fake_a_likelihood() {
+    let fx = load_fixture("uc_extensions.json");
+    let infl = as_f64_vec(&fx["data"]["infl"]);
+    let fit = unobserved_components(
+        &infl,
+        &ar_spec(TrendSpec::LocalLevel, 2),
+        &UcOptions {
+            n_starts: 5,
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    eprintln!(
+        "infl llevel+AR(2), five rungs: {} {:?}",
+        fit.loglik, fit.params
+    );
+    assert!(
+        (fit.loglik - (-453.737_368_766_867_86)).abs() < 1e-5,
+        "{}",
+        fit.loglik
+    );
+    let nile = as_f64_vec(&fx["data"]["nile"]);
+    // What the raw filter makes of a near-unit AR(1) beside a diffuse level
+    // (the specification below, built by hand): every observation after the
+    // first skipped as singular, and a "log-likelihood" of exactly one
+    // diffuse term, -ln(2 pi)/2 = -0.919 (measured), against -632.24 at
+    // phi = 0.5 and statsmodels' own -637.04 at phi = 0.9999.
+    let phi = 1.0 - 1e-15;
+    let raw = LinearGaussianSSM::builder(1, 2, 2)
+        .z(Mat::from_fn(1, 2, |_, _| 1.0))
+        .h(Mat::from_fn(1, 1, |_, _| 8000.0))
+        .t(Mat::from_fn(2, 2, |i, j| match (i, j) {
+            (0, 0) => 1.0,
+            (1, 1) => phi,
+            _ => 0.0,
+        }))
+        .r(Mat::from_fn(2, 2, |i, j| if i == j { 1.0 } else { 0.0 }))
+        .q(Mat::from_fn(2, 2, |i, j| match (i, j) {
+            (0, 0) => 1400.0,
+            (1, 1) => 6000.0,
+            _ => 0.0,
+        }))
+        .initialization(Initialization::Mixed {
+            diffuse: vec![true, false],
+        })
+        .build()
+        .unwrap();
+    let raw_ll = raw
+        .loglike(Mat::from_fn(nile.len(), 1, |i, _| nile[i]).as_ref())
+        .unwrap();
+    eprintln!("raw filter at phi = 1 - 1e-15: loglik {raw_ll}");
+    assert!(
+        (raw_ll + 0.5 * (2.0 * std::f64::consts::PI).ln()).abs() < 1e-9,
+        "{raw_ll}"
+    );
+    let err = unobserved_components(
+        &nile,
+        &ar_spec(TrendSpec::LocalLevel, 1),
+        &UcOptions {
+            fixed_params: Some(vec![8000.0, 1400.0, 6000.0, 1.0 - 1e-15]),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(
+        err.contains("cannot resolve observation") && err.contains("fixed_params"),
+        "{err}"
+    );
+}
+
+/// Scale equivariance with an AR component: `y -> c y` maps every
+/// variance by `c^2`, leaves the AR coefficients unchanged, and shifts the
+/// log-likelihood by exactly `-(nobs_observed - nobs_diffuse) ln c`.
+#[test]
+fn ar_fit_is_invariant_to_the_scale_of_y() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["nile"]);
+    let c = 1e-3;
+    let yc: Vec<f64> = y.iter().map(|v| v * c).collect();
+    let spec = ar_spec(TrendSpec::LocalLevel, 1);
+    let a = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+    let b = unobserved_components(&yc, &spec, &UcOptions::default()).unwrap();
+    let mut worst: f64 = 0.0;
+    for (i, name) in a.param_names.iter().enumerate() {
+        let want = if name.starts_with("sigma2") {
+            a.params[i] * c * c
+        } else {
+            a.params[i]
+        };
+        worst = worst.max((b.params[i] - want).abs() / want.abs());
+    }
+    let shift = (a.nobs_observed - a.nobs_diffuse) as f64 * c.ln();
+    let ll = (b.loglik - (a.loglik - shift)).abs() / a.loglik.abs();
+    eprintln!("AR scale equivariance (c = {c}): params {worst:e}, loglik {ll:e}");
+    // Measured: 7.3e-8 on the estimates (the two searches standardize by
+    // scales that differ in the last ulp, and four parameters give the
+    // Nelder-Mead polish room to stop a hair apart) and 2.5e-16 on the
+    // log-likelihood.
+    assert!(worst < 1e-6, "params {worst:e}");
+    assert!(ll < 1e-12, "loglik {ll:e}");
+    assert_eq!(a.at_boundary, b.at_boundary);
+}
+
+/// Seeded Monte Carlo: local level + AR(1) (sigma2_eps = 0.25,
+/// sigma2_level = 0.05, sigma2_ar = 1, phi = 0.8), T = 200, simulated from
+/// the AR's stationary distribution. The MLE recovers phi: the median
+/// absolute error is small, no estimate escapes the sampling band, and the
+/// AR coefficient never comes back flagged.
+#[test]
+fn ar_mle_recovers_the_coefficient() {
+    let (s2e, s2l, s2a, phi) = (0.25f64, 0.05f64, 1.0f64, 0.8f64);
+    let (n, reps) = (200usize, 10u64);
+    let spec = ar_spec(TrendSpec::LocalLevel, 1);
+    let mut err = Vec::new();
+    for seed in 0..reps {
+        let mut rng = Lcg::new(41_000 + seed);
+        let mut a = (s2a / (1.0 - phi * phi)).sqrt() * normal(&mut rng);
+        let mut level = 0.0;
+        let mut y = Vec::with_capacity(n);
+        for _ in 0..n {
+            y.push(level + a + s2e.sqrt() * normal(&mut rng));
+            a = phi * a + s2a.sqrt() * normal(&mut rng);
+            level += s2l.sqrt() * normal(&mut rng);
+        }
+        let fit = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+        let est = fit.params[3];
+        assert!((est - phi).abs() < 0.25, "seed {seed}: phi {est}");
+        assert!(!fit.at_boundary[3]);
+        err.push((est - phi).abs());
+    }
+    let m = median(&mut err);
+    eprintln!("llevel + AR(1) MC ({reps} seeds, T = {n}): median |phi - 0.8| = {m:.4}");
+    assert!(m < 0.12, "median error {m}");
+}
+
+/// Cross-API identity: white noise plus regressors in the state *is*
+/// recursive least squares, which `tvp_regression` is at zero coefficient
+/// variances. Filtered coefficients, one-step predictions and the
+/// log-likelihood agree to 1e-12.
+#[test]
+fn white_noise_plus_state_regression_is_tvp_regression_at_zero_variance() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["sim2_y_missing"]);
+    let x = fixture_columns(&fx["data"]["sim2_x"]);
+    let s2 = 0.8;
+    let uc = unobserved_components(
+        &y,
+        &UcSpec {
+            trend: TrendSpec::Irregular,
+            exog: x.clone(),
+            mle_regression: false,
+            ..UcSpec::default()
+        },
+        &UcOptions {
+            fixed_params: Some(vec![s2]),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap();
+    let tv = tvp_regression(
+        &y,
+        &x,
+        &TvpOptions {
+            constant: false,
+            fixed_params: Some(vec![s2, 0.0, 0.0]),
+            ..TvpOptions::default()
+        },
+    )
+    .unwrap();
+    let close = |a: f64, b: f64, what: &str| {
+        if a.is_nan() || b.is_nan() {
+            assert!(a.is_nan() && b.is_nan(), "{what}: {a} vs {b}");
+        } else {
+            assert!(
+                (a - b).abs() <= 1e-12 * b.abs().max(1.0),
+                "{what}: {a} vs {b}"
+            );
+        }
+    };
+    close(uc.loglik, tv.loglik, "loglik");
+    assert_eq!(uc.nobs_diffuse, tv.nobs_diffuse);
+    for t in 0..y.len() {
+        close(uc.fitted[t], tv.fitted[t], &format!("fitted[{t}]"));
+        for j in 0..2 {
+            close(
+                uc.regression_coefficients[j].filtered[t],
+                tv.beta_filtered[t][j],
+                &format!("beta[{t}][{j}]"),
+            );
+        }
+    }
+}
+
+/// Seeded Monte Carlo: at the true variance parameters the smoothed
+/// coefficient states are the GLS estimate with its exact covariance, so
+/// `beta_hat +/- 1.96 sqrt(regression_coefficients_var)` covers the true
+/// coefficient at the nominal 95% (local level + two regressors, T = 120,
+/// 2000 seeds, two coefficients each).
+#[test]
+fn state_regression_coefficient_intervals_cover_at_the_nominal_rate() {
+    let (s2e, s2l, beta) = (0.8f64, 0.3f64, [0.5f64, -0.3f64]);
+    let (n, reps) = (120usize, 2000u64);
+    let mut hits = [0usize; 2];
+    for seed in 0..reps {
+        let mut rng = Lcg::new(51_000 + seed);
+        let x: Vec<Vec<f64>> = (0..2)
+            .map(|_| (0..n).map(|_| normal(&mut rng)).collect())
+            .collect();
+        let mut level = 0.0;
+        let mut y = Vec::with_capacity(n);
+        for (x1, x2) in x[0].iter().zip(&x[1]) {
+            y.push(level + beta[0] * x1 + beta[1] * x2 + s2e.sqrt() * normal(&mut rng));
+            level += s2l.sqrt() * normal(&mut rng);
+        }
+        let fit = unobserved_components(
+            &y,
+            &UcSpec {
+                exog: x,
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            &UcOptions {
+                fixed_params: Some(vec![s2e, s2l]),
+                ..UcOptions::default()
+            },
+        )
+        .unwrap();
+        for j in 0..2 {
+            let c = &fit.regression_coefficients[j];
+            let half = 1.959964 * c.smoothed_var[n - 1].sqrt();
+            if (c.smoothed[n - 1] - beta[j]).abs() <= half {
+                hits[j] += 1;
+            }
+        }
+    }
+    let cov: Vec<f64> = hits.iter().map(|&h| h as f64 / reps as f64).collect();
+    eprintln!("state-regression 95% coefficient coverage ({reps} seeds): {cov:?}");
+    // Monte-Carlo standard error 0.0049 at 2000 replications; the band is
+    // three of them.
+    for c in &cov {
+        assert!((c - 0.95).abs() < 0.015, "coverage {c}");
+    }
+}
+
+/// Scale equivariance under state regression: `y -> c y` maps the
+/// variances by `c^2`, the smoothed coefficients by `c`, and shifts the
+/// log-likelihood by `-(nobs_observed - nobs_diffuse) ln c`.
+#[test]
+fn state_regression_fit_is_invariant_to_the_scale_of_y() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["sim2_y"]);
+    let x = fixture_columns(&fx["data"]["sim2_x"]);
+    let c = 50.0;
+    let yc: Vec<f64> = y.iter().map(|v| v * c).collect();
+    let spec = UcSpec {
+        exog: x,
+        mle_regression: false,
+        ..UcSpec::default()
+    };
+    let a = unobserved_components(&y, &spec, &UcOptions::default()).unwrap();
+    let b = unobserved_components(&yc, &spec, &UcOptions::default()).unwrap();
+    let mut worst: f64 = 0.0;
+    for i in 0..a.params.len() {
+        worst = worst.max((b.params[i] - a.params[i] * c * c).abs() / (a.params[i] * c * c));
+    }
+    for j in 0..2 {
+        let (ba, bb) = (
+            a.regression_coefficients[j].smoothed[0],
+            b.regression_coefficients[j].smoothed[0],
+        );
+        worst = worst.max((bb - ba * c).abs() / (ba * c).abs());
+    }
+    let shift = (a.nobs_observed - a.nobs_diffuse) as f64 * c.ln();
+    let ll = (b.loglik - (a.loglik - shift)).abs() / a.loglik.abs();
+    eprintln!(
+        "state-regression scale equivariance (c = {c}): params/beta {worst:e}, loglik {ll:e}"
+    );
+    assert!(worst < 1e-6, "params {worst:e}");
+    assert!(ll < 1e-12, "loglik {ll:e}");
+}
+
+/// The floating-point limit of the state regression. The coefficient
+/// states are diffuse and loaded by `x_t`, so regressor columns whose
+/// scales sit many orders of magnitude from each other (and from the unit
+/// loading of the level) leave diffuse directions the filter cannot
+/// resolve in floating point. Measured before the guard, on the fixture's
+/// local level with two regressors at the same variances: one column times
+/// 1e-8 ran the diffuse period to the end of the sample with the
+/// log-likelihood 27.7 off the exact units identity and that coefficient
+/// wrong in every digit; times 1e8, off by 1.2. Those are refused, naming
+/// `exog`; inside the resolvable range the units identity holds (shift
+/// exactly `-ln c`, coefficient by `1 / c`), and the MLE path, which
+/// searches on the scaled columns, is refused the same way rather than
+/// reporting the raw-units roundoff.
+#[test]
+fn state_regression_refuses_regressor_scales_the_filter_cannot_resolve() {
+    let fx = load_fixture("uc_extensions.json");
+    let y = as_f64_vec(&fx["data"]["sim2_y"]);
+    let x = fixture_columns(&fx["data"]["sim2_x"]);
+    let fit = |c: f64, fixed: bool| {
+        let mut xc = x.clone();
+        for v in xc[0].iter_mut() {
+            *v *= c;
+        }
+        unobserved_components(
+            &y,
+            &UcSpec {
+                exog: xc,
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            &UcOptions {
+                fixed_params: fixed.then(|| vec![0.8, 0.3]),
+                n_starts: 1,
+                ..UcOptions::default()
+            },
+        )
+    };
+    let base = fit(1.0, true).unwrap();
+    for c in [1e-4, 1e4] {
+        let f = fit(c, true).unwrap();
+        assert_eq!(f.nobs_diffuse, base.nobs_diffuse, "c = {c}");
+        let gap = f.loglik - (base.loglik - c.ln());
+        let beta = f.regression_coefficients[0].smoothed[0] * c
+            / base.regression_coefficients[0].smoothed[0]
+            - 1.0;
+        eprintln!("state regression, column times {c:e}: loglik gap {gap:e}, beta {beta:e}");
+        assert!(gap.abs() < 1e-7 && beta.abs() < 1e-8, "c = {c}");
+    }
+    for c in [1e-8, 1e8] {
+        for fixed in [true, false] {
+            let e = fit(c, fixed).unwrap_err().to_string();
+            assert!(
+                e.starts_with("invalid specification: exog: under mle_regression = false")
+                    && e.contains("would end at observation 120 instead of 3"),
+                "c = {c}, fixed = {fixed}: {e}"
+            );
+        }
+    }
+}
+
+/// The working-set bound. Bounding each count that costs states by the
+/// sample length does not bound `nobs * k_states^2`, the size of each of
+/// the four stored covariance sequences: an AR order or a dummy-seasonal
+/// period near the length of a long series used to ask for terabytes and
+/// end in an allocator abort. Both are refused by name before anything
+/// of that size is built; a specification under the bound is untouched.
+#[test]
+fn a_state_dimension_too_large_to_store_is_refused_by_name() {
+    let n = 20_000;
+    let mut rng = Lcg::new(77);
+    let y: Vec<f64> = (0..n).map(|_| normal(&mut rng)).collect();
+    for (spec, needle) in [
+        (
+            UcSpec {
+                autoregressive: Some(10_000),
+                ..UcSpec::default()
+            },
+            "autoregressive = 10000 costs 10000 states",
+        ),
+        (
+            UcSpec {
+                seasonal: Some(10_000),
+                ..UcSpec::default()
+            },
+            "seasonal = 10000 costs 9999 states",
+        ),
+        (
+            UcSpec {
+                trend: TrendSpec::Irregular,
+                exog: (0..60)
+                    .map(|_| (0..n).map(|_| normal(&mut rng)).collect())
+                    .collect(),
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            "exog under mle_regression = false costs 60 states",
+        ),
+    ] {
+        let e = unobserved_components(&y, &spec, &UcOptions::default())
+            .unwrap_err()
+            .to_string();
+        assert!(
+            e.contains(needle) && e.contains("beyond the 67108864 accepted"),
+            "{e}"
+        );
+    }
+    // 20000 * 57^2 = 64980000 cells is under the bound: that
+    // specification goes past the guard to the next check (a deliberately
+    // short fixed_params, so nothing of that size is built here).
+    let e = unobserved_components(
+        &y,
+        &UcSpec {
+            trend: TrendSpec::Irregular,
+            seasonal: Some(58),
+            ..UcSpec::default()
+        },
+        &UcOptions {
+            fixed_params: Some(vec![1.0]),
+            ..UcOptions::default()
+        },
+    )
+    .unwrap_err()
+    .to_string();
+    assert!(e.contains("fixed_params has length 1"), "{e}");
 }
 
 /// Every refusal names the offending argument.
@@ -954,10 +1699,150 @@ fn refusals_name_the_offending_argument() {
             )),
             "at most 64 starting values",
         ),
+        // The AR component: order 0, an order past the sample length,
+        // an order past the observation count, and a non-stationary fixed
+        // polynomial (refused by the partial autocorrelation that leaves
+        // (-1, 1)).
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(0)),
+                &UcOptions::default(),
+            )),
+            "autoregressive = 0",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(1 << 40)),
+                &UcOptions::default(),
+            )),
+            "autoregressive = 1099511627776 with 40 observations",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(39)),
+                &UcOptions::default(),
+            )),
+            "at least k_states + 2 = 42 observations",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(1)),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 1.2]),
+                    ..UcOptions::default()
+                },
+            )),
+            "fixed_params[3] (ar.L1) .. fixed_params[3] (ar.L1) = [1.2] is not a stationary \
+             autoregression: its partial autocorrelation at lag 1 is 1.2",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(1)),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 1.0]),
+                    ..UcOptions::default()
+                },
+            )),
+            "partial autocorrelation at lag 1 is 1,",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.autoregressive = Some(2)),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 0.5, 0.6]),
+                    ..UcOptions::default()
+                },
+            )),
+            "fixed_params[3] (ar.L1) .. fixed_params[4] (ar.L2) = [0.5, 0.6]",
+        ),
+        // State regression without regressors is inert, and a forecast
+        // still needs the future regressors.
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.mle_regression = false),
+                &UcOptions::default(),
+            )),
+            "mle_regression = false was given but exog is empty",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.exog = vec![(0..40).map(|t| (t as f64).cos()).collect()];
+                    s.mle_regression = false;
+                }),
+                &UcOptions {
+                    forecast_steps: 2,
+                    ..UcOptions::default()
+                },
+            )),
+            "forecast_steps = 2 with 1 regressors requires forecast_exog",
+        ),
+        // The stationary cycle: refused without a damped, stochastic
+        // cycle, and at a fixed damping of 1.
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| s.cycle_init = CycleInit::Stationary),
+                &UcOptions::default(),
+            )),
+            "cycle_init = \"stationary\" was given but cycle = false",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.cycle = true;
+                    s.stochastic_cycle = true;
+                    s.cycle_init = CycleInit::Stationary;
+                }),
+                &UcOptions::default(),
+            )),
+            "requires damped_cycle = true",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.cycle = true;
+                    s.damped_cycle = true;
+                    s.cycle_init = CycleInit::Stationary;
+                }),
+                &UcOptions::default(),
+            )),
+            "requires stochastic_cycle = true",
+        ),
+        (
+            msg(unobserved_components(
+                &y,
+                &spec(&|s| {
+                    s.cycle = true;
+                    s.damped_cycle = true;
+                    s.stochastic_cycle = true;
+                    s.cycle_init = CycleInit::Stationary;
+                }),
+                &UcOptions {
+                    fixed_params: Some(vec![1.0, 1.0, 1.0, 0.5, 1.0]),
+                    ..UcOptions::default()
+                },
+            )),
+            "fixed_params[4] (damping.cycle) = 1",
+        ),
     ];
     for (m, needle) in &cases {
         assert!(m.contains(needle), "message {m:?} does not name {needle:?}");
     }
+    assert!(CycleInit::parse("Bogus")
+        .unwrap_err()
+        .to_string()
+        .contains("cycle_init = \"Bogus\""));
     assert!(TrendSpec::parse("bogus")
         .unwrap_err()
         .to_string()

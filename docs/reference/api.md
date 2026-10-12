@@ -2,7 +2,7 @@
 
 The complete callable surface of `tsecon`, generated from the type stub (`bindings/python/python/tsecon/__init__.pyi`). Array arguments are float64 NumPy arrays (`_ArrayLike = npt.NDArray[np.float64]`; strided views are fine, plain lists and other dtypes are rejected at the boundary). Every function returns a plain dictionary, a NumPy array, or a Python scalar — no framework objects. Vector-valued keys are float64 NumPy arrays; matrix- and higher-rank-valued keys in the VAR/SVAR, Bayesian, multivariate-GARCH, panel and term-structure families (and the top-level results of `var_irf`, `var_fevd` and `bvar_irf_draws`) are nested Python lists — `np.asarray(...)` converts them; the docstring says which. For the *why* and *when* of each method, see the [model cards](README.md) and the [guide](../guide/README.md).
 
-**192 functions.**
+**206 functions.**
 
 ## diagnostics
 
@@ -56,6 +56,11 @@ def arch_lm(resid: _ArrayLike, nlags: int = ...) -> dict[str, float]:
 
 Engle's ARCH-LM test for conditional heteroskedasticity.
 
+    `nlags` must leave `n >= 2*nlags + 2`; an order past that, or one whose
+    `(n - nlags) x nlags` auxiliary design exceeds 2^26 entries (512 MiB) or
+    whose normal equations exceed 2^35 multiply-adds, is refused before any
+    lag column is built, naming `nlags` and the largest order that fits.
+
     Returned keys: `df`, `nobs`, `p_value`, `statistic`.
 
     Further arguments, with defaults: `nlags` (4).
@@ -74,6 +79,14 @@ def adf(
 ```
 
 Augmented Dickey-Fuller test with MacKinnon p-values.
+
+    A `maxlag` past the statsmodels bound n//2 - ntrend - 1 (one less for
+    regression "n" on an even n), or whose lag design exceeds 2^26 entries
+    (512 MiB) or lag search 2^35 multiply-adds (about a minute), is refused
+    before any lag column is built, naming `maxlag` and the largest that
+    fits. Orders up to the default cap ceil(12*(n/100)^(1/4)) are exempt
+    from the work budget, so a default call is refused only when its design
+    would not fit in memory (above about 610,000 observations).
 
     Returned keys: `crit`, `nobs`, `p_value`, `statistic`, `used_lag`.
 
@@ -100,6 +113,11 @@ def check_stationarity(y: _ArrayLike, alpha: float = ...) -> dict[str, Any]:
 ```
 
 The ADF + KPSS confirmatory-quadrant workflow with a recommendation.
+
+    The ADF leg runs the default lag search, so a series whose default lag
+    design exceeds the lag budget of `adf` (2^26 entries, above about
+    610,000 observations) is refused; run `adf` with an explicit `maxlag`
+    there.
 
     Returned keys: `adf_p_value`, `adf_statistic`, `alpha`,
     `interpretation`, `kpss_p_value`, `kpss_statistic`, `quadrant`,
@@ -148,7 +166,11 @@ DF-GLS unit-root test (Elliott-Rothenberg-Stock 1996; null: unit root).
     `method` ("aic" default, "bic", "t-stat") on the OLS-detrended series
     (Perron-Qu 2007) searching 0..=`max_lags` (default: Schwert's
     ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1). When `lags` is given,
-    `method`/`max_lags` are ignored (arch behavior). Returns `statistic`,
+    `method`/`max_lags` are ignored (arch behavior). A `lags` or `max_lags`
+    that leaves too few observations (`n >= 2*lags + 3`, and `n >= 3 +
+    ntrend + lags` for a fixed lag), or past the size budgets of `adf`, is
+    refused before any lag column is built, naming the keyword and the
+    largest value that fits. Returns `statistic`,
     `p_value`, `used_lag`, `nobs` (= n - 1 - used_lag), `crit`
     ({"1%","5%","10%"}), `trend`. Statistic and selected lag match
     arch.unitroot.DFGLS (< 1e-10); p-values/critical values are arch's DF-GLS
@@ -183,7 +205,8 @@ Ng-Perron (2001) M unit-root tests (MZa, MZt, MSB, MPT; null: unit root).
     this battery over `dfgls` under a suspected large negative MA root;
     caveat (Perron-Qu 2007): on data far from the null MAIC drives the lag
     to its maximum and power collapses — cap `max_lags` or fix `lags`
-    there.
+    there. A `lags` or `max_lags` too long for the sample or past the size
+    budgets of `adf` is refused as in `dfgls`, naming the keyword.
 
 ### `phillips_ouliaris`
 
@@ -230,9 +253,76 @@ Zivot-Andrews unit-root test with one endogenous break.
     `autolag` "aic" (default) / "bic" / "t-stat" capped at `max_lags`, or
     `autolag=None` with `lags` fixed (both None: int(12*(n/100)**0.25)).
     Pass either `lags` or `autolag`, not both. P-values and critical values
-    interpolate the statsmodels-simulated null table. Returns dict keys:
-    `stat`, `pvalue`, `crit` {"1%","5%","10%"}, `break_index`, `lags`,
-    `nobs`, `trim`, `regression`. Matches statsmodels `zivot_andrews`.
+    interpolate the statsmodels-simulated null table. A `max_lags` past the
+    base ADF's bound n//2 - 3 or its size budgets (see `adf`) is refused
+    naming `max_lags`. The lag the break regressions use must satisfy
+    lags <= int(n*trim) - 1, refused naming `lags` when fixed and `max_lags`
+    when searched. The break-date scan refits a (n - 1 - lags) x (k + lags)
+    design at each of the n - 2*int(n*trim) candidate breaks and shares the
+    lag budgets of `adf` (lags up to the default cap are exempt from the
+    work budget): a lag past them is refused before the design is built,
+    naming `lags` or the `max_lags` that admitted it.
+    Returns dict keys: `stat`, `pvalue`, `crit` {"1%","5%","10%"},
+    `break_index`, `lags`, `nobs`, `trim`, `regression`. Matches
+    statsmodels `zivot_andrews`.
+
+### `variance_ratio`
+
+```python
+def variance_ratio(
+    y: _ArrayLike,
+    lags: int | Sequence[int] | npt.NDArray[np.integer] | None = ...,
+    trend: str = ...,
+    debiased: bool | None = ...,
+    robust: bool | None = ...,
+    overlap: bool = ...,
+) -> dict[str, Any]:
+```
+
+Lo-MacKinlay (1988) variance-ratio test of the random-walk hypothesis,
+    with the Chow-Denning (1993) joint test over several horizons.
+
+    Tests whether the INCREMENTS of `y` are serially uncorrelated (a
+    martingale difference sequence): `vr = sigma2_q / sigma2_1` compares the
+    variance of q-period changes with q times the one-period variance — 1
+    under the null, above 1 under momentum, below 1 under mean reversion. It
+    is NOT a unit-root or stationarity test. Pass the LEVEL series (log
+    prices), not returns (iid returns passed as `y` give vr ~ 0.5 at q = 2).
+    Matches `arch.unitroot.VarianceRatio` (arch 8.0.0) in its conventions.
+
+    `lags` is one horizon q >= 2 or a sequence of distinct horizons (list,
+    tuple, integer array, pandas Series). Horizons are integers: a float is
+    refused alike as the scalar 4.0 and inside a sequence ([4.0], (2, 4.0),
+    a float array). `trend`: "c" (drift, default) or
+    "n". `overlap=False` uses non-overlapping blocks and drops the trailing
+    `(n - 1) % q` observations. `debiased`/`robust` are sentinels: None means
+    True under `overlap=True`; under `overlap=False` neither exists, so an
+    explicit True **raises** (arch silently ignores it). Every horizon needs
+    at least two q-period sums (`n >= q + 2` with overlap, `n >= 2q + 1`
+    without); constant increments are refused.
+
+    `stat = sqrt(nobs) (vr - 1) / sqrt(stat_variance)` is N(0, 1) under the
+    null; `pvalue` is the two-sided `2 Phi(-|stat|)` via erfc (not arch's
+    `2 - 2 Phi`, so it differs by up to ~1e-9 relative at moderate |stat| and
+    stays nonzero in the deep tail). Chow-Denning: `cd_stat = max |stat_i|`,
+    `cd_pvalue = 1 - (1 - 2 Phi(-cd_stat))^m`, `cd_crit` the SMM(alpha; m,
+    inf) = Šidák critical values (conservative across correlated horizons);
+    with one horizon it is the single test.
+
+    Returned keys: `lags`, `vr`, `stat`, `pvalue`, `stat_variance`, `nobs`,
+    `n_dropped`, `crit`, `cd_stat`, `cd_lag`, `cd_pvalue`, `cd_crit`,
+    `trend`, `se_type`, `debiased`. The per-horizon keys (`lags`, `vr`,
+    `stat`, `pvalue`, `stat_variance`, `nobs` = increments used, and
+    `n_dropped`) are Python scalars when `lags` is an int or None and 1-D
+    arrays aligned with the given order when it is a sequence (`lags` then
+    echoes a list of ints; the others are NumPy arrays). `crit` is the
+    one-sided N(0, 1) quantile dict {"1%", "5%", "10%", "90%", "95%", "99%"};
+    `cd_crit` is {"1%", "5%", "10%"}; `se_type` is "robust",
+    "homoskedastic" or "nonoverlapping".
+
+    Further arguments, with defaults: `lags` (2), `trend` ("c"), `debiased`
+    and `robust` (None -> True with overlap=True; refused if True with
+    overlap=False), `overlap` (True).
 
 ### `ndiffs`
 
@@ -243,6 +333,10 @@ def ndiffs(
 ```
 
 How many differences a series needs, with the per-order test evidence.
+
+    With `test="adf"` a series whose default lag design exceeds the lag
+    budget of `adf` (2^26 entries, above about 610,000 observations) is
+    refused.
 
     Returned keys: `alpha`, `d`, `interpretation`, `max_d`, `steps`, `stop`,
     `test`.
@@ -310,8 +404,11 @@ One-call diagnostic battery with model recommendations (the Module 01 flagship).
     reported in families with the multiple-testing arithmetic shown — never
     silently corrected — and the report ends in an ordered `recommendations`
     list routing to concrete tsecon calls. JSON-serializable throughout.
-    `lags` is shape-dependent: the Ljung-Box horizon for 1D input (default
-    min(10, n//5)), the VAR lag-search cap for 2D input (default 8). `alpha`
+    `lags` is shape-dependent: the Ljung-Box horizon for 1D input, an
+    integer 1 <= lags <= n - 3 (default min(10, n//5)); the VAR lag-search
+    cap for 2D input, an integer >= 1 (default 8). `max_breaks` must be an
+    integer in [1, 10]. Both are validated up front and refused by name
+    (a float is refused as at the compiled boundary). `alpha`
     must lie in (0.01, 0.10] — the compiled KPSS p-value is clamped to that
     range. `seasonal_period` must be an integer >= 2 with at least two full
     cycles in sample.
@@ -361,22 +458,84 @@ def ols(
     se_type: str = ...,
     maxlags: int | None = ...,
     use_correction: bool = ...,
+    ewc_b: int | None = ...,
 ) -> dict[str, Any]:
 ```
 
-OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC standard errors.
+OLS with nonrobust / HC0 / HC1 / HC2 / HC3 / HAC / EWC standard errors.
 
     The leverage-corrected hc2/hc3 are what matter in small samples with
     influential points; hc1's n/(n-k) factor barely moves. HC is
-    heteroskedasticity-robust only -- under serial correlation use "hac".
+    heteroskedasticity-robust only -- under serial correlation use "hac" or
+    "ewc".
 
     HAC matches statsmodels cov_type="HAC" when use_correction is matched;
     the DEFAULTS differ deliberately (tsecon True, statsmodels False), so
     pass use_correction=False to reproduce a default statsmodels call.
 
-    Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+    `se_type="ewc"` is the Lazarus-Lewis-Stock-Watson (2018) equal-weighted
+    cosine HAR covariance `(X'X)^-1 [n Omega_hat(x u)] (X'X)^-1` over `ewc_b`
+    cosine frequencies (no n/(n-k) factor, no prewhitening). Its t-statistics
+    are Student t with `ewc_b` degrees of freedom, not normal, so it adds
+    `pvalues` (two-sided t_ewc_b) and `ewc_b` (the resolved B). `ewc_b=None`
+    is `ewc_default_b(n)`; an explicit value must lie in [1, n - 1]. On a
+    T=100 regression with AR(0.7) regressor and errors, nominal 95% slope
+    intervals covered 0.915 (EWC, t_9) against 0.855 (the Newey-West "hac"
+    default, normal), and 0.940 against 0.905 at T=400 (10000 seeded
+    replications each). "hac" stays the default for statsmodels
+    compatibility. COST: SUPERLINEAR in `n` -- n * ewc_b * (k + 8)
+    operations, like n^(5/3) at the default (1.4 s at n = 10^5, k = 2);
+    past a work budget of 2^35 (about a minute) `ewc_b` is refused by name,
+    with the largest value it admits. An unknown se_type is refused first
+    (so "ewx" beside `ewc_b` reads as an unknown se_type). Refused by name:
+    `ewc_b` under any other se_type, an explicit `maxlags` under "ewc",
+    `use_correction=False` under "ewc" (an explicit True is the default and
+    a no-op). Under nonrobust/hc* an explicit maxlags/use_correction is
+    still ignored.
 
-    Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
+    Returned keys: `bse`, `params`, `se_type`, `tvalues`; under "ewc" also
+    `ewc_b` and `pvalues`.
+
+    Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None),
+    `use_correction` (True), `ewc_b` (None: `ewc_default_b(n)`).
+
+### `ewc_lrv`
+
+```python
+def ewc_lrv(x: _ArrayLike, b: int | None = ...) -> float:
+```
+
+Equal-weighted cosine (EWC) long-run variance of a series
+    (Lazarus-Lewis-Stock-Watson 2018; demeaned internally).
+
+    `Omega_hat = (1/b) sum_{j=1..b} Lambda_j^2`, `Lambda_j = sqrt(2/n) sum_t
+    cos(pi j (t - 1/2)/n) x_t`. The mean frequency is excluded (mean-invariant
+    in exact arithmetic); at b = n - 1 it is the plain sample variance. Pair
+    it with Student-t critical values with `b` degrees of freedom, not the
+    normal: `(mean - mu0) / sqrt(Omega_hat / n)` is t_b under the null.
+
+    COST: the n * b cosines are evaluated directly, so the work is
+    SUPERLINEAR in `n` -- like n^(5/3) at the default b (0.03 s at n = 10^4,
+    1.3 s at 10^5, 57 s at n = 972427, the largest series whose default b
+    fits). Past a work budget of 2^35 (n * b * 9 operations, about a
+    minute) `b` is refused by name, with the largest b it admits.
+
+    Validated against the documented closed form evaluated with
+    scipy.fft.dct (no package implements EWC) at 1e-12.
+
+    Further arguments, with defaults: `b` (None: `ewc_default_b(len(x))`).
+
+### `ewc_default_b`
+
+```python
+def ewc_default_b(n: int) -> int:
+```
+
+LLSW (2018) EWC degrees of freedom round(0.4 n^(2/3)), clamped to
+    [1, n - 1]; the default `b` of `ewc_lrv` and `ewc_b` of
+    `ols(se_type="ewc")`, and the t degrees of freedom. The rounding is
+    exact for every n (integer arithmetic, not a float power). n < 2 is
+    refused.
 
 ## bootstrap
 
@@ -393,6 +552,12 @@ def bootstrap_indices(
 ```
 
 Bootstrap resampling indices (iid/moving/circular/stationary).
+
+    `n` is at most 2^28 = 268435456 (a 2 GiB index vector), refused by name
+    before anything is allocated. `seed` is an unsigned 64-bit integer,
+    0 <= seed <= 2**64 - 1; every seed-like keyword of the API (`seed`,
+    `band_seed`, `rf_seed`) takes that range and refuses a value outside it
+    by name.
 
     Further arguments, with defaults: `scheme` ("stationary"), `seed` (0),
     `block_length` (None), `p` (None).
@@ -414,6 +579,9 @@ def philox_uniforms(seed: int, n: int) -> _F64:
 ```
 
 Uniform draws from the Philox stream; bit-identical to NumPy.
+
+    `n` is at most 2^28 = 268435456 (a 2 GiB array), refused by name before
+    anything is allocated; `seed` is 0 <= seed <= 2**64 - 1.
 
 ## state space
 
@@ -463,10 +631,12 @@ def arima_fit(
     forecast_steps: int = ...,
     conf_alpha: float | None = ...,
     drift_uncertainty: bool = ...,
+    method: str = ...,
 ) -> dict[str, Any]:
 ```
 
-Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
+ARIMA(p,d,q) fit by exact MLE (default) or conditional sum of squares
+    (method="css"), with optional forecast + conf_alpha bands.
 
     seasonal=(P, D, Q, s) fits the multiplicative SARIMA(p,d,q)(P,D,Q)_s —
     the airline model is seasonal=(0, 1, 1, 12) on the logged series with
@@ -493,12 +663,46 @@ Exact-MLE ARIMA(p,d,q) fit, with optional forecast + conf_alpha bands.
     the full-vector observed information, which a boundary degrades — treat
     as approximate; reduced-Hessian interior SEs are a stated follow-up.
 
+    method="css" minimizes the sum of squared recursive residuals on the
+    differenced series, conditioning on the first p + s*P values with zero
+    pre-sample innovations, sigma2 = SSR / nobs concentrated out. Then
+    `loglik` is the CONDITIONAL log-likelihood -nobs/2 (ln 2pi + 1 + ln
+    sigma2) and `aic`/`bic` (BIC with ln(nobs)) are built from it -- not
+    comparable with an exact-MLE fit's; `bse`/`param_cov` come from the
+    Hessian of that conditional likelihood (so drift_uncertainty uses the CSS
+    Var(c_hat), param_cov[0][0]); `residuals` stay the Kalman standardized
+    innovations at the CSS estimates. The constant is an intercept (R and
+    statsforecast report the mean mu = c / (1 - sum phi*)), and R counts its
+    CSS loglik over n - d - D*s observations, so R's figure is lower (-650.97
+    vs -649.34 on the model card's example) and its CSS AIC is NA. The
+    recursion is pinned against statsforecast 2.1.1's port of R's ARIMA_CSS
+    at 1e-12. A trending or unit-root-like series can drive the CSS AR
+    estimate onto the unit circle itself (the CSS objective is defined past
+    it), where the Kalman residuals and forecasts have no stationary model:
+    that fit is refused, naming the remedy (difference the series, or
+    method="mle"). `method` echoes the choice; `nobs` is n - d - D*s
+    ("mle") or n - d - D*s - (p + s*P) ("css"), the count behind `loglik`.
+    forecast_steps is capped at 1,000,000 (as ets_fit's horizon is) and
+    refused past that before anything is fitted.
+
+    Absurd orders are refused before anything is allocated: with
+    m = max(p + s*P, q + s*Q + 1) the Kalman state dimension, one likelihood
+    evaluation costs about (4 n + 200) m^3 multiply-adds and holds
+    3 (n + 1) m^2 values, and every fit evaluates it at least
+    2k(k + 2) + 1 times (one gradient and the Hessian behind bse). A
+    specification whose guaranteed work passes 2^37 multiply-adds (CSS: its
+    recursion plus one exact filter pass) or whose filter would hold more than
+    2^28 values raises a ValueError naming p, q and seasonal and the largest
+    state dimension that fits. When the seasonal part is what leaves too few
+    observations, the refusal names seasonal=(P, D, Q, s).
+
     Returned keys: `aic`, `bic`, `boundary`, `boundary_note`, `bse`,
     `conf_alpha`, `converged`, `cov_ok`, `drift_uncertainty`,
     `forecast_lower`, `forecast_mean`, `forecast_se`, `forecast_upper`,
-    `loglik`, `param_cov`, `param_names`, `params`, `residuals`, `se_valid`.
+    `loglik`, `method`, `nobs`, `param_cov`, `param_names`, `params`,
+    `residuals`, `se_valid`.
 
-    Further arguments, with defaults: `forecast_steps` (0).
+    Further arguments, with defaults: `forecast_steps` (0), `method` ("mle").
 
 ### `auto_arima`
 
@@ -535,8 +739,17 @@ Automatic ARIMA order selection (Hyndman-Khandakar 2008 stepwise).
     selected; failed fits steer the search rather than aborting it.
     Every candidate is fit by the exact-MLE engine behind arima_fit, so
     the search is deterministic. No exogenous regressors in this slice.
+    forecast_steps is capped at 1,000,000 (as in arima_fit), refused past
+    that before the search starts. max_P / max_Q above 6 are refused naming
+    the keyword; a seasonal_period longer than half the series (when D comes
+    from the seasonal-strength rule), a fixed D whose D * seasonal_period
+    differences consume the series, and (D=0 fixed) a seasonal_period not
+    shorter than the series are refused before the search, naming the option
+    and its largest admissible value. A candidate past arima_fit's
+    estimation budget is recorded as fit_failed.
 
-    Returns the arima_fit result dict for the selected model plus:
+    Returns the arima_fit result dict for the selected model (less
+    arima_fit's own drift_uncertainty, method and nobs echoes) plus:
     `order`, `seasonal_order`, `constant`, `converged`, `ic`,
     `ic_value`, `aicc`, `stepwise`, `n_models`, `budget_exhausted`,
     `trace` (every candidate tried, with its criterion and status),
@@ -602,7 +815,9 @@ GARCH/GJR/EGARCH QMLE with MLE and Bollerslev-Wooldridge robust SEs.
     EGARCH has no closed-form multi-step variance forecast: with
     `vol="egarch"` only `forecast_horizon` 0 or 1 is accepted, and
     `forecast_horizon >= 2` raises a teaching ValueError (GARCH and GJR
-    forecast analytically at every horizon).
+    forecast analytically at every horizon). `forecast_horizon` is capped at
+    1,000,000 steps (as in arima_fit and ets_fit) and refused past that, by
+    name, before anything is fitted.
 
     Returned keys: `aic`, `bic`, `boundary`, `boundary_note`,
     `conditional_volatility`, `converged`, `loglik`, `param_names`,
@@ -623,7 +838,14 @@ Fit a VAR(p) by OLS; params, sigma_u, ICs, residuals, and stability.
 
     Read `is_stable` for the stability verdict. `min_root`/`max_root` are the
     smallest/largest moduli of the reciprocal characteristic roots — stable iff
-    `min_root > 1`, so `max_root` alone is not a verdict.
+    `min_root > 1`, so `max_root` alone is not a verdict. The roots are solved
+    on an exactly balanced companion matrix, so they do not depend on the
+    units of the series.
+
+    The sample must leave at least k residual degrees of freedom,
+    len(data) >= lags + n_trend + k*lags + k: with fewer, the k x k residual
+    covariance is singular whatever the data, and the call is refused naming
+    the sample size and the largest lag order that fits.
 
     Keys: params, sigma_u, llf, aic, bic, hqic, resid ((T, k) nested list —
     the OLS residuals over the effective sample, row t = observation lags+t),
@@ -650,6 +872,11 @@ def var_irf(
 Impulse responses [h][response][shock]; `cumulative` gives running sums.
 
     Point path only. For frequentist confidence bands use `var_irf_bands`.
+
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before anything is
+    allocated; past it the call is refused naming `horizon` and the largest
+    horizon that fits (399456 on two variables).
 
     Further arguments, with defaults: `lags` (2), `horizon` (10), `orth`
     (True), `trend` ("c").
@@ -725,6 +952,27 @@ Frequentist confidence bands on VAR impulse responses — the banded companion t
     Šidák and Bonferroni are closed forms in K and need neither. Method:
     Montiel Olea and Plagborg-Møller.
 
+    **Inert keywords are refused**, compared to their defaults, as in
+    `long_run_svar_bands`: `n_boot` and `seed` with `method="asymptotic"`
+    (which draws nothing); `band_seed` and `band_n_sim` anywhere but the
+    asymptotic sup-t band; a non-default `band_scope` with
+    `band="pointwise"`; and `bias_correct=True` with `method="asymptotic"`.
+
+    **Size budget.** The working set is counted as real storage (padded
+    matrices and Python lists) and budgeted at 2^28 values (2 GiB) before
+    anything is allocated; a refusal names the keyword whose term is over and
+    states the largest value that fits at the other arguments. Bootstrap:
+    each replication keeps its responses in its slot of one store plus a fixed
+    48-value overhead (refused naming `n_boot`, or `horizon` when no count
+    fits: the largest `n_boot` on two variables at horizon 10 is 2886323).
+    Asymptotic: the pointwise working set (`horizon and lags`), a
+    simultaneous band's family covariance (`horizon and band_scope`), the
+    sup-t simulation, (K+1)·band_n_sim values and n_families·band_n_sim·K²
+    ≤ 2^36 multiply-adds (`band_n_sim`), and the delta-method Jacobians,
+    horizon·(horizon+1)/2 · k² · lags·k² multiply-adds, QUADRATIC in horizon
+    and capped at 2^28 (`horizon`; a few seconds: 2047 periods on a
+    bivariate VAR(8), 28 on a 20-variable VAR(4)).
+
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
 ### `var_fevd`
@@ -746,6 +994,11 @@ Forecast-error variance decomposition [h][variable][shock].
     variable-major: `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))`
     equals this output.
 
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before anything is
+    allocated; past it the call is refused naming `horizon` and the largest
+    horizon that fits (399457 on two variables).
+
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
 ### `var_forecast`
@@ -761,6 +1014,7 @@ def var_forecast(
     band_scope: str = ...,
     band_seed: int = ...,
     band_n_sim: int = ...,
+    param_uncertainty: bool = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -792,7 +1046,47 @@ Iterated VAR point forecasts with (1-alpha) intervals.
     that band is a pure function of `band_seed`; the closed forms use neither.
     Method: Montiel Olea and Plagborg-Møller.
 
-    Further arguments, with defaults: `lags` (2), `trend` ("c").
+    **Parameter uncertainty.** `cov` (always returned, `[h][i][j]`, steps x k x
+    k) is the forecast-error covariance the bands come from: MSE(h) by default
+    (statsmodels `mse`; `sqrt(diag cov)` reproduces `lower`/`upper`). With
+    `param_uncertainty=True` it is MSE(h) + Omega(h)/T, Lütkepohl's (2005)
+    first-order coefficient-estimation term (statsmodels
+    `forecast_cov(method="auto")`), and `lower`/`upper` widen to match; at
+    h = 1 it is (1 + m/T) Sigma_u to rounding. A PARTIAL repair: on the audit's
+    VAR(1) at T=100 pooled marginal coverage went 0.931 -> 0.937, worst
+    horizon 0.925 -> 0.932 (nominal 0.95); the rest is small-sample
+    coefficient bias. Derived for a
+    STATIONARY VAR (on near-unit-root levels data it inflates long-horizon
+    variances by 15-18%). Unlike statsmodels' public "auto" it applies to
+    trend="n" too. Refused with a non-pointwise `band` (names both). COST:
+    about steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2 + 2 steps m^3 +
+    steps^2 m^2 operations, m = n_trend + k*lags: CUBIC in `steps` on a
+    small VAR (0.27 s at 1000 steps on a k = 3 VAR(2)), and on a wide one
+    the 2 steps m^3 term dominates, CUBIC in k*lags (k = 60, lags = 20:
+    m = 1201, at most 4 steps). A work budget of 2^34 refuses past it,
+    naming `steps` with the remedy for whichever terms dominate, or `lags`
+    when not even one step fits.
+
+    Returned keys: `point`, `lower`, `upper`, `band`, `cov`,
+    `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,
+    `sim_upper`, `critical_value`, `pointwise_critical_value`, `band_scope`,
+    `n_cells`, `n_cells_used`.
+
+    SIZE BUDGET. `steps` is checked against a 2^28-value (2 GiB) memory budget,
+    counted as real storage, before anything is allocated (refused naming
+    `steps`, with the largest that fits: 399457 on two variables). A
+    simultaneous band also builds the joint covariance of every cell,
+    (steps·k)^2 values whose cross-horizon blocks cost about steps^3/6 products
+    of k x k matrices (CUBIC in steps), budgeted at 2^28 values and 2^31 work
+    (about ten seconds; refused naming `steps`: at most 685 on two variables at
+    lags 2), and the sup-t simulation, (K+1)·band_n_sim values within 2^28 and
+    n_families·band_n_sim·K^2 multiply-adds within 2^36 (refused naming
+    `band_n_sim`: at most 15790320 at the default steps on two variables).
+
+    Further arguments, with defaults: `lags` (2), `steps` (8), `alpha`
+    (0.05), `trend` ("c"), `band` ("pointwise"), `band_scope` ("all"),
+    `band_seed` (20260807), `band_n_sim` (100000), `param_uncertainty`
+    (False).
 
 ### `var_granger`
 
@@ -839,6 +1133,9 @@ Minnesota-NIW conjugate BVAR posterior + log marginal likelihood. scale_ar sets 
     sd = np.sqrt(np.outer(np.diag(omega_bar), np.diag(s_bar)) / (v_bar - K - 1)),
     a (k, K) array aligned with posterior_mean_coefs.
 
+    A sample too short for the AR(scale_ar) scale regressions (2*scale_ar + 2
+    rows) is refused naming scale_ar and the largest order the sample supports.
+
     Further arguments, with defaults: `lags` (2), `lambda0` (100.0),
     `lambda1` (0.2), `lambda3` (1.0), `delta` (0.0).
 
@@ -861,6 +1158,13 @@ def bvar_irf_draws(
 ```
 
 Posterior Cholesky-IRF draws [draw][h][variable][shock] for credible bands.
+
+    A sample too short for the AR(scale_ar) scale regressions (2*scale_ar + 2
+    rows) is refused naming scale_ar and the largest order the sample supports.
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` or `n_draws` past it is refused by
+    name with the largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `horizon` (16), `n_draws`
     (500), `seed` (0), `lambda0` (100.0), `lambda1` (0.2), `lambda3` (1.0),
@@ -893,6 +1197,11 @@ Empirical-Bayes Minnesota-BVAR: pick lambda1 by maximizing the marginal likeliho
     `lambda1_fixed_log_ml`, `lambda1_opt`, `lambda3_opt`,
     `log_marginal_likelihood`, `log_posterior`, `n_evals`,
     `posterior_mean_coefs`, `sigma_posterior_mean`.
+
+    `n_grid` is capped at 10000 grid points (refused by name past it). A sample
+    too short for the AR(scale_ar) scale regressions (2*scale_ar + 2 rows) is
+    refused naming scale_ar and the largest order the sample supports, before
+    the search, instead of surfacing as a non-converged optimization.
 
     Further arguments, with defaults: `lags` (2), `delta` (0.0), `lambda0`
     (100.0), `lambda3` (1.0), `lambda1_init` (0.2), `lambda1_lo` (0.0001),
@@ -927,6 +1236,12 @@ SSVS-BVAR (George-Sun-Ni 2008): spike-and-slab stochastic-search selection of VA
 
     Returned keys: `coef_mean`, `diagnostics`, `inclusion_prob`,
     `irf_draws`, `sigma_mean`.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per chain, the retained-sweep traces and the
+    returned lists, counted as real storage) is budgeted at 2^28 values (2
+    GiB), and a `horizon`, `n_draws` or `n_chains` past it is refused by name
+    with the largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `n_draws` (10000), `burn`
     (2000), `seed` (0), `c0` (0.1), `c1` (10.0), `prior_inclusion` (0.5),
@@ -1090,7 +1405,13 @@ STL seasonal-trend decomposition using LOESS (Cleveland et al. 1990).
 
     Mirrors statsmodels.tsa.seasonal.STL parameter semantics and defaults
     exactly (matched elementwise at 1e-8; observed ~1e-12); requires
-    n >= 2*period. Returns `seasonal`, `trend`, `resid` (y = seasonal +
+    n >= 2*period (a longer period is refused naming `period` and the
+    largest that fits). `inner_iter` and `outer_iter` are fixed loop counts,
+    budgeted: more than 32 inner passes (`inner_iter * (outer_iter + 1)`,
+    the robust default's count) whose LOESS work exceeds 2^32 evaluation
+    units (about half a minute) are refused before any smoothing, naming
+    the count and its largest admissible value; the default counts are
+    never refused. Returns `seasonal`, `trend`, `resid` (y = seasonal +
     trend + resid), `weights` (bisquare robustness weights; all 1 unless
     the outer loop runs), `period`, and `config` (the resolved windows,
     degrees, jumps, and inner/outer iteration counts).
@@ -1133,7 +1454,11 @@ MSTL — STL iterated over multiple seasonal periods
     (default 2; 1 for a single period), remaining STL keywords forwarded
     to every pass. statsmodels' Box-Cox `lmbda` option is not implemented
     (pre-transform y instead); duplicate periods and iterate=0 are
-    refused. Returns `seasonal` (dict of per-period arrays keyed
+    refused. `iterate`, `inner_iter` and `outer_iter` share the STL work
+    budget (2^32 LOESS units over all rounds and periods; the default
+    counts — at most 32 inner passes per fit over at most two rounds — are
+    never refused), naming the count. Returns `seasonal` (dict of
+    per-period arrays keyed
     "seasonal_<period>"), `trend`, `resid`, `weights` (from the final
     pass), the resolved `periods`/`windows`, `iterate`,
     `dropped_periods`, and per-period `seasonal_strength` (None for a
@@ -1153,8 +1478,9 @@ def seasonal_strength(y: _ArrayLike, period: int) -> dict[str, Any]:
 Wang-Smith-Hyndman seasonal/trend strength from a default STL fit.
 
     strength = max(0, 1 - var(resid)/var(component + resid)), sample
-    variances; near 1 means the component dominates. Returns
-    `seasonal_strength`, `trend_strength`, `period`.
+    variances; near 1 means the component dominates. A period longer than
+    n/2 is refused naming `period`. Returns `seasonal_strength`,
+    `trend_strength`, `period`.
 
 ## forecasting / evaluation
 
@@ -1200,7 +1526,8 @@ The Theta method (Assimakopoulos-Nikolopoulos 2000).
     Matches statsmodels `ThetaModel(deseasonalize=True, use_test=False)`;
     statsmodels' default additionally pre-tests seasonality and skips
     deseasonalization when the test fails, so the two defaults diverge on
-    weakly-seasonal data declared with `period > 1`.
+    weakly-seasonal data declared with `period > 1`. `steps` is capped at
+    1,000,000 (as in arima_fit and ets_fit) and refused past that.
 
 ## local projections
 
@@ -1265,8 +1592,18 @@ Local projection IRFs; `se` is None (auto), "lag_augmented" or "hac".
 
     Returned keys: `horizons`, `irf`, `se`, `se_method`.
 
+    `band_n_sim` is checked, before anything is estimated, against the sup-t
+    budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+    band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+    naming `band_n_sim` and the largest count that fits (19173961 at the
+    default 12 horizons).
+
     Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
     (None).
+
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
 
 ### `lp_iv`
 
@@ -1309,6 +1646,10 @@ LP-IV: instrumented local projections with a first-stage F diagnostic.
     Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
     (0.1).
 
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
+
 ### `lp_multiplier`
 
 ```python
@@ -1347,6 +1688,10 @@ Ramey-Zubairy (2018) integral multiplier by one-step LP-IV.
 
     Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
     (None), `band_alpha` (0.1).
+
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
 
 ## penalized regression
 
@@ -1424,6 +1769,11 @@ Sign-restricted Bayesian SVAR: identified-set bands + acceptance diagnostics.
     `probs=[0.05,0.16,0.50,0.84,0.95]`, the identified-set envelope
     (`set_min`/`set_max`), and `diagnostics`.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2).
 
@@ -1466,6 +1816,11 @@ Zero + sign restricted Bayesian SVAR: exact zeros by construction + sign rejecti
     reflects posterior (not identified-set) uncertainty since the rotation is
     fixed. The ARW weight is exactly 1 for impact-only zero patterns.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2).
 
@@ -1480,8 +1835,8 @@ def structural_fevd(
     lags: int = ...,
     horizon: int = ...,
     trend: str = ...,
-    impact: _ArrayLike | None = ...,
-    sigma: str = ...,
+    impact: _ArrayLike | Sequence[Sequence[float]] | None = ...,
+    sigma: str | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -1489,12 +1844,26 @@ Structural FEVD for an arbitrary structural impact matrix A0 (the gap
     var_fevd, recursive-Cholesky only, leaves).
 
     `impact` is an optional (n, n) structural impact A0 (columns = one-SD
-    structural shocks, A0 A0' = Sigma; from any identification scheme). If None,
+    structural shocks, A0 A0' = Sigma; from any identification scheme) -- an
+    ndarray, a pandas object or a rectangular nested list, so another
+    callable's `impact` (e.g. `long_run_svar(...)["impact"]`) passes straight
+    in. If None,
     A0 is the lower Cholesky of the innovation covariance and the result equals
-    `var_fevd` exactly. `sigma` ("dfadj"|"mle") sets the default Cholesky's df
-    scaling; the FEVD shares are invariant to it (it only rescales the reported
-    `impact`). Returns `fevd` [horizon+1][variable][shock] (each row sums to 1)
-    and `impact` [n][n] (the A0 used).
+    `var_fevd` exactly. `sigma` ("dfadj"|"mle"; None, the default, means
+    "dfadj") sets the default Cholesky's df scaling; the FEVD shares are
+    invariant to it (it only rescales the reported `impact`). Returns `fevd`
+    [horizon+1][variable][shock] (each row sums to 1) and `impact` [n][n] (the
+    A0 used).
+
+    `sigma` is validated first and is refused, naming it, whenever it is
+    passed together with `impact` (even as "dfadj") -- it only scales the
+    default Cholesky, so it cannot act there. `lags=0` is refused naming lags
+    (unlike `var_fevd`, which returns the static Cholesky shares of a VAR(0)).
+    Sizes are checked before anything is allocated: the working set (padded matrices
+    and the returned lists, counted as real storage) is budgeted at 2^28 values
+    (2 GiB), and a `horizon` past it is refused by name with the largest value
+    that fits. The shares are computed on row-scaled responses, so an impact of
+    any finite scale gives the scale-1 shares.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
@@ -1513,6 +1882,7 @@ def historical_decomposition(
     lambda1: float = ...,
     narrative_restrictions: list[dict] | None = ...,
     n_weight_draws: int = ...,
+    impact: _ArrayLike | Sequence[Sequence[float]] | None = ...,
 ) -> dict[str, Any]:
 ```
 
@@ -1527,6 +1897,25 @@ Historical decomposition: per-(time, variable, shock) structural-shock contribut
     identification="cholesky" (default): a point decomposition at the OLS VAR with
     Q=I; returns `times`, `baseline` [T_eff][n], `hd` [T_eff][n][n] indexed
     [time][variable][shock], and the structural `shocks` [T_eff][n].
+    identification="impact": a point decomposition under an ARBITRARY invertible
+    structural impact matrix `impact` (n x n; columns are one-standard-deviation
+    structural shocks, u_t = impact @ eps_t; `impact @ impact.T == Sigma` is NOT
+    required; an ndarray, a pandas object or a nested list such as
+    `long_run_svar(...)["impact"]`). For example
+    `historical_decomposition(X, lags=8, identification="impact",
+    impact=long_run_svar(X, lags=8, impact_signs=[(0, 1)])["impact"])`.
+    Returns the cholesky keys `times`, `baseline`, `hd`, `shocks` (a drop-in
+    replacement) plus `impact` [n][n] (echoed) and `shock_covariance` [n][n] =
+    E'E/T_eff of the structural shocks -- a diagnostic: the identity for
+    chol(Sigma_mle), (T_eff-m)/T_eff times the identity for a `long_run_svar`
+    impact (df-adjusted Sigma, m = 1 + n*lags). The reduced form is ALWAYS a
+    VAR with a constant at `lags`; an impact estimated with trend="n" or other
+    lags is silently inconsistent with these residuals (the adding-up identity
+    still holds), so estimate it at the same `lags` with trend="c". `impact`
+    is refused, naming it, when missing, of the wrong shape, non-finite, or
+    singular by the numpy.linalg.matrix_rank convention (smallest singular
+    value <= largest * n * machine epsilon). `horizon` below T_eff-1 is
+    refused; above it is inert.
     identification="sign": the importance-weighted SET decomposition over sign- (and
     optionally narrative-) restricted rotations; returns `times`, `baseline`
     (posterior-mean), `probs`, `hd_quantiles` [T_eff][n][n][len(probs)] (weighted
@@ -1541,12 +1930,35 @@ Historical decomposition: per-(time, variable, shock) structural-shock contribut
       {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
        "sign":"+"|"-"}
 
+    An unknown `identification` is refused as such before any keyword that
+    depends on it. Under "sign", `n_weight_draws` is only read with
+    narrative_restrictions and is refused as inert without them; the working
+    set (padded matrices, one RNG substream and T_eff contribution matrices per
+    draw and the returned lists, counted as real storage) is budgeted at 2^28
+    values (2 GiB) before anything is allocated, refusing a `horizon` or
+    `n_draws` past it by name with the largest value that fits; and the
+    narrative weight loop is capped at 2^35 multiply-adds (naming
+    n_weight_draws). Under "impact", an invertible impact whose shocks
+    overflow, or whose `shock_covariance` leaves the double range (entries many
+    orders of magnitude below or above the residuals), is refused naming impact
+    with a rescale hint; the singularity test is scale-invariant.
+
     Further arguments, with defaults: `horizon` (None), `n_draws` (500),
-    `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+    `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200),
+    `impact` (None).
 
     `restrictions` (None = no restrictions; used under identification="sign")
     is the `sign_restricted_svar` list of `(variable, shock, horizon, sign)`
     tuples with `sign` in {"+", "-"}.
+
+    Inert keywords are refused, not ignored: the sampling controls (`n_draws`,
+    `max_tries`, `seed`, `lambda1`, `n_weight_draws`, compared to their
+    defaults) and non-empty `restrictions` / `narrative_restrictions` under
+    "cholesky" and "impact"; `impact` under any identification but "impact".
+
+    Returned keys: `baseline`, `diagnostics`, `hd`, `hd_quantiles`,
+    `hd_set_max`, `hd_set_min`, `impact`, `probs`, `shock_covariance`,
+    `shocks`, `times`, `weights`.
 
 ### `narrative_svar`
 
@@ -1576,6 +1988,16 @@ Narrative sign-restricted Bayesian SVAR (Antolín-Díaz & Rubio-Ramírez 2018).
     `set_min`/`set_max`, per-draw `weights` (mean 1), and `diagnostics` (with `ess`,
     `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
     weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits. The
+    narrative weight loop, n_draws * n_weight_draws * (T_eff*n^2 + (h + 3)*n^3)
+    multiply-adds, is capped at 2^35 (at most about a minute), refused
+    naming n_weight_draws (or n_draws) with the largest value that fits.
+    `n_weight_draws` is only read under narrative_restrictions: passed
+    (non-default) without them it is refused as inert.
 
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
@@ -1621,6 +2043,11 @@ Fry-Pagan (2011) median-target SVAR: the single coherent draw closest to the med
     of the identified set, dependent on the informative Haar prior -- not a
     prior-free point estimate.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500),
     `max_tries` (400), `lambda1` (0.2).
 
@@ -1657,6 +2084,11 @@ Giacomini-Kitagawa prior-robust identified-set bounds for a sign-restricted SVAR
     shock's marginal identified set — a conservative outer approximation of the
     joint set, since the cross-shock orthogonality coupling is not imposed.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per draw and the returned lists, counted as
+    real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_draws` past it is refused by name with the largest value that fits.
+
     Further arguments, with defaults: `lags` (2), `n_draws` (500), `seed`
     (0), `lambda1` (0.2).
 
@@ -1674,18 +2106,174 @@ def long_run_svar(
     trend: str = ...,
     restrictions: Sequence[tuple[int, int]] | None = ...,
     normalize: str = ...,
+    impact_signs: Sequence[tuple[int, int]] | None = ...,
 ) -> dict[str, Any]:
 ```
 
 Blanchard-Quah long-run SVAR: closed-form structural IRFs under frequency-zero restrictions.
 
     `restrictions` is a list of (variable, shock) long-run zero pairs (None =>
-    classic recursive BQ); `normalize` is "long_run" (positive LR diagonal;
-    default) or "impact" (positive B diagonal). Returns `impact` (B),
+    classic recursive BQ); `normalize` is "long_run" (default: each shock's
+    long-run pivot LR[m][s] positive, m = the number of long-run zeros in
+    shock s's column; the long-run diagonal under the recursive pattern, while
+    under a permuted pattern the diagonal can be negative or an imposed zero)
+    or "impact" (positive B diagonal). Returns `impact` (B),
     `long_run` (LR = C(1) B), `long_run_multiplier` (C(1)), `irf`
-    [horizon+1][i][j], `cumulative_irf`, and `fevd`. Point estimate, no RNG.
+    [horizon+1][i][j], `cumulative_irf`, and `fevd`. Point estimate, no RNG;
+    for confidence bands use `long_run_svar_bands`.
 
-    Further arguments, with defaults: `lags` (2), `trend` ("c").
+    `impact_signs` (None) is a list of (variable, shock) pairs that anchor each
+    listed shock's sign on its impact response, applied AFTER `normalize`: when
+    impact[variable][shock] < 0 (strictly; an exact zero is left alone) that
+    shock's column is negated in `impact`, `long_run` and `irf`, and
+    `cumulative_irf` is recomputed from the flipped `irf` (`fevd` is
+    sign-invariant). Unlisted shocks keep the `normalize` rule. Blanchard-Quah
+    sign the demand disturbance so output rises on impact:
+    `impact_signs=[(0, 1)]` with output growth ordered first. Refused, naming
+    `impact_signs`: an index outside 0..k-1, or the same shock listed twice.
+
+    Also refused, naming the parameter: `lags` = 0 (a VAR(0) has no long-run
+    multiplier); a malformed `restrictions` pair (e.g. `[(0,)]`) or a pattern
+    that is not a column permutation of the recursive one; and a `horizon`
+    whose responses, cumulated responses and decomposition would exceed a
+    2^28-value (2 GiB) memory budget, counted as real storage and checked
+    before anything is allocated (the refusal states the largest horizon that
+    fits: 399456 on two variables).
+
+    Returned keys: `cumulative_irf`, `fevd`, `impact`, `irf`, `long_run`,
+    `long_run_multiplier`.
+
+    Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
+    ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
+    (None).
+
+### `long_run_svar_bands`
+
+```python
+def long_run_svar_bands(
+    data: _ArrayLike,
+    lags: int = ...,
+    horizon: int = ...,
+    trend: str = ...,
+    restrictions: Sequence[tuple[int, int]] | None = ...,
+    normalize: str = ...,
+    impact_signs: Sequence[tuple[int, int]] | None = ...,
+    method: str = ...,
+    alpha: float = ...,
+    cumulative: bool = ...,
+    n_boot: int = ...,
+    seed: int = ...,
+    bias_correct: bool = ...,
+    band: str = ...,
+    band_scope: str = ...,
+    band_seed: int = ...,
+    band_n_sim: int = ...,
+    return_draws: bool = ...,
+) -> dict[str, Any]:
+```
+
+Confidence bands for Blanchard-Quah long-run SVAR impulse responses, re-identified in every draw.
+
+    The banded companion to `long_run_svar`: the same model, `restrictions`,
+    `normalize` and `impact_signs` (`impact_signs=[(0, 1)]` signs the
+    Blanchard-Quah demand shock so output rises on impact;
+    `normalize="long_run"` makes each shock's long-run pivot LR[m][s]
+    positive, m = the number of long-run zeros in shock s's column, which is
+    the long-run diagonal only under the recursive pattern).
+
+    method="bootstrap" (the DEFAULT -- unlike `var_irf_bands`, whose default is
+    "asymptotic") is the Runkle (1987) / Kilian (1998) residual recursive design
+    on the same engine and stream as `var_irf_bands`: replication b draws iid
+    residual rows from substream b of SeedSequence(seed).spawn(n_boot), rebuilds
+    the pseudo-sample from the observed first `lags` rows (no burn-in), refits
+    the VAR and RE-RUNS the Blanchard-Quah map with the same restrictions /
+    normalize / impact_signs (holding the impact matrix fixed would drop the
+    C(1) uncertainty that dominates long-run schemes). `lower`/`upper` are
+    Efron percentiles at alpha/2, 1-alpha/2 (NumPy "linear"), `se` the
+    across-draw SD (ddof=1); `cumulative=True` cumulates each draw before the
+    percentiles. `bias_correct=True` applies Kilian's correction (inner n_boot
+    bootstrap, seed + 0x9E3779B97F4A7C15, shrunk to stay stationary): the
+    pseudo-samples come from the corrected slopes (the intercept is not
+    corrected, so the DGP's implied mean moves) and `point` becomes the map at
+    the corrected coefficients and the full-sample df-adjusted Sigma_u -- it
+    then no longer equals `long_run_svar` and shows more persistence. Without
+    it `point` is bit-identical to `long_run_svar(...)["irf"]` (or
+    `["cumulative_irf"]`).
+
+    method="asymptotic" is the Lutkepohl (2005) delta method with
+    `var_irf_bands`' statsmodels conventions and an analytic Jacobian of the
+    Blanchard-Quah map (column signs held at the point estimate's); bands are
+    point +/- z_{1-alpha/2} se.
+
+    COVERAGE IS NOT UNIFORM and no arm covers every cell: read the per-cell
+    Monte Carlo table in the structural-identification model card. In short,
+    the Kilian bootstrap is better on the long-run matrix and on average, the
+    delta arm on the output-level hump, and plain Efron (the default) is the
+    weakest.
+
+    Returned keys, responses indexed [h][i][j] = response of variable i to
+    structural shock j: `point` (cumulated when `cumulative`), `se`, `lower`,
+    `upper`; the long-run matrix LR = C(1) B as [i][j]: `long_run_point`,
+    `long_run_se`, `long_run_lower`, `long_run_upper` (the imposed zeros are
+    exactly +/-0 with zero width and `long_run_se` == 0); echoes `method`,
+    `alpha`, `n_boot` (None on the asymptotic arm), `bias_correct`, `band`,
+    `cumulative`; `min_root` (full-sample smallest reverse-characteristic root
+    modulus, the `var_fit` convention, stable iff > 1 -- the INVERSE of the
+    companion radius that `n_unstable_draws` thresholds); `n_unstable_draws`
+    (raw bootstrap refits, before any Kilian correction, with companion
+    spectral radius >= 1; None on the asymptotic arm);
+    `sign_anchor_mismatches` (per `impact_signs` entry, the draws whose
+    pre-anchor sign of impact[v][s] differs from the point's -- large means
+    bimodal bands; None without impact_signs or on the asymptotic arm). With
+    `return_draws=True` (bootstrap only): `irf_draws` ndarray (n_boot,
+    horizon+1, k, k) of the REPORTED object (cumulated iff cumulative,
+    bias-corrected iff bias_correct) and `long_run_draws` (n_boot, k, k). With
+    band "sup-t" / "sidak" / "bonferroni": `sim_lower`, `sim_upper`,
+    `critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells`,
+    `n_cells_used`, as in `var_irf_bands` (long-run cells take no part;
+    bootstrap sup-t reads its quantile off the draws, asymptotic sup-t
+    simulates from band_seed / band_n_sim).
+
+    Refused, naming the parameter: alpha outside (0, 1); unknown method,
+    normalize, trend, band or band_scope; n_boot < 2; lags == 0; band_n_sim < 2
+    under asymptotic sup-t; impact_signs out of range or anchoring a shock
+    twice; restrictions that are not a column permutation of the recursive
+    pattern; bias_correct=True with method="asymptotic"; a singular
+    I - A_1 - ... - A_p at the full sample (data / lags). Inert keywords are
+    refused, as in `var_irf_bands`: n_boot, seed and return_draws on the
+    asymptotic arm; band_seed and band_n_sim anywhere but the asymptotic sup-t
+    band; a non-default band_scope with band="pointwise". A replication whose
+    pseudo-sample cannot be refitted (a singular residual covariance, which
+    very small samples hit with positive probability because the iid resample
+    can draw too few distinct residual rows) or whose re-estimated VAR cannot
+    be identified is never dropped: the first is reported by index as an
+    error.
+
+    SIZE BUDGET. The working set is counted as real storage (padded matrices,
+    Python lists and per-replication overheads included) and budgeted at 2^28
+    values (2 GiB) before anything is allocated; a refusal names the keyword
+    whose term is over and states the largest value that fits at the other
+    arguments. Bootstrap: each replication keeps its responses, long-run
+    matrix, anchor cells and companion radius in its slot of one store, plus a
+    fixed 48-value overhead (refused naming n_boot, or horizon when no count
+    fits; on two variables at horizon 12 the largest n_boot is 2532327). The
+    measured peak stays under the count: 647 bytes per replication against
+    848 counted on two variables at horizon 12 (the per-matrix storage before
+    0.11 took 4087). Asymptotic: the pointwise working set (refused naming
+    horizon and lags); a simultaneous band's family covariance,
+    ((horizon+1)*k^2)^2 under band_scope="all" (horizon and band_scope); the
+    sup-t simulation, (K+1)*band_n_sim values and n_families*band_n_sim*K^2
+    <= 2^36 multiply-adds (band_n_sim); and the Jacobians,
+    horizon*(horizon+1)/2 * k^2 * lags*k^2 multiply-adds, QUADRATIC in horizon
+    and capped at 2^28 (horizon). A pointwise band is never told to change
+    band_scope or band_n_sim, which it does not read.
+
+    Further arguments, with defaults: `lags` (2), `horizon` (12), `trend` ("c"),
+    `restrictions` (None), `normalize` ("long_run"), `impact_signs` (None),
+    `method` ("bootstrap"), `alpha` (0.1), `cumulative` (False), `n_boot`
+    (1000), `seed` (0), `bias_correct` (False), `band` ("pointwise"),
+    `band_scope` ("horizon"), `band_seed` (20260807), `band_n_sim` (100000),
+    `return_draws` (False).
 
 ### `max_share_svar`
 
@@ -1716,6 +2304,11 @@ Max-share / maximum-FEV structural shock (Uhlig 2004; Francis et al 2014; Barsky
     Returns `irf` [horizon+1][k], `impact` [k], `q` [k], `share_window` (float),
     `fev_share` [horizon+1], and `eigenvalues` (ascending; length k, or k-1 when
     `exclude_impact`).
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c").
 
@@ -1761,6 +2354,11 @@ Confidence bands for a proxy-SVAR impulse response.
     `n_failed`, `n_proxy`, `n_used`, `point`, `point_first_stage_f`,
     `point_gamma_norm`, `point_reliability`, `reliability_draws`,
     `rho_draws`, `se`, `upper`, `upper_efron`, `validity_note`.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices, one RNG substream per replication and the returned lists, counted
+    as real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+    `n_boot` past it is refused by name with the largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
     ("c"), `alpha` (0.1), `n_boot` (2000), `seed` (0), `block_length`
@@ -1830,6 +2428,15 @@ Weak-instrument-robust (Anderson-Rubin) confidence SETS for a proxy SVAR.
     `critical_value`, `first_stage_f`, `impact`, `level`, `n_proxy`,
     `reduced_form_uncertainty`.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits. The delta-method Jacobians cost
+    horizon*(horizon+1)/2 * n*lags * n*(n+1) multiply-adds, quadratic in
+    horizon, capped at 2^32 (under half a minute; refused naming horizon), and the
+    second-order simulation's rf_draws rows of (horizon+1)*n responses share
+    the memory budget (refused naming horizon or rf_draws).
+
     Further arguments, with defaults: `lags` (2), `norm_var` (0), `unit`
     (1.0), `trend` ("c"), `variance` ("hc0"), `hac_lags` (None).
 
@@ -1864,6 +2471,11 @@ Proxy SVAR (external-instrument SVAR-IV): one shock from one instrument.
     Point estimate only; see proxy_svar_bands for moving-block bands
     (strong instrument) and proxy_ar_sets for weak-IV-robust sets (use when
     first_stage["weak_mop_tau10"] is True).
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
 
     Further arguments, with defaults: `trend` ("c").
 
@@ -1946,6 +2558,12 @@ Non-Gaussian / independent-component SVAR identification (Lanne-Meitz-Saikkonen 
     `converged` (bool), `n_iter` (int), and `order` [k] (raw FastICA index per
     identified position).
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits. `lags=0` is refused naming lags before the FastICA
+    iterations.
+
     Further arguments, with defaults: `lags` (2), `trend` ("c"), `max_iter`
     (200), `tol` (1e-08).
 
@@ -1987,6 +2605,11 @@ SVAR identification through heteroskedasticity (Rigobon 2003; Lanne-Lutkepohl 20
     this closed-form build. The >2-regime and Markov-switching/GARCH variants
     are deferred.
 
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
+
     Further arguments, with defaults: `trend` ("c").
 
 ## panel
@@ -2009,7 +2632,10 @@ Fixed-effects panel OLS; `outcome` is N x T, `regressors` is k x N x T.
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
     explicitly with any other `se_type` raises instead of being silently
-    absorbed — those estimators use no kernel. `mask` (default None = a
+    absorbed — those estimators use no kernel. `bandwidth + 1` above the
+    number of periods that carry scores (T on a balanced panel) raises too,
+    naming `bandwidth`: past it no lag is added and every standard error
+    only shrinks, like `sqrt(T / (bandwidth + 1))`. `mask` (default None = a
     balanced panel) is an N x T array of 0/1 (False/True) flags, 1 where
     the entity is observed in that period, for an UNBALANCED panel: cells
     outside the mask are ignored and may hold NaN; without a mask a NaN
@@ -2017,7 +2643,177 @@ Fixed-effects panel OLS; `outcome` is N x T, `regressors` is k x N x T.
     Arellano-Bond EmplUK panel (fixtures/panel_unbalanced.json); a mask
     that is 1 everywhere is bit-identical to no mask.
 
-    Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+    Returned keys: `bse`, `params`, `se_type`, `tvalues`, plus (since 0.11.0)
+    `cov` (k x k nested lists — with `panel_re`'s, the FE-vs-RE contrast),
+    `names` (`x0`..), `nobs` (observed cells), `n_entities` (entities with an
+    observation) and `df_resid` (`nobs - k - n_entities`).
+
+### `panel_re`
+
+```python
+def panel_re(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    constant: bool = ...,
+    small_sample: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+Random-effects panel regression (Swamy-Arora-type GLS, per-entity
+    `theta_i`), matching linearmodels `RandomEffects` (version 7.0).
+
+    `outcome` is N x T; `regressors` is k x N x T (`np.stack` a list of
+    N x T arrays; `np.empty((0, N, T))` with `constant=True` is the
+    intercept-only variance-components model, whose `rho` is the intraclass
+    correlation). `constant` (True) adds the intercept `const`, first.
+    `mask` (default None = a balanced panel) is an N x T array of 0/1 flags,
+    1 where the entity is observed; masked-out cells are ignored and may hold
+    NaN. Assumes the entity effect is uncorrelated with every regressor;
+    time-invariant regressors are estimable. `sigma2_eps = e'e/(n - K - N +
+    1)` from the within residuals, `sigma2_effects = max(0, u'u/(N - K) -
+    sigma2_eps/Tbar)` from the between residuals with the HARMONIC mean
+    `Tbar`, `theta_i = 1 - sqrt(sigma2_eps/(T_i sigma2_effects +
+    sigma2_eps))`, then OLS on the quasi-demeaned data. `small_sample=True`
+    is linearmodels' small-sample formula when the entities' counts differ
+    (a no-op otherwise) — not Stata `sa` or plm `swar` — and is refused when
+    the between design is rank-deficient (time dummies on an unbalanced
+    panel). `se_type`: "nonrobust", "hc1" (alias "robust"), "cluster" (by
+    entity; alias "cluster_entity") or "driscoll_kraay" (alias "dk";
+    calendar periods). `bandwidth` is the Driscoll-Kraay lag truncation and
+    acts ONLY under `se_type="driscoll_kraay"` (4.0 when omitted there);
+    passing it with any other `se_type` raises, and so does `bandwidth + 1`
+    above the number of periods that carry scores (T on a balanced panel;
+    past it every standard error only shrinks, like
+    `sqrt(T / (bandwidth + 1))`). Mundlak check: add each
+    time-varying regressor's entity mean as a regressor and the slopes equal
+    `panel_fe`'s; a Wald test of the mean coefficients on `cov` (cluster) is
+    the robust Hausman test.
+
+    Returned keys: `params`, `bse`, `tvalues` (length K), `cov` (K x K
+    nested lists), `names`, `nobs` (observed cells), `n_entities` (entities
+    with an observation), `df_resid` (`nobs - K`), `sigma2_eps`,
+    `sigma2_effects` (clamped at 0), `rho`, `theta` (length N in layout
+    order, NaN for an entity with no observed cell), and the stamped
+    `se_type`, `constant`, `small_sample`. Validated against linearmodels
+    at 1e-10 on EmplUK and seeded panels (fixtures/panel_static.json).
+
+### `panel_between`
+
+```python
+def panel_between(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    constant: bool = ...,
+    reweight: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+The between estimator — OLS of the entity means of the outcome on the
+    entity means of the regressors, matching linearmodels `BetweenOLS`
+    (version 7.0).
+
+    `outcome` is N x T; `regressors` is k x N x T (`np.empty((0, N, T))`
+    with `constant=True` is the intercept-only model). The means run over
+    each entity's observed cells (`mask`, default None = balanced; an N x T
+    0/1 array). `constant` (True) adds `const`, first. `reweight=True`
+    weights each entity's row by `sqrt(T_i / mean T_i)` (Stata
+    `xtreg, be wls`; a no-op when every entity has the same count).
+    `se_type`: "nonrobust", "hc1" (the default; alias "robust") or
+    "cluster" (alias "cluster_entity") — with one row per entity the
+    clustered sandwich IS HC1, so "cluster" returns the HC1 numbers;
+    "driscoll_kraay" is refused (no time dimension). No `bandwidth`.
+
+    Returned keys: `params`, `bse`, `tvalues`, `cov` (K x K nested lists),
+    `names`, `nobs` (entities with an observation — the rows),
+    `n_entities`, `df_resid` (`nobs - K`), and the stamped `se_type`,
+    `constant`, `reweight`. Validated against linearmodels BetweenOLS at
+    1e-10 (fixtures/panel_static.json).
+
+### `panel_fd`
+
+```python
+def panel_fd(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    constant: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+First-difference OLS of `y_it - y_i,t-1` on `x_it - x_i,t-1`,
+    matching linearmodels `FirstDifferenceOLS` (version 7.0) at
+    `constant=False` (the default).
+
+    `outcome` is N x T; `regressors` is k x N x T (k >= 1). A row `(i, t)`
+    needs entity i observed in t AND t - 1 (CALENDAR adjacency: a gap is
+    never bridged, nor is a period nobody observes — linearmodels
+    differences across such a hole). `mask` (default None = balanced) is an
+    N x T 0/1 array; masked-out cells may hold NaN. `constant=True` adds the
+    intercept `const` that plm `model="fd"` and Stata `regress D.y D.x`
+    include by default (a linear trend in levels). A time-invariant
+    regressor is refused (use `panel_re` / `panel_between`). `se_type`:
+    "nonrobust", "hc1" (alias "robust"), "cluster" (the default; alias
+    "cluster_entity") or "driscoll_kraay" (alias "dk"; the later period
+    `t`, calendar lags). `bandwidth` is the Driscoll-Kraay lag truncation
+    and acts ONLY under `se_type="driscoll_kraay"` (4.0 when omitted
+    there); passing it with any other `se_type` raises, and so does
+    `bandwidth + 1` above the number of periods that carry differences
+    (T - 1 on a balanced panel; past it every standard error only shrinks).
+    "cluster" needs differences from two entities and "driscoll_kraay" in
+    two periods (one
+    group's score sum is zero), so a single entity or a two-period panel is
+    refused under them (use "hc1").
+
+    Returned keys: `params`, `bse`, `tvalues`, `cov` (K x K nested lists),
+    `names`, `nobs` (difference rows), `n_entities` (entities contributing
+    a difference), `df_resid` (`nobs - K`), and the stamped `se_type`,
+    `constant`. Validated against linearmodels at 1e-10
+    (fixtures/panel_static.json).
+
+### `panel_fama_macbeth`
+
+```python
+def panel_fama_macbeth(
+    outcome: _ArrayLike,
+    regressors: _ArrayLike,
+    se_type: str = ...,
+    bandwidth: float | None = ...,
+    constant: bool = ...,
+    mask: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+Fama-MacBeth (1973) two-pass regression — one cross-sectional OLS
+    per period, then the mean of the per-period coefficients, matching
+    linearmodels `FamaMacBeth` (version 7.0).
+
+    `outcome` is N x T; `regressors` is k x N x T. `constant` (True) adds
+    `const`, first. `mask` (default None = balanced) is an N x T 0/1 array;
+    masked-out cells may hold NaN. A period with fewer than K observed
+    entities or a rank-deficient cross-section is skipped (a NaN row of
+    `params_per_period`); at least 2 usable periods are required.
+    `se_type`: "fama_macbeth" (the default: `sd(beta_t, ddof=1)/sqrt(T_v)`)
+    or "hac" (alias "newey_west": Bartlett HAC of the `beta_t` series over
+    the compressed sequence of periods used). `bandwidth` is that HAC's lag
+    truncation and acts ONLY under `se_type="hac"` (4.0 when omitted there);
+    passing it under "fama_macbeth" raises, and `bandwidth + 1 > T_v` is
+    refused. Persistent firm effects make the SE far too small (Petersen
+    2009; the HAC does not repair it — use entity clustering there); no
+    Shanken correction.
+
+    Returned keys: `params`, `bse`, `tvalues`, `cov` (K x K nested lists),
+    `names`, `nobs` (every observed cell), `params_per_period` (T x K, NaN
+    rows for skipped periods), `periods_used` (length-T bools),
+    `n_periods_used`, `bandwidth` (the effective float under "hac", None
+    otherwise), and the stamped `se_type`, `constant`. Validated against
+    linearmodels at 1e-10 (fixtures/panel_static.json).
 
 ### `panel_lp`
 
@@ -2052,7 +2848,13 @@ Panel local projection of a common shock with fixed effects.
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (the default se_type; 4.0 when omitted);
     passing it explicitly with `se_type="cluster"`/`"nonrobust"` raises
-    instead of being silently absorbed.
+    instead of being silently absorbed. `bandwidth + 1` above the number of
+    periods that carry scores at some horizon `h` (`T - h - n_lag_controls`
+    on a balanced panel) raises too, naming `bandwidth` and `h`: past it no
+    lag is added and the standard errors only shrink. At the default
+    bandwidth that is any horizon with `T - h - n_lag_controls < 5` (every
+    `T <= 14` at the default `horizon` and `n_lag_controls`), and the message
+    then says the 4.0 is the default.
 
     `outcome` is N x T; `shock` is length T. Fixed effects + lagged outcomes
     + short T carry Nickell bias (horizon-amplified); two half-panel
@@ -2149,6 +2951,9 @@ def cw_test(
 
 Clark-West test for nested-model equal predictive accuracy.
 
+    `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+    below the number of observations (refused by name otherwise).
+
     Returned keys: `cw_stat`, `mean_adj_diff`, `p_value`.
 
     Further arguments, with defaults: `lrv_lags` (0).
@@ -2160,6 +2965,9 @@ def gw_test(loss1: _ArrayLike, loss2: _ArrayLike, lrv_lags: int = ...) -> dict[s
 ```
 
 Giacomini-White unconditional test of equal predictive ability.
+
+    `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+    below the number of observations (refused by name otherwise).
 
     Returned keys: `df`, `gw_stat`, `p_value`.
 
@@ -2365,7 +3173,10 @@ Hansen-Seo (2002) two-regime threshold VECM (threshold
     Johansen estimate); for k > 2 pass ``beta=`` explicitly. With ``beta=``
     supplied the beta grid search never runs (``beta_grid`` comes back
     empty), so passing ``n_grid_beta``/``beta_span`` explicitly alongside
-    it raises (they default to 50/10.0 when None).
+    it raises (they default to 50/10.0 when None). The searched grid is
+    budgeted at n_grid_beta * min(n_grid_gamma, n) <= 2^20 cells (n the
+    usable rows); a larger n_grid_beta is refused by name, with its largest
+    admissible value, before the grid is allocated.
 
     Keys: beta, threshold, params_low/params_high (k x n_regressors, rows
     = equations, columns [const, ect, lagged diffs]) with EICKER-WHITE
@@ -2398,7 +3209,9 @@ Hansen-Seo (2002) sup-LM test of linear vs two-regime THRESHOLD
     series ARE cointegrated (test that first: johansen/engle_granger).
     Unlike threshold_vecm — whose beta=None grid SEARCH is bivariate-only
     — the null beta here is the linear Johansen ML estimate, defined for
-    any k, so k > 2 with an estimated (null) beta is accepted.
+    any k, so k > 2 with an estimated (null) beta is accepted. n_boot is at
+    most 1000000 (the p-value's Monte Carlo standard error is at most
+    0.0005 there), refused by name before any replication runs.
 
     Keys: stat, p_value, threshold, beta, n_boot, nobs, thresholds,
     lm_path, boot_stats, min_regime, neqs, n_regressors, k_ar_diff.
@@ -2481,7 +3294,9 @@ Markov-switching AR fitted by EM (Hamilton 1989); regimes + durations.
     n = len(y) - order; smoothed_prob_last_regime keeps the 0.2.0 scalar
     path (= smoothed_prob[:, -1]). The EM run reports converged and
     iterations (EM steps actually run — converged=False with
-    iterations == max_iter means the cap bound).
+    iterations == max_iter means the cap bound). k_regimes >= 2, and the
+    filter's expanded state space k_regimes^(order + 1) is at most 4096
+    (refused by name, stating the largest admissible k_regimes and order).
 
     Returned keys: `ar`, `converged`, `expected_durations`, `filtered_prob`,
     `iterations`, `loglik`, `means`, `regimes`, `smoothed_prob`,
@@ -2541,7 +3356,9 @@ Hansen (1996) sup-F linearity test against a two-regime SETAR(p):
     problem), so NO chi-squared p-value exists; p_value = (1 + #{F* >= F}) /
     (n_boot + 1) from the fixed-regressor wild bootstrap (y* = resid * eta,
     eta iid N(0,1), same fixed regressors, same grid) — seeded, parallel,
-    bit-identical at any thread count.
+    bit-identical at any thread count. n_boot is at most 1000000 (the
+    p-value's Monte Carlo standard error is at most 0.0005 there), refused
+    by name before any replication runs.
 
     Keys: stat, p_value, threshold, delay, n_boot, nobs, ssr_linear,
     ssr_setar, thresholds, f_path, boot_stats.
@@ -2571,7 +3388,10 @@ Smooth-transition AR (Terasvirta 1994): y_t = phi1'x_t +
     gamma*sd(s) (lstar) / gamma*var(s) (estar). Concentrated NLS:
     (gamma, c) grid (standardized gamma log-spaced [0.5, 100]; c on
     trimmed order statistics) + Nelder-Mead refinement. Run star_test
-    first — STAR on linear data happily "finds" a transition.
+    first — STAR on linear data happily "finds" a transition. The grid is
+    budgeted at n_gamma * n_c <= 2^20 cells per candidate delay (the
+    default is 25 x 25); a larger grid is refused by name, with the
+    largest admissible n_gamma and n_c, before it is allocated.
 
     Keys: model, gamma, gamma_standardized, c, delay, s_sd, converged,
     gamma_at_boundary (standardized gamma at the searchable range's edge:
@@ -2688,7 +3508,9 @@ Robust sup-Wald (score-form) linearity test of a linear VAR(p)
     bootstrap p-value. The threshold is unidentified under the null
     (Davies problem), so NO chi-squared p-value exists; p_value =
     (1 + #{W* >= W})/(n_boot + 1) — seeded, parallel, bit-identical at
-    any thread count.
+    any thread count. n_boot is at most 1000000 (the p-value's Monte Carlo
+    standard error is at most 0.0005 there), refused by name before any
+    replication runs.
 
     Keys: stat, p_value, threshold, delay, threshold_index, n_boot, nobs,
     thresholds, wald_path, boot_stats, min_regime, neqs, n_regressors.
@@ -2706,6 +3528,9 @@ def midas_weights(scheme: str, theta1: float, theta2: float, k: int) -> _F64:
 
 MIDAS weights (sum to 1); scheme "exp_almon" or "beta".
 
+    `k` (the number of high-frequency lags) is at most 2^27 = 134217728,
+    refused by name before anything is allocated.
+
 ### `umidas`
 
 ```python
@@ -2716,9 +3541,55 @@ def umidas(
 
 U-MIDAS: unrestricted mixed-frequency regression (hf_lags is nobs x K).
 
+    se_type "hac" (default): Bartlett/Newey-West with the n/(n - k) factor at
+    maxlags (None: floor(4 (nobs/100)^(2/9))); "nonrobust" refuses an
+    explicit maxlags (it is the HAC bandwidth and would be ignored).
+
     Returned keys: `bse`, `params`, `rsquared`.
 
     Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
+
+### `adl_midas`
+
+```python
+def adl_midas(
+    y: _ArrayLike,
+    hf_lags: _ArrayLike,
+    ar_lags: int = ...,
+    se_type: str = ...,
+    maxlags: int | None = ...,
+) -> dict[str, Any]:
+```
+
+ADL-MIDAS: U-MIDAS plus ar_lags lags of the low-frequency target, by OLS.
+
+    y_t = const + sum_p rho_p y_{t-p} + sum_k b_k hf_lags[t, k-1] + u_t over
+    the rows t = P..n-1 (P = ar_lags). y and hf_lags (n x K, row t aligned
+    with y_t) are the pair umidas takes; the lagged-y columns are built from
+    y. hf_lags column 1 is high-frequency LAG 0 (the last high-frequency
+    observation of period t, most recent first), hence the names hf1..hfK.
+    se_type "hac" (default): Bartlett/Newey-West with the n/(n - k) factor at
+    maxlags, default floor(4 (nobs/100)^(2/9)) on the EFFECTIVE rows
+    nobs = n - P; "nonrobust" refuses an explicit maxlags. ar_lags=0 is
+    refused (that model is umidas). Cost caps, checked before any column is
+    built: the nobs x (1 + P + K) design at most 2^26 cells, and about
+    nobs k^2 (min(maxlags, nobs - 1) + 2) work units (k = 1 + P + K; no lag
+    term under "nonrobust") at most 2^33 (measured 0.29-1.65 ns per unit) --
+    refused naming maxlags when the bandwidth alone exceeds it, ar_lags
+    otherwise. Validated against statsmodels OLS on a pandas.shift design at
+    1e-10; on persistent level targets against the exact rational
+    least-squares solution (params 3e-13, HAC bse 1.3e-13). The OLS engine
+    solves by QR of the equilibrated design: finite inputs of any magnitude
+    whose answer is representable return finite params, bse and R^2.
+
+    Returned keys: `bse`, `first_index` (= P, index into y of the first
+    fitted row), `maxlags` (resolved; None under "nonrobust"), `nobs`
+    (n - P), `param_names` (["const", "y.L1".."y.LP", "hf1".."hfK"]),
+    `params`, `residuals` (aligned with y[P:]), `rsquared`, `se_type`,
+    `tvalues`.
+
+    Further arguments, with defaults: `ar_lags` (1), `se_type` ("hac"),
+    `maxlags` (None).
 
 ## multivariate GARCH
 
@@ -2760,6 +3631,10 @@ CCC-GARCH (Bollerslev 1990); returns is T x k, H_t = D_t R D_t with
     approximation), with the variance forecasts identical to each series'
     own garch_fit forecast path. The univariate stage inherits garch_fit's
     EGARCH limit: vol="egarch" with forecast_horizon >= 2 raises.
+    forecast_horizon is capped at 1,000,000 steps and at a 2^28-value
+    (2 GiB) working set for the forecast matrices and their nested lists,
+    so the largest admissible horizon shrinks with k; past that it is
+    refused, naming the largest horizon for k, before anything is fitted.
 
 ### `dcc_garch`
 
@@ -2811,7 +3686,11 @@ DCC-GARCH (Engle 2002); returns is T x k. variant: "dcc" | "cdcc"
     normalized each step (an approximation), converging to corr(qbar).
     The univariate stage inherits garch_fit's EGARCH limit: vol="egarch"
     with forecast_horizon >= 2 raises. The default call is bit-identical to
-    earlier releases.
+    earlier releases. forecast_horizon is capped at 1,000,000 steps and at a
+    2^28-value (2 GiB) working set for the two forecast paths and their
+    nested lists, so the largest admissible horizon shrinks with k; past
+    that it is refused, naming the largest horizon for k, before anything
+    is fitted.
 
 ### `dcc_test`
 
@@ -2837,7 +3716,12 @@ Engle-Sheppard (2001) test of constant conditional correlation
     standardization by the symmetric inverse square root of the constant
     correlation, pooled AR(lags) on the stacked off-diagonal outer
     products. Keys: stat, df (= lags + 1), p_value (small rejects constant
-    correlation), lags, nobs, n_stacked.
+    correlation), lags, nobs, n_stacked. lags must leave the
+    (T - lags) * k(k-1)/2 stacked rows one residual degree of freedom beyond
+    the lags + 1 coefficients and keep the pooled regression within 2^26
+    normal-equation entries and 2^34 multiply-adds
+    (T * k(k-1)/2 * (lags + 1)^2); a longer lag length is refused naming
+    lags and the largest that fits.
 
 ## realized volatility / HAR
 
@@ -2892,6 +3776,11 @@ def connectedness(
 Diebold-Yilmaz connectedness (percent) from a VAR's GFEVD.
 
     total, to_others, from_others, net, gfevd, pairwise_net (data is T x k).
+
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before the VAR is fitted;
+    past it the call is refused naming `horizon` and the largest horizon that
+    fits (262143 on three variables).
 
     Further arguments, with defaults: `lags` (2), `horizon` (10), `trend`
     ("c").
@@ -3035,6 +3924,12 @@ Leakage-safe CV split indices for sequential data.
 
     Further arguments, with defaults: `k` (5).
 
+    Splits whose returned lists would hold more than 2**28 values (2 GiB; an
+    index counts 6, its int object and list slot included, and a fold 80)
+    are refused before any fold is built, naming `n` with the largest `n`
+    that fits, or `train`, `horizon` or `k` when not even one fold of that
+    size fits.
+
 ## penalized ML (paths)
 
 ### `adaptive_lasso`
@@ -3084,6 +3979,11 @@ Elastic-net regularization path with AIC/BIC selection.
     Returned keys: `aic`, `aic_best`, `bic`, `bic_best`, `coefs`, `df`,
     `lambdas`, `rss`.
 
+    Raises ValueError naming `max_iter` when it is 0 and `tol` when it
+    is not finite and positive (as `lasso` does), and naming `n_lambdas`
+    when the path (`n_lambdas * (p + 8)` values) exceeds the 2**28-value
+    (2 GiB) memory budget, with the largest value that fits.
+
 ## forecast backtest
 
 ### `backtest`
@@ -3117,7 +4017,10 @@ Rolling/expanding pseudo-out-of-sample backtest.
     re-raise naming the failing origin and window, with the original chained
     as __cause__; wrong-length / non-finite returns raise teaching errors.
     Returns origins, per-horizon forecasts and
-    targets, and a per-horizon accuracy table.
+    targets, and a per-horizon accuracy table. insample_period must leave
+    the first training window insample_period + 1 observations
+    (1 <= insample_period <= train - 1); it is checked before the forecaster
+    runs and refused naming insample_period and its largest admissible value.
 
     Returned keys: `accuracy`, `forecasts`, `horizon`, `n_origins`,
     `origins`, `targets`.
@@ -3170,6 +4073,17 @@ Distribution-free conformal forecast intervals around a point forecaster.
     q_lower/q_upper/scores/finite_sample_level; enbpi: beta/residuals;
     aci: alpha_final/alpha_trajectory/err/realized_coverage).
 
+    Sizes are checked before anything runs: horizon is capped at 1,000,000;
+    a calibration grid that does not fit (horizon + calib + 1 observations,
+    plus n_eval for aci) is refused naming the largest of those keywords and
+    its largest admissible value, as is one whose first training window
+    (n - horizon - calib + 1 observations) is shorter than the base
+    forecaster needs (4 for "theta"); lags likewise when the AR design's
+    2 * lags + 2 observations do not fit. Under "enbpi" the ensemble is sized
+    before any random stream is drawn: past 2^34 multiply-adds or 2^28
+    values, n_boot is refused with the largest that fits (or horizon, when
+    not even two models fit).
+
     Returned keys: `alpha`, `base`, `finite_sample_level`, `horizon`,
     `level`, `lower`, `mean`, `method`, `mode`, `n_calib`, `q_lower`,
     `q_upper`, `scores`, `upper`.
@@ -3209,7 +4123,13 @@ Online out-of-sample evaluation of conformal intervals ("split",
     under "enbpi", not fresh entropy (`n_boot=None` means 25). The same inert-kwarg refusals as
     conformal_forecast apply (order/lags/gamma/n_boot/seed/optimize_beta,
     EnbPI's calib), plus batch, which is EnbPI-only; n_eval is live for
-    every method here. Defaults stay bit-identical.
+    every method here. Defaults stay bit-identical. Sizes are checked before
+    anything runs, as in conformal_forecast: the grid horizon + calib +
+    n_eval + 1 and its first training window against what the base
+    forecaster needs, the AR design's 2 * lags + 2 observations, and under
+    "enbpi"
+    the ensemble budget, each refused naming the keyword (calib, n_eval,
+    lags, n_boot) and its largest admissible value.
 
     Returned keys: `alpha`, `base`, `err`, `horizon`, `level`, `lower`,
     `mean`, `method`, `n_eval`, `origins`, `realized_coverage`, `upper`.
@@ -3316,6 +4236,10 @@ State-dependent (interacted) local projections (Ramey-Zubairy 2018); per-regime 
     Further arguments, with defaults: `n_lag_controls` (4), `maxlags`
     (None), `band_alpha` (0.1).
 
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
+
 ## mean-group panel VAR
 
 ### `mean_group_var`
@@ -3336,6 +4260,12 @@ Pesaran-Smith (1995) mean-group panel VAR over per-entity T_i x k matrices.
     Returned keys: `coefs`, `coefs_se`, `intercept`, `intercept_se`,
     `irf_path`, `irf_path_se`, `lags`, `n_entities`, `neqs`, `orth_irfs`,
     `orth_irfs_se`.
+
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists) with every entity's path
+    kept until the average, before anything is fitted; past it the call is
+    refused naming `horizon` and the largest horizon that fits (266304 for four
+    bivariate entities).
 
     Further arguments, with defaults: `lags` (1), `trend` ("c"), `horizon`
     (10), `response` (0), `impulse` (0).
@@ -3381,6 +4311,11 @@ Two-step factor-augmented VAR (Bernanke-Boivin-Eliasz 2005).
 
     factors (T x r), params, sigma_u, n_factors, n_endog, policy_index, and
     the recursive policy-shock IRFs irf_panel (N x horizon+1) / irf_policy.
+
+    Sizes are checked before anything is allocated: the working set (padded
+    matrices and the returned lists, counted as real storage) is budgeted at
+    2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+    largest value that fits.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c"),
     `slow_indices` (None), `orth` (True).
@@ -3450,7 +4385,8 @@ GAS(1,1) score-driven volatility (Creal-Koopman-Lucas 2013).
     density is "gaussian" or "student_t". Returns omega/a/b (+ nu),
     variance, std_resid, loglik, aic, bic, next_variance, `converged` and
     `iterations` (the optimizer's certificate and step count), and
-    (horizon>0) a forecast.
+    (horizon>0) a forecast. horizon is capped at 1,000,000 steps and refused
+    past that, by name, before anything is fitted.
 
     Returned keys: `a`, `aic`, `b`, `bic`, `converged`, `forecast`,
     `iterations`, `loglik`, `next_variance`, `omega`, `std_resid`,
@@ -3548,7 +4484,10 @@ First-generation panel unit-root tests (LLC, IPS, Fisher/Maddala-Wu-Choi).
     series (unbalanced OK for "ips"/"fisher"; "llc" needs a common T). test is
     "ips" (default), "llc", or "fisher"; regression is "c"/"ct"/"n" ("n" is
     invalid for "ips"); lags is None (per-unit auto AIC), an int (fixed common
-    lag), or "aic"/"bic"/"t-stat". Returns statistic, p_value,
+    lag), or "aic"/"bic"/"t-stat"; a per-unit lag order too long for a unit
+    (or past the size budgets of `adf`) is refused naming `lags` (fixed) or
+    `max_lags` (the search cap). `lrv_bandwidth` must be a finite value
+    >= 0 (None: the LLC rule round(3.21 T^(1/3))). Returns statistic, p_value,
     per_unit_tstat/pvalue/lags/nobs, n_units, regression, plus test-specific
     extras: ips -> t_bar; llc -> delta_hat, t_delta, s_n, t_bar_periods;
     fisher -> maddala_wu, choi_z, choi_z_pvalue.
@@ -3585,11 +4524,74 @@ Dynamic-factor-model nowcast; data is T x N with an optional NaN edge.
     moments; scale is all ones for "mle"). Mapping factors to series
     levels is exact: nowcast == center + scale * (loadings @ edge_factor),
     and center + scale * (F @ L.T) is the common-component fit of the
-    balanced panel. Also,
+    balanced panel. To re-smooth a new data vintage with the fitted model,
+    pass the six model keys to dfm_smooth, which reproduces this call's
+    loglik, edge_factor and nowcast bit for bit on the same panel.
 
     Returned keys: `center`, `edge_factor`, `factor_ar`, `factor_cov`,
     `factor_order`, `fit_loglik`, `idiosyncratic`, `loadings`, `loglik`,
     `n_factors`, `nowcast`, `scale`, `smoothed_factors`.
+
+### `dfm_smooth`
+
+```python
+def dfm_smooth(
+    data: _ArrayLike,
+    loadings: _ArrayLike | Sequence[Sequence[float]],
+    factor_ar: _ArrayLike | Sequence[Sequence[float]],
+    idiosyncratic: _ArrayLike,
+    factor_cov: _ArrayLike | Sequence[Sequence[float]] | None = ...,
+    center: _ArrayLike | None = ...,
+    scale: _ArrayLike | None = ...,
+) -> dict[str, Any]:
+```
+
+Fixed-parameter DFM Kalman smoother over a (ragged) T x N panel.
+
+    No estimation: the Kalman filter/smoother of the dynamic factor model
+    z_t = loadings @ f_t + e_t (e_t ~ N(0, diag(idiosyncratic))),
+    f_t = A_1 f_{t-1} + ... + A_p f_{t-p} + eta_t (eta_t ~ N(0, factor_cov))
+    on z = (data - center) / scale, stationary initialization -- exactly
+    statsmodels' DynamicFactor(error_order=0), which fixes factor_cov = I.
+    NaN in data is missing (skipped). loadings is N x r, factor_ar the
+    r x (r p) stacked [A_1 | ... | A_p]; arrays or nested lists (the forms
+    dfm_nowcast returns). The vintage re-smoothing workflow:
+    dfm_smooth(new_data, **{k: fit[k] for k in ("loadings", "factor_ar",
+    "factor_cov", "idiosyncratic", "center", "scale")}) reproduces
+    dfm_nowcast's loglik, edge_factor and nowcast bit for bit on the same
+    panel. With more than r zero idiosyncratic variances observed in one
+    period the joint density is singular and loglik is the density on its
+    support: a series an earlier one of the same period has pinned is
+    skipped like a missing value (so the column order of data picks which
+    pins, a Jacobian ln|loading_j / loading_i| per such period). Refusals
+    name the argument (shapes, complex entries in loadings / factor_ar /
+    factor_cov -- not truncated to their real part, non-finite parameters,
+    inf in data, negative idiosyncratic, scale <= 0, a non-stationary
+    factor_ar, a
+    non-PSD factor_cov, finite inputs that overflow double precision -- a
+    non-finite (data - center) / scale cell, a -inf log-likelihood, a Kalman
+    recursion that overflows -- and sizes past the caps: T (r p)^2 and N^2
+    at most 2^26 cells, T (2 m^3 + 20 N m^2 + N^2 + 1000 N + 12000) +
+    16 m^3 at most 2^34 work units, m = r p, the one-off term pricing the
+    stationary initialization at the edge of stationarity -- measured
+    0.14-1.07 ns per unit from 3% of the cap up: 17.0 s at N = 8192,
+    m = 60, 10.1 s at T = 8000, N = 1000, m = 2, and 10.9 s for one period
+    at m = 960 with the spectral radius just below one).
+    Validated against statsmodels DynamicFactor.smooth and KalmanSmoother
+    at 1e-8 (achieved: loglik 5.2e-13 relative, states 2.6e-10 and
+    covariances 1.2e-10 on the standardized case), and the singular case
+    against an exact Kalman filter at 1e-12.
+
+    Returned keys: `edge_factor` (length r, the last smoothed factor),
+    `factor_order` (p), `loglik` (of the STANDARDIZED panel z; no Jacobian
+    term), `n_factors` (r), `nowcast` (length N, center + scale *
+    (loadings @ edge_factor)), `smoothed_factors` ((T, r) ndarray over the
+    FULL panel -- dfm_nowcast's key of the same name is a (T_b, r) nested
+    list from the balanced training block), `smoothed_state` ((T, r p)),
+    `smoothed_state_cov` ((T, r p, r p)).
+
+    Further arguments, with defaults: `factor_cov` (None: identity),
+    `center` (None: zeros), `scale` (None: ones).
 
 ### `dfm_news`
 
@@ -3804,6 +4806,14 @@ def reset_test(y: _ArrayLike, x: _ArrayLike, max_power: int = ...) -> dict[str, 
 
 Ramsey RESET functional-form F-test; x is T x k.
 
+    The augmented regression has k + max_power - 1 regressors, so
+    `max_power` must leave T > k + max_power - 1 and the augmented design
+    within the Breusch-Godfrey auxiliary-regression budgets (2^26 entries,
+    2^34 multiply-adds); a larger one is refused before any power column is
+    built, naming `max_power` and the largest that fits. A power of a large
+    fitted value that overflows to infinity is refused naming `max_power`
+    (RESET is invariant to the scale of `y`, so rescaling it also helps).
+
     Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
 
     Further arguments, with defaults: `max_power` (3).
@@ -3828,6 +4838,102 @@ def cusum_test(y: _ArrayLike, x: _ArrayLike) -> dict[str, Any]:
 CUSUM parameter-stability test (Brown-Durbin-Evans); returns the path and 5% bounds.
 
     Returned keys: `bound_lower`, `bound_upper`, `path`, `sigma`.
+
+### `breusch_godfrey_test`
+
+```python
+def breusch_godfrey_test(
+    y: _ArrayLike, x: _ArrayLike, nlags: int | None = ...
+) -> dict[str, Any]:
+```
+
+Breusch-Godfrey LM test for serial correlation of order up to `nlags`
+    in the errors of the OLS regression of `y` on `x` (T x k, INCLUDING the
+    constant column, as for the other specification tests).
+
+    The residuals `u` are regressed on `x` and their own lags
+    `u_{t-1}..u_{t-nlags}`; `statistic` is `LM = T * R^2` of that auxiliary
+    regression, `chi2(nlags)` under no serial correlation, and `fstat` the
+    F-form of the same null (the lag coefficients jointly zero),
+    `F(nlags, T - k_aux)`. Unlike Durbin-Watson it allows lagged dependent
+    variables among the regressors and tests every order up to `nlags`.
+
+    Convention (statsmodels `acorr_breusch_godfrey`, pinned at 1e-10): the
+    lagged residuals are padded with zeros, so all T observations stay in
+    the auxiliary regression; `nlags=None` uses `min(10, T // 5)`; when `x`
+    spans no constant (no constant column and no implicit one such as
+    complementary dummies) a column of ones is added to the auxiliary
+    regression (`constant_added`), so `k_aux = k + nlags + 1`, otherwise
+    `k + nlags`. `x` counts as spanning a constant when regressing a column
+    of ones on it leaves a residual below 1e-10 of the constant's norm, a
+    rule invariant to rescaling a column; statsmodels' `matrix_rank` rule is
+    not, and can call the constant implicit where this one adds it (a level
+    such as `1e9 + t` beside other columns; model card). A design that
+    comes close to a constant without passing that threshold is tested with
+    the constant added, not refused. With `constant_added` the LM form also
+    counts what that constant explains and over-rejects (measured in the
+    model card): read the F-form (`f_pvalue`) there.
+
+    COST: about `T k_aux^2 / 2 + 6 k_aux^3` multiply-adds for the auxiliary
+    regression — linear in `T` at a fixed `nlags`, quadratic to cubic in
+    `nlags` (measured: 0.05 s at T = 10^5 with nlags = 10, 14.5 s with
+    nlags = 564; model card). An order whose auxiliary design would pass
+    2^26 entries (512 MiB) or 2^34 multiply-adds (about half a minute) is
+    refused before anything is built, naming `nlags` and the largest order
+    that fits; at the default order that caps `T` at 5162220 when `x` is a
+    constant and two regressors (4793490 when `x` spans no constant and one
+    is added).
+
+    Returned keys: `constant_added`, `df`, `f_df_den`, `f_df_num`, `f_pvalue`,
+    `fstat`, `nlags`, `nobs`, `pvalue`, `statistic`.
+    `statistic`/`df`/`pvalue` are the LM form (`df = nlags`), `fstat` with
+    `f_df_num` (= nlags) and `f_df_den` (= T - k_aux) and `f_pvalue` the
+    F-form, `nlags` the order used (the default resolved), `nobs` = T.
+
+    Further arguments, with defaults: `nlags` (None: `min(10, T // 5)`).
+
+### `durbin_watson_test`
+
+```python
+def durbin_watson_test(
+    y: _ArrayLike, x: _ArrayLike, alternative: str = ...
+) -> dict[str, Any]:
+```
+
+Durbin-Watson test for first-order serial correlation in the errors of
+    the OLS regression of `y` on `x` (T x k, INCLUDING the constant column),
+    with the EXACT p-value under normal errors.
+
+    `statistic` is `d = sum (e_t - e_{t-1})^2 / sum e_t^2` on the OLS
+    residuals (statsmodels `durbin_watson`, pinned at 1e-10): about
+    `2 (1 - r_1)`, below 2 for positive and above 2 for negative
+    autocorrelation. `pvalue` is exact, not a bounds-table verdict: under
+    normal iid errors and fixed regressors `P(d <= c) = P(sum_i (nu_i - c)
+    z_i^2 <= 0)` with `nu_i` the eigenvalues of `M A M` (Durbin-Watson 1950),
+    evaluated by Imhof's (1961) inversion formula to about 1e-13 absolute
+    (so a p-value printed as ~1e-14 means "below 1e-13"). `alternative` is
+    "positive" (rho > 0, the classical test: `P(d <= d_obs)`), "negative"
+    (`P(d >= d_obs)`) or "two_sided" (`min(1, 2 min(...))`).
+
+    Validity: exact for Gaussian errors with strictly exogenous `x`; with
+    non-normal errors it is approximate (seeded Monte Carlo in the model
+    card); with a lagged dependent variable in `x` it is INVALID — use
+    `breusch_godfrey_test`. COST: the eigendecomposition behind the p-value is
+    cubic in T, so the p-value is computed for T <= 4000 (measured timings
+    in the model card); for a longer sample `pvalue` is None and the
+    statistic, which is linear in T, is still returned. Use
+    `breusch_godfrey_test` for a test at that length.
+
+    Returned keys: `alternative`, `df_resid`, `nobs`, `pvalue`, `statistic`.
+    `df_resid` is T - k, `nobs` is T, `alternative` echoes the option,
+    `pvalue` is None when T > 4000.
+
+    Validation: the exact p-value is a documented-formula golden (LAPACK
+    eigenvalues + QUADPACK, fixtures/serial_corr.json, 1e-10), the null
+    distribution is checked by seeded Monte Carlo, and the `nu_i` obey the
+    Durbin-Watson bounds (interlacing) theorem.
+
+    Further arguments, with defaults: `alternative` ("positive").
 
 ## arbitrage-free NS
 
@@ -3871,7 +4977,10 @@ ACM regression-based term premium (Adrian-Crump-Moench 2013).
     `maturities` are integer PERIODS (months for monthly data), ascending,
     containing 1; excess returns need n - 1 in the grid for each return
     maturity n (contiguous grid or pairs; interpolate the curve first if
-    needed). Returns factors, factor_loadings, mu/phi/sigma, rx_maturities,
+    needed). Each maturity is at most 120000 periods (the jsz_fit cap: the
+    price recursions are tabulated at every integer period up to the
+    longest), refused by index before anything is allocated. Returns
+    factors, factor_loadings, mu/phi/sigma, rx_maturities,
     a/beta/c, sigma2, lambda0/lambda1, delta0/delta1, A/B, A_rn/B_rn,
     fitted / risk_neutral / term_premium (T x M, fitted = risk_neutral +
     term_premium), var/rx/short_rate/yield R-squareds, and the echoed
@@ -3897,7 +5006,11 @@ def dsge_solve(
 
 Blanchard-Kahn solution of a linear RE model A E[y_{t+1}] = B y_t + C z.
 
-    Returns the decision rule g, the law of motion p/q, eigenvalue_moduli, and verdict.
+    Returns the decision rule g, the law of motion p/q, eigenvalue_moduli,
+    and the Blanchard-Kahn verdict, which on return always reads "unique
+    stable solution (...)": an indeterminate model (fewer unstable
+    eigenvalues than jump variables) or one with no stable solution (more)
+    raises ValueError instead, naming the regime and both counts.
 
     Returned keys: `eigenvalue_moduli`, `g`, `p`, `q`, `verdict`.
 
@@ -3950,6 +5063,11 @@ Quantile local projections: `irf[tau][h]` with Powell-sandwich `se[tau][h]`.
 
     Further arguments, with defaults: `taus` (None), `horizons` (12),
     `n_lag_controls` (4).
+
+    A `horizons` or `n_lag_controls` that leaves a horizon with no more
+    usable rows than parameters (`2 + 2 * n_lag_controls`) is refused by
+    name, before anything is sized by `horizons`, with its largest
+    admissible value.
 
 ### `growth_at_risk`
 
@@ -4024,6 +5142,10 @@ Functional local projection: y_{t+h} on ALL K scores jointly + const +
 
     Returned keys: `betas`, `covs`, `horizons`, `n_factors`, `nobs`, `se`.
 
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
+
 ### `flp_scenario`
 
 ```python
@@ -4049,6 +5171,10 @@ IRF of y to a whole-curve scenario delta (length M): FPCA, joint FLP,
     Returned keys: `betas`, `explained`, `horizons`, `response`, `se`,
     `weights`.
 
+    A `horizons` the sample cannot reach (a horizon that would keep no
+    more usable rows than regressors) is refused before anything is
+    sized by it, naming the largest admissible `horizons`.
+
 ### `fvar_scenario`
 
 ```python
@@ -4068,6 +5194,11 @@ FVAR scenario: VAR([scores, y], scores FIRST) with Cholesky
 
     Returns horizons, weights, response_outcome, responses ((H+1) x (K+1),
     scores first then outcome), implied_outcome_innovation.
+
+    `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+    real storage (padded matrices and Python lists), before the VAR is fitted;
+    past it the call is refused naming `horizon` and the largest horizon that
+    fits (262143 with two factors).
 
     Further arguments, with defaults: `n_factors` (3), `lags` (2), `horizon`
     (10).
@@ -4165,6 +5296,12 @@ Smooth local projections (Barnichon-Brownlees 2019): the IRF as a
     still applies and is not a band problem: `se` conditions on `lam` and
     ignores the penalty's shrinkage bias, so any band here is centred on a
     shrunk estimator. Method: Montiel Olea and Plagborg-Møller.
+
+    `band_n_sim` is checked, before anything is estimated, against the sup-t
+    budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+    band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+    naming `band_n_sim` and the largest count that fits (19173961 at the
+    default 12 horizons).
 
     Further arguments, with defaults: `n_lag_controls` (4), `degree` (3),
     `n_basis` (None), `n_folds` (5), `hac_maxlags` (None).
@@ -4372,6 +5509,14 @@ Kernel ridge regression: exact dual solve, or the Rahimi-Recht
     and is property-tested (seeded determinism; error against the exact
     fit falling with `D`), not golden-pinned.
 
+    An `rff_features` whose feature matrix and SVD exceed the
+    2**28-value (2 GiB) memory budget is refused by name, with the
+    largest value that fits; a training or test kernel matrix with a
+    non-finite entry (a polynomial `degree` that overflows, or a
+    negative base under a non-integer `degree`) is refused naming
+    `degree`, `gamma` and `coef0`, rather than reported as a rank-
+    deficient kernel or returned as a NaN prediction.
+
 ### `kernel_regression`
 
 ```python
@@ -4439,6 +5584,9 @@ Nadaraya-Watson or local-linear kernel regression of `y` on `x`
     (independent package); the leave-block-out criterion and
     `effective_df` are documented-formula transcriptions (no package
     computes them) pinned at 1e-10.
+
+    A `block` that alone leaves fewer rows than each local fit needs is
+    refused by name with its largest admissible value.
 
 ## structured penalties and post-selection
 
@@ -4556,6 +5704,9 @@ Post-double-selection LASSO (Belloni-Chernozhukov-Hansen 2014) for
 
     Further arguments, with defaults: `tol` (1e-08), `max_iter` (100000).
 
+    Raises ValueError naming `max_iter` when it is 0 and `tol` when it
+    is not finite and positive, before any selection LASSO runs.
+
 ## Trees and forests
 
 ### `regression_tree`
@@ -4601,7 +5752,13 @@ CART regression tree (Breiman et al. 1984) with scikit-learn's
     Raises ValueError for NaN/inf (naming the array), an `x_test` column
     mismatch, `min_samples_leaf < 1`, `min_samples_split < 2`, and
     `insufficient data: {got} observations, at least {needed} required`
-    when n < max(min_samples_split, 2 * min_samples_leaf).
+    when n < max(2, min_samples_split, 2 * min_samples_leaf) — inside a
+    refusal that names the keyword whenever one of the two asks for more
+    rows than x has.
+
+    A `min_samples_leaf` above n / 2 or a `min_samples_split` above n is
+    refused by name with its largest admissible value (the message keeps
+    the `insufficient data` wording).
 
 ### `random_forest`
 
@@ -4694,10 +5851,17 @@ Random forest for regression (Breiman 2001) with time-series-aware
 
     Raises ValueError for NaN/inf (naming the array), `insufficient data:
     {got} observations, at least {needed} required` when n < 2 *
-    min_samples_leaf, unknown string options (listing the accepted
+    min_samples_leaf (inside a refusal that names `min_samples_leaf`),
+    unknown string options (listing the accepted
     values), malformed `quantiles` (naming the fix), `importance_groups`
     of the wrong length (naming both lengths), a block length outside
     1..=n, and every inert-kwarg combination above.
+
+    An `n_trees` or `n_permutations` whose working set exceeds the
+    2**28-value (2 GiB) memory budget is refused by name, with the
+    largest value that fits, before any tree is grown; a
+    `min_samples_leaf` above n / 2 is refused by name with its largest
+    admissible value.
 
 ## Trend filtering and boosting
 
@@ -4796,6 +5960,10 @@ Componentwise L2 boosting with single-column least-squares base
     nonincreasing, the small-step limit is OLS on the selected support,
     AIC recovers a sparse truth's support.
 
+    An `n_steps` whose paths (`n_steps * (n + p + 10)` values) exceed
+    the 2**28-value (2 GiB) memory budget is refused by name, with the
+    largest value that fits, before anything is allocated.
+
 ## Neural (MLP, echo state network)
 
 ### `mlp_regression`
@@ -4885,6 +6053,16 @@ Feed-forward neural regressor (one or two hidden layers) with a seed
     list the accepted activation/solver names, name the two-layer limit,
     and report `insufficient data: {got} observations, at least {needed}
     required` with the validation split counted.
+
+    `hidden` may also be a 1-D array of widths. A layer width, an `n_seeds`,
+    or (under Adam) a `max_epochs` or `patience` whose working set exceeds
+    the 2**28-value (2 GiB) memory budget is refused by name (`hidden[i]`,
+    `n_seeds`, `max_epochs`, `patience`), with the largest value that fits,
+    before anything is allocated. The loss paths count the epochs every
+    member is certain to record: all `max_epochs` with
+    `validation_fraction=0`, and `min(max_epochs, patience + 1)` with a
+    validation split, so a large `max_epochs` with the default `patience`
+    runs until early stopping.
 
 ### `echo_state_network`
 
@@ -5101,7 +6279,10 @@ Distributed-lag panel regression — the climate-impact specification of
     `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
     `se_type="driscoll_kraay"` (4.0 when omitted there); passing it
     explicitly with any other `se_type` raises instead of being silently
-    absorbed. `eval_points` (1-D, default None) are the points at which the
+    absorbed, and so does `bandwidth + 1` above the number of periods that
+    carry scores (`T - lags` on a balanced panel; past it the standard
+    errors only shrink). `eval_points` (1-D, default None) are the points at
+    which the
     marginal effect of the cumulative quadratic response is evaluated for
     every regressor; it acts ONLY under `powers=2` (None there means each
     regressor's pooled sample mean) and passing it under `powers=1` raises
@@ -5411,7 +6592,7 @@ Regime-dependent generalized impulse responses (Koop-Pesaran-Potter
     the buffers are allocated fallibly, so an allocator refusal is the same
     error, never an abort.
 
-## Cointegrating regressions (FM-OLS / DOLS / CCR)
+## Cointegrating regressions and level-relationship tests (FM-OLS / DOLS / CCR / ARDL)
 
 ### `fmols`
 
@@ -5619,6 +6800,119 @@ Stock-Watson (1993) / Saikkonen (1991) dynamic OLS (DOLS) of one
     `bandwidth` (None), `bandwidth_rule` (None: "newey-west"), `force_int`
     (False), `df_adjust` (False).
 
+### `ardl_bounds_test`
+
+```python
+def ardl_bounds_test(
+    y: _ArrayLike,
+    x: _ArrayLike,
+    lags: int | None = ...,
+    order: int | Sequence[int] | npt.NDArray[np.integer] | None = ...,
+    case: int = ...,
+    ic: str | None = ...,
+    max_lag: int | None = ...,
+    max_order: int | None = ...,
+    alpha: float = ...,
+) -> dict[str, Any]:
+```
+
+ARDL model and Pesaran-Shin-Smith (2001) bounds test for a level
+    relationship between `y` and the regressors `x`, valid whether the
+    regressors are I(0), I(1) or mutually cointegrated.
+
+    `y` (length T) is the regressand and `x` the (T, k) regressors, k >= 1
+    (do NOT add a constant: the deterministics come from `case`). The
+    model is the ARDL(p, q_1..q_k) in its unrestricted error-correction
+    form (statsmodels `UECM`): `D.y_t = d_t'delta + pi y_{t-1} + sum_j
+    theta_j x_{j,t-1} + sum_{i<p} phi_i D.y_{t-i} + sum_j sum_{l<q_j}
+    beta_{j,l} D.x_{j,t-l} + e_t`, OLS over rows t = h..T-1 with h =
+    max(p, max q_j), p >= 1 and every q_j >= 1. `case` (default 3) picks the
+    deterministics and what the test restricts: 1 none; 2 a constant,
+    tested with the levels; 3 an unrestricted constant; 4 a constant and a
+    trend, the trend tested; 5 an unrestricted constant and trend. The
+    trend is t + 1 over the FULL sample (statsmodels' convention).
+
+    The bounds test is the Wald F on the level block (`y.L1`, `x.L1`, plus
+    the constant in case 2 or the trend in case 4) divided by the number
+    of restrictions. Its critical values and p-values are the asymptotic
+    PSS response surface (statsmodels' 32-million-draw tables) for k
+    regressors, I(0) (lower) and I(1) (upper) bounds — looked up at k =
+    `n_x`; statsmodels 0.15's `bounds_test` uses k = n_x + 1 (its own
+    simulator, run at the key it passes, reproduces the n_x row), so its
+    critical values and p-values are wrong and tsecon does not inherit
+    them. `verdict` reads the p-values at `alpha` (default 0.05):
+    "level_relationship" if `p_value_upper` < alpha,
+    "no_level_relationship" if `p_value_lower` >= alpha, else
+    "inconclusive" ("unavailable" when n_x > 10, where no table exists and
+    `crit_note` says so). Because the surface p at a tabulated critical
+    value is off its nominal level by up to 0.0013 (90%), 0.0010 (95%),
+    0.0003 (99%) and 0.0001 (99.9%), the verdict can differ from comparing
+    `statistic` with `crit_lower`/`crit_upper` in that sliver; the
+    p-values are the definition. The t statistic on y.L1 is
+    returned without critical values: a rejecting F with a t near zero is
+    PSS's degenerate case (the x levels matter but y does not
+    error-correct) — check it. Asymptotic bounds only: with T below about
+    80 they can mislead (no Narayan / Kripfganz-Schneider finite-sample
+    surfaces, no t bounds, no HAC version yet).
+
+    Orders: `lags` (p >= 1) and `order` (an int for every regressor, or
+    one q_j >= 1 per column; q_j = 0 is a planned follow-up) fix them; a
+    None is searched by minimising `ic` — "bic" (default), "aic" or "hqic"
+    on statsmodels' scale -2 llf + c (m + 1) (NOT `dols`'s ln(RSS/n)
+    scale) — over p in 1..`max_lag` and every q_j in 1..`max_order`
+    (defaults 4) on the common sample h* = max(P, Q), the winner refit on
+    its own sample. This is statsmodels' `ardl_select_order` restricted to
+    the orders a UECM can represent (its unrestricted pick can have q_j = 0
+    or drop a regressor, which its own `UECM.from_ardl` then refuses).
+    Sentinels: `ic` with both `lags` and `order` fixed RAISES, `max_lag`
+    with `lags` fixed RAISES, `max_order` with `order` fixed RAISES (each
+    would be inert); `lags` = 0 RAISES (statsmodels silently builds the
+    lags = 1 design); a grid of more than 100 000 candidate models
+    (P x Q^k) RAISES naming `max_lag`/`max_order` — fix `order` to search
+    only the lags (measured: 65 536 models at seven regressors in about
+    2.5 s, the same at T = 300 and T = 30 000 — every candidate is scored
+    from one QR factorisation of the largest design); so does a design of
+    more than 2^26 entries (512 MiB).
+
+    Fit statistics use the regression's own row count `nobs` = T - h;
+    statsmodels' ARDL/UECM report T - p whenever max q_j > p, which shifts
+    their llf, information criteria, df_resid and t-test p-values (their
+    standard errors are right).
+
+    Returned keys: `statistic` (the PSS F), `t_statistic` (t on y.L1, no
+    critical values), `case`, `trend` ("n"/"c"/"ct"), `n_x` (the table
+    key k), `n_restrictions`, `crit_levels` ([0.90, 0.95, 0.99, 0.999]),
+    `crit_lower` (I(0) bounds), `crit_upper` (I(1) bounds),
+    `p_value_lower`, `p_value_upper`, `verdict`, `alpha`; the UECM:
+    `params`, `se`, `tvalues`, `pvalues` (Student t on `df_resid`), `cov`,
+    `param_names` ([const, trend, y.L1, x1.L1..xk.L1, D.y.L1..D.y.L{p-1},
+    D.x1.L0..D.x1.L{q1-1}, ...]), `adjustment` (the coefficient on y.L1),
+    `n_det`, `n_params`; the long run (statsmodels `ci_params` times -1,
+    without y): `long_run`, `long_run_se` (delta method),
+    `long_run_tvalues`, `long_run_pvalues` (normal), `long_run_names`
+    (const, trend, x1..xk); the fit: `resid` (length `nobs`, D.y - Z b),
+    `nobs`, `n_total` (T), `hold_back` (h), `df_resid`, `ssr`, `llf`,
+    `aic`, `bic`, `hqic` (-2 llf + c (m + 1) on the model's own sample);
+    the orders: `lags`, `order` (list of q_j), `selected` (False when both
+    were fixed), `ic`, `ic_value` (the minimised criterion on the common
+    sample; NaN when both were fixed), `max_lag`, `max_order` (the caps
+    used; the fixed values when fixed), `n_models` (candidates compared);
+    `crit_note` (None, or why the bounds are NaN).
+
+    Validation: statsmodels 0.15 `UECM` / `ARDL` / `ardl_select_order` at
+    1e-10 on estimates, t and long run, the selected orders exactly
+    (`ic_value` at 1e-8); the F at 1e-10 against an exact-rational referee
+    (also with y and x shifted by levels up to 1e6 over increments of sd
+    0.015) and at 5e-10 / 1e-8 against statsmodels' UECM Wald / levels-ARDL
+    f_test (their own rounding); the critical values and p-values are
+    statsmodels' tabulated surface at the corrected key (p-values atol
+    1e-14 / rtol 1e-9); seeded Monte Carlo null size 0.048 / 0.047 at 5%
+    (fixtures/ardl.json, model card).
+
+    Further arguments, with defaults: `lags` (None), `order` (None), `case`
+    (3), `ic` (None: "bic"), `max_lag` (None: 4), `max_order` (None: 4),
+    `alpha` (0.05).
+
 ## Conditional VAR forecasts, residual diagnostics, lag-order selection
 
 ### `var_conditional_forecast`
@@ -5631,18 +6925,23 @@ def var_conditional_forecast(
     trend: str = ...,
     steps: int | None = ...,
     alpha: float = ...,
+    condition_sd: Sequence[Sequence[float | None]] | _ArrayLike | None = ...,
+    soft: str | None = ...,
 ) -> dict[str, Any]:
 ```
 
-Conditional (hard-path) VAR forecast: the forecast of every series when
-    some cells of the future path are pinned to given values.
+Conditional VAR forecast, hard or soft: the forecast of every series
+    when some cells of the future path are pinned to given values, or
+    conditioned with a stated standard deviation.
 
     `conditions` is a nested list with one row per horizon and one entry per
     series: a number pins that (horizon, series) cell, None (or NaN) leaves
     it free — a NumPy array with NaN for the free cells or a pandas DataFrame
     with missing entries works too. Rows beyond `len(conditions)` up to
     `steps` are free; `steps` defaults to `len(conditions)`. At least one
-    cell must be pinned (the all-free case is `var_forecast`).
+    cell must be pinned (the all-free case is `var_forecast`). Every cell of
+    `conditions` and `condition_sd` is a real number, None or NaN: a complex
+    array or cell is refused by name, not truncated to its real part.
     COST: the guard on `steps` is a MEMORY budget (`steps * k` cells times
     the constrained cells must stay inside 2^24 doubles), but the work is
     QUADRATIC in `steps` — measured on a k = 3 VAR(2): 0.03 s at 1 000
@@ -5658,20 +6957,44 @@ Conditional (hard-path) VAR forecast: the forecast of every series when
     Kalman smoother with the free future cells set missing
     (Bańbura-Giannone-Lenza 2015), the second golden leg.
 
-    Keys (each path `steps x k`, row h = horizon h + 1): `point` (pinned
-    cells hold their condition exactly), `unconditional` (bitwise
+    Soft conditions: `condition_sd` (same shape as `conditions`, exactly
+    `len(conditions)` rows) gives a conditioned cell a STANDARD DEVIATION
+    above 0; 0, None or NaN keeps it hard, and a free cell takes only None,
+    NaN or 0. Any sd > 0 REQUIRES `soft`, because the two readings disagree on
+    whether the cell's point is its value. `soft="density"`
+    (Andersson-Palmqvist-Waggoner 2010; "the scenario says inflation
+    ~ N(2, 0.5^2)"): the cell's forecast distribution IS N(value, sd^2) —
+    point = value and se = sd exactly; path, shocks and `mahalanobis` are
+    the hard ones at the central values (`mahalanobis` ignores sd).
+    `soft="signal"` (Monti 2010; "a nowcast with known noise"): the value is
+    a noisy reading y + N(0, sd^2) — point, se and shocks are the posterior
+    given the readings (the cell is NOT pinned; its se is below sd) and
+    `mahalanobis` is r'(B Sigma B' + Omega)^{-1} r. Hard cells are pinned in
+    both. Interval (truncated) conditions and parameter uncertainty are not
+    provided.
+
+    Keys (each path `steps x k`, row h = horizon h + 1): `point` (hard
+    cells, and every conditioned cell under soft="density", hold their
+    condition exactly), `unconditional` (bitwise
     `var_forecast(...)["point"]`), `cov` ([h][i][j] conditional covariance
-    per horizon; pinned cells have a zero row/column), `se` (exactly 0 at
-    pinned cells), `unconditional_se`, `lower`/`upper` (innovation
-    uncertainty only, coefficients treated as known), `shocks` (implied
-    reduced-form innovations), `orth_shocks` (Cholesky-orthogonalised in the
-    column order — the only ordering-dependent key), `constrained`,
-    `n_constrained`, `mahalanobis` (squared Sigma-norm of the implied
-    shocks), `mahalanobis_pvalue` (chi2(n_constrained) tail: small means the
-    model is pushed hard), `steps`, `alpha`.
+    per horizon; hard cells have a zero row/column, a density soft cell sd^2
+    and 0 against the other conditioned cells of its horizon), `se` (exactly
+    0 at hard cells, exactly sd at density soft cells), `unconditional_se`,
+    `lower`/`upper` (innovation uncertainty only, coefficients treated as
+    known), `shocks` (implied reduced-form innovations), `orth_shocks`
+    (Cholesky-orthogonalised in the column order — the only
+    ordering-dependent key), `constrained` (every conditioned cell, hard or
+    soft; a signal soft cell is constrained but not pinned), `n_constrained`,
+    `mahalanobis` (squared Sigma-norm of the implied shocks), `mahalanobis_pvalue`
+    (chi2(n_constrained) tail: small means the model is pushed hard), `mode`
+    ("hard", "density" or "signal"), `condition_sd` (steps x k: the sd
+    applied at each soft cell, 0.0 elsewhere), `n_soft` (cells with sd > 0),
+    `steps`, `alpha`.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c"), `steps`
-    (None: `len(conditions)`), `alpha` (0.05).
+    (None: `len(conditions)`), `alpha` (0.05), `condition_sd` (None: every
+    condition hard), `soft` (None; required — "density" or "signal" —
+    whenever any `condition_sd` is above 0, and refused otherwise).
 
 ### `var_diagnostics`
 
@@ -5686,22 +7009,49 @@ def var_diagnostics(
 
 Residual diagnostics of a fitted VAR(p): multivariate Portmanteau
     (unadjusted and small-sample adjusted, chi2(k^2 (nlags - lags));
-    `nlags` must exceed `lags`), multivariate Jarque-Bera with its skewness
-    and kurtosis components (Cholesky orthogonalisation in the column order,
-    the statsmodels `test_normality` convention; Doornik-Hansen is not
-    provided), and the stability roots.
+    `nlags` must exceed `lags`), three residual-normality statistics, and
+    the stability roots.
+
+    Normality, on the same column-centred residuals and ML covariance:
+    (1) multivariate Jarque-Bera with the Cholesky orthogonalisation in the
+    column order — the statsmodels `test_normality` convention and JMulTi's
+    "Lütkepohl (1993)" block (`jarque_bera` and its parts); (2) the same
+    with the SYMMETRIC inverse root of the covariance and no further
+    transforms — what JMulTi prints under "Doornik & Hansen (1994)", all 16
+    bundled JMulTi outputs reproduced to the printed precision
+    (`jarque_bera_symmetric` and its parts; order-free but unit-dependent);
+    (3) the Doornik-Hansen (2008) omnibus test — correlation-matrix
+    symmetric root plus D'Agostino's skewness and the Shenton-Bowman /
+    Wilson-Hilferty kurtosis transforms, invariant to order and units; the
+    one to report (`doornik_hansen` and its parts). Every
+    `doornik_hansen*` key is None when `nobs < 8` (the skewness transform
+    degenerates at T = 7; the call never refuses on its account) or the
+    residual correlation matrix is numerically singular; the `*_symmetric`
+    keys are None when the covariance's smallest eigenvalue is <= 1e-12 x
+    its trace (series on wildly different scales).
 
     Keys: `portmanteau`, `portmanteau_adjusted`, `portmanteau_df`,
     `portmanteau_pvalue`, `portmanteau_adjusted_pvalue`, `nlags`,
     `jarque_bera`, `jarque_bera_pvalue`, `jarque_bera_df`, `skewness`,
     `skewness_pvalue`, `kurtosis`, `kurtosis_pvalue`, `skewness_components`,
-    `kurtosis_components`, `roots` (reciprocal-root moduli, descending;
-    stable iff the last exceeds 1), `eigenvalue_moduli` (companion
-    eigenvalue moduli, descending; stable iff the first is below 1),
-    `is_stable`, `nobs`, `k`, `lags`.
+    `kurtosis_components`, `jarque_bera_symmetric`,
+    `jarque_bera_symmetric_pvalue`, `skewness_symmetric`,
+    `skewness_symmetric_pvalue`, `kurtosis_symmetric`,
+    `kurtosis_symmetric_pvalue`, `skewness_symmetric_components`,
+    `kurtosis_symmetric_components`, `doornik_hansen`,
+    `doornik_hansen_pvalue`, `doornik_hansen_df` (2k),
+    `doornik_hansen_skewness` (z1'z1), `doornik_hansen_skewness_pvalue`,
+    `doornik_hansen_kurtosis` (z2'z2), `doornik_hansen_kurtosis_pvalue`,
+    `doornik_hansen_z_skewness`, `doornik_hansen_z_kurtosis` (per-component
+    z-scores), `roots` (reciprocal-root moduli, descending; stable iff the
+    last exceeds 1), `eigenvalue_moduli` (companion eigenvalue moduli,
+    descending; stable iff the first is below 1), `is_stable`, `nobs`, `k`,
+    `lags`.
 
     Matches statsmodels `test_whiteness(adjusted=False/True)`,
-    `test_normality`, `roots`, `is_stable` at 1e-10.
+    `test_normality`, `roots`, `is_stable` at 1e-10; the symmetric block
+    matches JMulTi's printed output at 5e-5; the Doornik-Hansen (2008)
+    formulas are pinned against a transcription at 1e-10.
 
     Further arguments, with defaults: `lags` (2), `trend` ("c"), `nlags` (10).
 
@@ -5726,6 +7076,59 @@ VAR lag-order selection by AIC/BIC/HQIC/FPE on a common sample
     `trend`.
 
     Further arguments, with defaults: `max_lags` (8), `trend` ("c").
+
+### `multivariate_normality`
+
+```python
+def multivariate_normality(resid: _ArrayLike) -> dict[str, Any]:
+```
+
+Residual normality tests on a residual matrix — the three statistics
+    `var_diagnostics` reports, for residuals of any multivariate model or
+    for one series. `resid` is T x k, or a 1-D length-T series taken as
+    k = 1; it is column-centred here (ML covariance, divisor T).
+
+    Cholesky (statsmodels `test_normality`; JMulTi "Lütkepohl (1993)"):
+    `jarque_bera` = `skewness` + `kurtosis`, column-order dependent.
+    Symmetric root (JMulTi "Doornik & Hansen (1994)", no transforms):
+    `jarque_bera_symmetric`, unit-dependent. Doornik-Hansen (2008): the
+    transformed omnibus `doornik_hansen` ~ chi2(2k), invariant to order and
+    units, the one to report; with a 1-D input it is the univariate
+    Doornik-Hansen test (seeded Monte Carlo at n = 50: 4.89% against 3.73%
+    for the asymptotic Jarque-Bera at a nominal 5%). At k = 1 the three
+    Jarque-Bera forms equal `jarque_bera(x)["statistic"]`, and
+    `doornik_hansen_z_skewness[0]` equals `scipy.stats.skewtest(x).statistic`.
+
+    Returned keys: `jarque_bera`, `jarque_bera_pvalue`, `jarque_bera_df`,
+    `skewness`, `skewness_pvalue`, `kurtosis`, `kurtosis_pvalue`,
+    `skewness_components`, `kurtosis_components`, `jarque_bera_symmetric`,
+    `jarque_bera_symmetric_pvalue`, `skewness_symmetric`,
+    `skewness_symmetric_pvalue`, `kurtosis_symmetric`,
+    `kurtosis_symmetric_pvalue`, `skewness_symmetric_components`,
+    `kurtosis_symmetric_components`, `doornik_hansen`,
+    `doornik_hansen_pvalue`, `doornik_hansen_df`, `doornik_hansen_skewness`,
+    `doornik_hansen_skewness_pvalue`, `doornik_hansen_kurtosis`,
+    `doornik_hansen_kurtosis_pvalue`, `doornik_hansen_z_skewness`,
+    `doornik_hansen_z_kurtosis`, `nobs`, `k`.
+
+    Refusals (ValueError naming `resid`): fewer than 8 rows, T <= k, not
+    1-D or 2-D, zero columns, NaN/inf, entries whose squares overflow or
+    underflow, a constant column, collinear columns, or columns on scales
+    too different for the symmetric root (a covariance eigenvalue
+    <= 1e-12 x its trace; above that floor the root is computed to relative
+    accuracy).
+
+    Cost: the three statistics share one validation, and cost about
+    5 T k^2 + 20 k^3 nanoseconds (the k^3 term is the symmetric root's
+    one-sided Jacobi iteration): 0.06 s at T = 1000, k = 100, 2.3 s at
+    2000 x 400, 11 s at 1000 x 800. Past a budget of 2^34 such units (about
+    17 s) or a working set of 3 T k + 6 k^2 values above 2^28 (2 GiB) the
+    call is refused before any work, naming `resid`, the largest column count
+    at that T and the largest row count at that k.
+
+    Validation: JMulTi's printed output (independent program) on 16
+    residual matrices at 5e-5 — symmetric, Cholesky and per-variable blocks;
+    the Doornik-Hansen (2008) transcription at 1e-10.
 
 ## Multiple forecast comparisons (Reality Check / SPA, MCS, StepM)
 
@@ -5905,8 +7308,14 @@ The Romano-Wolf (2005) StepM procedure: WHICH models beat the benchmark,
     until a step adds nothing (or every model is superior — `arch` raises
     there; this stops). The full-set SPA result is returned alongside.
     Validation: reproduces `arch.bootstrap.StepM`'s superior set exactly on
-    arch's own resamples (`studentize=False`), the studentized rule against
-    the NumPy transcription.
+    arch's own resamples (`studentize=False`), including multi-step paths
+    arch completes, the studentized rule against the NumPy transcription.
+    Family-wise error and power were measured against arch's own StepM on
+    four seeded designs (n = 200, 5 models, block 8): un-studentized, the
+    rates agree within Monte Carlo error (FWER 0.0625 against arch's 0.057
+    at a nominal 0.05 under the least favourable configuration), while the
+    studentized default over-rejects family-wise at n = 200 (0.1025 at a
+    nominal 0.05 under that configuration) and falls to 0.065 by n = 800.
 
     Further arguments, with defaults: `size` (0.05), `block_size` (None:
     Politis-White), `reps` (1000), `bootstrap` ("stationary"), `studentize`
@@ -6154,19 +7563,28 @@ def unobserved_components(
     forecast_exog: np.ndarray | None = None,
     fixed_params: list[float] | None = None,
     n_starts: int = 3,
+    autoregressive: int | None = None,
+    cycle_init: str | None = None,
+    mle_regression: bool | None = None,
 ) -> dict[str, Any]:
 ```
 
 Harvey's structural time-series ("unobserved components") models by
     exact-diffuse maximum likelihood — level/trend, dummy and trigonometric
-    seasonals, a (damped) stochastic cycle, and regressors:
+    seasonals, a (damped) stochastic cycle, an autoregressive component, and
+    regressors:
 
-        y_t = mu_t + gamma_t + c_t + beta' x_t + eps_t
+        y_t = mu_t + gamma_t + c_t + a_t + beta' x_t + eps_t
 
-    with every state initialized exactly diffuse (Koopman 1997), NaN in `y`
-    treated as missing, and the components assembled exactly as statsmodels'
-    `UnobservedComponents(..., use_exact_diffuse=True)` enumerates them (the
-    log-likelihoods are directly comparable).
+    with NaN in `y` treated as missing and the components assembled exactly
+    as statsmodels' `UnobservedComponents(..., use_exact_diffuse=True)`
+    enumerates them. Under the defaults every state is initialized exactly
+    diffuse (Koopman 1997), as statsmodels does, so the log-likelihoods are
+    directly comparable with statsmodels'; an AR block is initialized from
+    its stationary distribution exactly as statsmodels has it, so that stays
+    comparable too. Two opt-in switches change the likelihood's DEFINITION
+    (see below), so neither `loglik` nor `aic`/`bic` may be compared across
+    them: `cycle_init="stationary"` and `mle_regression=False`.
 
     `level` picks the level/trend block by its statsmodels name (long or
     short form): "irregular"/"ntrend", "fixed intercept", "deterministic
@@ -6174,9 +7592,9 @@ Harvey's structural time-series ("unobserved components") models by
     walk"/"rwalk", "fixed slope", "deterministic trend"/"dtrend", "local
     linear deterministic trend"/"lldtrend", "random walk with
     drift"/"rwdrift", "local linear trend"/"lltrend", "smooth
-    trend"/"strend", "random trend"/"rtrend". `seasonal=s` adds an
-    `s-1`-state dummy seasonal (`stochastic_seasonal`, default True, gives
-    it a variance; False makes it fixed dummies). `freq_seasonal=[p, ...]`
+    trend"/"strend", "random trend"/"rtrend". `seasonal=s` adds an `s-1`-
+    state dummy seasonal (`stochastic_seasonal`, default True, gives it a
+    variance; False makes it fixed dummies). `freq_seasonal=[p, ...]`
     adds trigonometric seasonals with `freq_seasonal_harmonics` harmonics
     each (default `floor(p/2)`) and `stochastic_freq_seasonal` flags
     (default True each). `cycle=True` adds the stochastic cycle:
@@ -6190,23 +7608,71 @@ Harvey's structural time-series ("unobserved components") models by
     resolution contributes `-ln(lambda)`), so an unbounded period is not a
     safe search region — and a cycle longer than the sample is not
     identified in any case. statsmodels leaves that bound at infinity.
-    `exog` (T x k) enters with
-    time-invariant coefficients estimated jointly (statsmodels
-    `mle_regression=True`); `forecast_steps=h` returns h-step forecasts and
-    needs `forecast_exog` (h x k) when `exog` is given. `fixed_params`
-    (statsmodels order: `sigma2.irregular`, the state variances in
-    component order, `frequency.cycle`, `damping.cycle`, `beta.x1`...)
-    evaluates the model there instead of estimating. `n_starts` (default 3)
-    is the deterministic start ladder. Counts that size an allocation are
-    bounded and refuse rather than abort: `seasonal` and each
-    `freq_seasonal` period at most `len(y)` (they cost states, and a period
-    the sample never completes is not identified), `forecast_steps` at most
-    100000, `n_starts` at most 64.
+    `cycle_init` ("diffuse" when None, statsmodels' convention; parsed
+    trimmed and case-insensitive) set to "stationary" initializes the two
+    cycle states from the damped cycle's unconditional distribution,
+    `sigma2.cycle / (1 - damping^2)` on each, instead of exactly diffuse. It
+    needs `damped_cycle=True` and `stochastic_cycle=True` (an undamped or
+    deterministic cycle has no proper stationary distribution) and refuses a
+    fixed damping of 1. The cycle then costs no diffuse element, which
+    removes the low-frequency singularity above; it also changes the
+    DEFINITION of the likelihood, so `loglik`, `nobs_diffuse`, `k_diffuse`,
+    `aic` and `bic` are NOT comparable with the diffuse-cycle ones, even at
+    the same parameters.
+    `autoregressive=p` (1 <= p <= len(y); 0 is refused, pass None) adds an
+    AR(p) component `a_t = ar.L1 a_{t-1} + ... + ar.Lp a_{t-p} + eta_t` after
+    the cycle in statsmodels' row-companion form, initialized from its
+    stationary distribution, with `sigma2.ar` and coefficients estimated
+    inside the stationarity region (a fixed non-stationary polynomial is
+    refused, naming the partial autocorrelation that leaves (-1, 1); so is
+    one within roundoff of the unit circle, whose likelihood would silently
+    skip observations). A likelihood evaluation costs O(len(y) k_states^3),
+    and an estimated AR(p) needs O(p) evaluations per search step and
+    O(p^2) for its standard errors, so a fit slows down steeply with p:
+    keep the order to a few lags (a long one is slow, refused only by the
+    working-set bound below).
+    `exog` (T x k) enters with time-invariant coefficients estimated
+    jointly by MLE (`mle_regression`, True when None, statsmodels' default).
+    `mle_regression=False` puts them in the state vector instead (statsmodels
+    `mle_regression=False`): k exactly diffuse constant states after the AR
+    block, design row `x_t'`, no `beta.x*` parameters. The likelihood is then
+    the MARGINAL (diffuse) likelihood of the variance parameters — the
+    profile one minus `ln det(regression_coefficients_cov) / 2` at the GLS
+    coefficients, so REML-like variances — the smoothed coefficients are the
+    GLS estimate given them, and, unlike under MLE regression, `loglik`,
+    `aic` and `bic` depend on the UNITS of the regressors (rescaling a column
+    by c shifts `loglik` by exactly `-ln|c|`; the estimates do not move).
+    Keep the columns in comparable units near 1: the diffuse coefficient
+    states are loaded by x_t, and columns many orders of magnitude from each
+    other or from 1 cannot be resolved by the exact-diffuse filter in
+    floating point; that case (the diffuse period would not end where the
+    same model on unit-scaled columns ends it) is refused, naming `exog`.
+    `forecast_steps=h` returns h-step forecasts and needs `forecast_exog`
+    (h x k) when `exog` is given, either way.
+    `fixed_params` (statsmodels order: `sigma2.irregular`, the state
+    variances in component order — level, trend, seasonal, each
+    freq_seasonal block, cycle, then `sigma2.ar` — then `frequency.cycle`,
+    `damping.cycle`, `ar.L1`...`ar.Lp`, `beta.x1`... — the betas only under
+    MLE regression) evaluates the model there instead of estimating.
+    `state_names` end with `cycle`, `cycle.auxiliary`, `ar.L1`...`ar.Lp`,
+    `beta.x1`...`beta.xk` (the betas only under `mle_regression=False`). `n_starts` (default 3) is the
+    deterministic start ladder (for an AR component the first partial
+    autocorrelation walks 0.5, 0.9, 0, -0.5, 0.5, and the second rung of an
+    AR(p >= 2) starts hump-shaped at (1.35, -0.5); the AR-UC likelihood is
+    multimodal). Counts that size an allocation are bounded and refuse
+    rather than abort: `seasonal`, each `freq_seasonal` period and
+    `autoregressive` at most `len(y)` (they cost states, and a period the
+    sample never completes is not identified), the working set
+    `len(y) * k_states^2` at most 2^26 (the filter and smoother store four
+    sequences of that many covariance cells; the refusal names the counts
+    that cost the states), `forecast_steps` at most 100000, `n_starts` at
+    most 64.
 
     Options that act only under a component RAISE when passed without it:
     `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /
     `stochastic_freq_seasonal` without `freq_seasonal`; `damped_cycle` /
-    `stochastic_cycle` / `cycle_period_bounds` without `cycle=True`;
+    `stochastic_cycle` / `cycle_period_bounds` / `cycle_init` without
+    `cycle=True`; `mle_regression` (even True) without `exog`;
     `forecast_exog` without `exog` or without `forecast_steps`.
 
     Estimation: BFGS + Nelder-Mead on the exact prediction-error
@@ -6215,35 +7681,67 @@ Harvey's structural time-series ("unobserved components") models by
     estimate cannot be told from zero (zeroing it costs < 1e-4
     log-likelihood — the pile-up) is flagged in `at_boundary` with a NaN
     standard error; `se` are observed-information (numerical Hessian)
-    CONDITIONAL on the flagged parameters sitting exactly at their boundary,
-    i.e. the information matrix is inverted over the free parameters only.
-    statsmodels' `cov_type="approx"` inverts the full matrix instead,
-    including the boundary directions where it is indefinite, so the two
-    agree exactly when nothing is flagged and differ by definition when
-    something is.
-    `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom.
-    The component keys without a prefix are the SMOOTHED (two-sided) paths;
-    `filtered_*` are the one-sided ones. Variances inside the diffuse period
-    are the finite part; `std_resid` is NaN there and at missing periods.
+    CONDITIONAL on the flagged parameters sitting exactly at their
+    boundary, i.e. the information matrix is inverted over the free
+    parameters only. statsmodels' `cov_type="approx"` inverts the full
+    matrix instead, including the boundary directions where it is
+    indefinite, so the two agree exactly when nothing is flagged and
+    differ by definition when something is. When the variance of a
+    STATIONARY block is flagged (`sigma2.ar`, or `sigma2.cycle` under
+    `cycle_init="stationary"`), the block is identically zero, so its
+    transition parameters (`ar.L1`..., or `frequency.cycle` and
+    `damping.cycle`) carry no information: they are dropped from the matrix
+    too and get a NaN `se`. An AR coefficient's Hessian step is shrunk
+    until every probe stays stationary, so an estimate next to the unit root
+    still leaves the other standard errors finite.
+    `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom,
+    `k_diffuse` counting the exactly diffuse states only.
+    The component keys without a prefix are the SMOOTHED (two-sided)
+    paths; `filtered_*` are the one-sided ones. Variances inside the
+    diffuse period are the finite part; `std_resid` is NaN there and at
+    missing periods.
 
     Validation (honest grade): fixed-parameter log-likelihood, filtered
-    states and variances, smoothed states, residuals, forecasts and forecast
-    variances pinned at 1e-8 against statsmodels for 26 component
+    states and variances, smoothed states, residuals, forecasts and
+    forecast variances pinned at 1e-8 against statsmodels for 26 component
     combinations and NaN-inserted series (fixtures/uc.json); the SMOOTHED
-    variances at 1e-8 too, except inside the diffuse period of the hardest
-    combinations, where the exact-diffuse smoother is ill-conditioned and
-    the tolerance is the distance between statsmodels' own two smoother
-    implementations (up to 4.5e-3 there, against filters that agree to
-    2.9e-11); the MLE pinned
-    to the better of statsmodels' own fit and a SciPy re-optimization of the
-    identical criterion (two optimizers); the Durbin-Koopman (2012) Nile
-    local level reproduced to the book's printed precision; the
-    Harvey-Durbin (1986) UK seat-belt BSM re-estimated to that same optimum,
-    with its slope and seasonal variance pile-ups flagged (the series is
-    fetched from Rdatasets when the fixture is generated and never
-    redistributed, so only its derived optimum is stored); parameter
-    recovery, forecast-interval coverage and scale invariance measured by
-    seeded Monte Carlo (see the model card).
+    variances at 1e-8 too, except inside the diffuse period of the
+    hardest combinations, where the exact-diffuse smoother is
+    ill-conditioned and the tolerance is the distance between
+    statsmodels' own two smoother implementations (up to 4.5e-3 there,
+    against filters that agree to 2.9e-11); the MLE
+    pinned to the better of statsmodels' own fit and a SciPy re-
+    optimization of the identical criterion (two optimizers); the
+    Durbin-Koopman (2012) Nile local level reproduced to the book's printed
+    precision; the Harvey-Durbin (1986) UK seat-belt BSM re-estimated to
+    that same optimum, with its slope and seasonal variance pile-ups
+    flagged (the series is fetched from Rdatasets when the fixture is
+    generated and never redistributed, so only its derived optimum is
+    stored); parameter recovery, forecast-interval coverage and scale
+    invariance measured by seeded Monte Carlo (see the model card). The
+    stationary cycle (fixtures/uc_extensions.json) is pinned at the same
+    1e-8 against statsmodels' own block initialization ("stationary" on the
+    cycle pair, its Lyapunov solve, its exact-diffuse filter and smoother —
+    statsmodels has no keyword for it) on GDP, Nile and simulated
+    specifications, plus the closed form `sigma2.cycle / (1 - damping^2)`
+    for the initial covariance; its GDP MLE is pinned to the better of two
+    optimizers, with the pile-up and the dropped transition parameters
+    mirrored in the reference standard errors. The AR component is pinned at
+    1e-8 against statsmodels' own `autoregressive=` on Nile, inflation, GDP,
+    GDP growth (every state stationary) and simulated combinations with
+    seasonals, a cycle and regressors, plus the closed forms
+    `sigma2.ar / (1 - phi^2)` and the AR(2) autocovariances for the initial
+    covariance; its MLE on Nile, inflation and GDP reaches the better of two
+    optimizers at the default `n_starts` (on inflation statsmodels' own fit
+    stops 1.89 log-likelihood points short of the optimum this one
+    reaches). The state regression is pinned at 1e-8 against statsmodels'
+    `mle_regression=False` (with the regression-coefficient paths and
+    covariance) on four specifications, one NaN-inserted and one combining
+    every new option; against the closed form of white noise plus
+    regressors (OLS coefficients, `sigma2 (X'X)^-1`, the diffuse
+    log-likelihood, forecasts and their variances) at 1e-10; through the
+    marginal/profile identity on six specifications and the regressor-units
+    identity at 1e-10; and in one MLE to the better of two optimizers.
 
     Returned keys: `trend_specification`, `param_names`, `params`, `se`,
     `at_boundary`, `loglik`, `aic`, `bic`, `nobs`, `nobs_observed`,
@@ -6254,7 +7752,15 @@ Harvey's structural time-series ("unobserved components") models by
     `filtered_level_var`, `slope`, `slope_var`, `filtered_slope`,
     `filtered_slope_var`, `seasonal`, `seasonal_var`, `filtered_seasonal`,
     `filtered_seasonal_var`, `cycle`, `cycle_var`, `filtered_cycle`,
-    `filtered_cycle_var` (None when the component is absent),
+    `filtered_cycle_var`, `autoregressive`, `autoregressive_var`,
+    `filtered_autoregressive`, `filtered_autoregressive_var` (the first AR
+    state; None when the component is absent),
+    `regression_coefficients`, `regression_coefficients_var`,
+    `filtered_regression_coefficients`,
+    `filtered_regression_coefficients_var` (nested lists, nobs x k, under
+    `mle_regression=False`; the smoothed path is constant in t and is the
+    GLS estimate), `regression_coefficients_cov` (k x k nested list, its
+    smoothed covariance; all five None otherwise),
     `freq_seasonal`, `freq_seasonal_var`, `filtered_freq_seasonal`,
     `filtered_freq_seasonal_var` (lists with one array per block), `fitted`,
     `resid`, `std_resid`, `forecast`, `forecast_var`.

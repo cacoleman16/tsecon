@@ -5,6 +5,39 @@ use crate::inference::StdErrors;
 use crate::model::GarchModel;
 use crate::spec::{GarchSpec, VolSpec};
 
+/// Largest variance-forecast horizon [`GarchResults::forecast_variance`]
+/// accepts (1,000,000 steps, the cap `arima_fit` and `ets_fit` put on
+/// theirs) — a guard against absurd allocations, not a modelling limit: the
+/// forecast path is materialised step by step, so a typo such as `2**31`
+/// used to request 16 GiB and abort the process on the failed allocation.
+/// No variance forecast means anything a million steps out (the path has
+/// long since converged to `omega / (1 - persistence)`).
+pub const MAX_FORECAST_HORIZON: usize = 1_000_000;
+
+/// Refuses a variance-forecast horizon past [`MAX_FORECAST_HORIZON`],
+/// naming `forecast_horizon` (the keyword of every Python entry point that
+/// forecasts a GARCH variance path: `garch_fit`, `ccc_garch`, `dcc_garch`).
+/// Callers that fit before forecasting run it first, so an absurd horizon is
+/// refused before any work is done.
+///
+/// # Errors
+///
+/// [`GarchError::InvalidParameter`] naming `forecast_horizon` when
+/// `horizon > MAX_FORECAST_HORIZON`.
+pub fn check_forecast_horizon(horizon: usize) -> Result<(), GarchError> {
+    if horizon > MAX_FORECAST_HORIZON {
+        return Err(GarchError::InvalidParameter {
+            name: "forecast_horizon",
+            value: horizon as f64,
+            requirement: "forecast_horizon <= 1000000: every step of the variance path is \
+                          materialised, so a longer horizon cannot mean what it says and would \
+                          exhaust memory (the path converges to the unconditional variance \
+                          omega / (1 - persistence) long before); forecast fewer steps",
+        });
+    }
+    Ok(())
+}
+
 /// Estimation output of [`GarchModel::fit`].
 ///
 /// Vectors indexed by parameter are aligned with
@@ -153,6 +186,9 @@ impl GarchResults {
     /// # Errors
     ///
     /// [`GarchError::InvalidSpec`] if `horizon == 0`;
+    /// [`GarchError::InvalidParameter`] (naming `forecast_horizon`) if
+    /// `horizon > MAX_FORECAST_HORIZON`, checked before the path is
+    /// allocated (see [`check_forecast_horizon`]);
     /// [`GarchError::UnsupportedForecast`] for EGARCH with `horizon > 1`.
     pub fn forecast_variance(&self, horizon: usize) -> Result<Vec<f64>, GarchError> {
         if horizon == 0 {
@@ -161,6 +197,7 @@ impl GarchResults {
                        pass horizon >= 1",
             });
         }
+        check_forecast_horizon(horizon)?;
         let (_, omega, alphas, gammas, betas, _) = self.spec.split_params(&self.params)?;
         let n = self.resids.len();
         match self.spec.vol {

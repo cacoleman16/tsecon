@@ -95,6 +95,34 @@ pub enum PanelError {
         /// Which estimator or mode refused, and why.
         what: &'static str,
     },
+    /// A static-panel design (random effects, between, first difference,
+    /// Fama-MacBeth) is rank-deficient where the estimator needs full
+    /// rank: collinear final regressors, a regressor the transformation
+    /// annihilates (time-invariant under first differences), or a singular
+    /// small-sample moment matrix. The message starts with the offending
+    /// parameter name.
+    RankDeficient {
+        /// What is rank-deficient and what to do about it, starting with
+        /// the parameter name (`regressors`, `small_sample`, ...).
+        what: String,
+    },
+    /// A static-panel estimator has too few entities, rows or periods for
+    /// the parameters it estimates (or a variance component it needs is
+    /// degenerate). The message starts with the offending parameter name.
+    InsufficientData {
+        /// What ran out, with the counts, starting with the parameter name.
+        what: String,
+    },
+    /// A kernel bandwidth outside the Driscoll-Kraay panel covariance is
+    /// invalid — the Newey-West (Bartlett) HAC on the Fama-MacBeth
+    /// `beta_t` series: negative, non-finite, or longer than the series.
+    KernelBandwidth {
+        /// Which kernel covariance the bandwidth belongs to, and why it
+        /// was refused.
+        what: &'static str,
+        /// The offending bandwidth.
+        value: f64,
+    },
     /// A per-entity matrix of the mean-group panel VAR holds a NaN or
     /// infinity: a VAR needs contiguous observations within each entity,
     /// so an internal gap cannot be masked.
@@ -173,8 +201,18 @@ impl fmt::Display for PanelError {
                 "{what}: the within-transformed cross-product X'X is \
                  numerically singular (collinear design); a regressor that \
                  is constant within every entity is zeroed exactly by the \
-                 within transformation — drop it or use a random-effects / \
-                 between estimator instead"
+                 within transformation — drop it, or estimate it with \
+                 panel_re (random effects) or panel_between (the between \
+                 estimator) instead"
+            ),
+            PanelError::RankDeficient { what } | PanelError::InsufficientData { what } => {
+                write!(f, "{what}")
+            }
+            PanelError::KernelBandwidth { what, value } => write!(
+                f,
+                "bandwidth = {value} is invalid for {what}: requires a finite value \
+                 >= 0 (the Bartlett lag-truncation parameter: lags 1..=bandwidth get \
+                 weight 1 - j/(bandwidth + 1))"
             ),
             PanelError::EntityVar { entity, source } => {
                 write!(f, "per-entity VAR fit failed for entity {entity}: {source}")

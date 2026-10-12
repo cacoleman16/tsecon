@@ -160,8 +160,10 @@ on short samples.
   are correlated.
 - **Small `n` with the default `min_samples_leaf=5`.** A forest needs at
   least `2 * min_samples_leaf` rows to make a single split; below that the
-  call refuses with `insufficient data: {got} observations, at least
-  {needed} required` rather than returning a constant predictor.
+  call refuses, naming `min_samples_leaf` and its largest admissible value
+  `n // 2`, with `insufficient data: {got} observations, at least
+  {needed} required` in the message, rather than returning a constant
+  predictor.
 - **Reading the quantile band as calibrated.** The quantile forest reads
   its quantiles off the empirical distribution of the training targets in
   the shared leaves, and that distribution mixes targets from neighbouring

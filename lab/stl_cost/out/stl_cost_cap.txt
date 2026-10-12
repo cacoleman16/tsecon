@@ -1,0 +1,5 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+n = 96, period = 12, windows (7, 23, 13): 5575 units per pass
+largest admissible inner_iter at outer_iter = 0: 2^32 // 5575 = 770397
+stl(inner_iter=770397, outer_iter=0) ran in 29.8 s (6.95 ns per unit)

@@ -9,14 +9,42 @@
 //! * Portmanteau size under white-noise residuals and power against an
 //!   omitted lag; Jarque-Bera size under Gaussian innovations and power
 //!   against Student-t(4) innovations;
-//! * refusals that name the offending parameter.
+//! * the residual-normality family added in 0.11.0 — the symmetric-root
+//!   Jarque-Bera (JMulTi's "Doornik & Hansen (1994)" block) and the
+//!   Doornik-Hansen (2008) omnibus: their invariances (and the one the
+//!   symmetric root lacks), the null moments of the DH z-scores (the only
+//!   guard on the kurtosis transform's common denominator, which cancels
+//!   from the exact mean-matching identity), size on VAR residuals at
+//!   T = 200 and T = 40, power against t(4) and skewed chi-squared(3)
+//!   innovations, and the `None`-below-8-observations semantics of the
+//!   bundle;
+//! * refusals that name the offending parameter;
+//! * soft (Gaussian, stated-variance) conditions: signal-mode coverage of
+//!   the true path under noisy readings, density-mode coverage under exact
+//!   conditional draws from the true DGP (Matheron's rule), monotonicity in
+//!   the stated sd, the sd -> 0 / sd -> infinity limits, the density
+//!   scaling identity, and the `condition_sd` refusals.
 
 mod common;
 
 use common::Lcg;
 use tsecon_var::tsecon_linalg::faer::linalg::solvers::Solve;
 use tsecon_var::tsecon_linalg::faer::{Mat, Side};
-use tsecon_var::{Trend, VarSpec};
+use tsecon_var::{
+    doornik_hansen_test, normality_test_cholesky, normality_test_symmetric, ConditionMode,
+    SoftMode, Trend, VarSpec,
+};
+
+/// Innovation law of the simulator.
+#[derive(Clone, Copy)]
+enum Innov {
+    /// Standard normal.
+    Gauss,
+    /// Student-t(4) scaled to unit variance.
+    T4,
+    /// Centred chi-squared(3) scaled to unit variance (skewed).
+    Chi2,
+}
 
 /// VAR(p) simulator with intercept `c`, lag matrices `a`, innovation
 /// `chol z` (or Student-t(4) scaled to unit variance when `t4`).
@@ -27,6 +55,21 @@ fn simulate(
     a: &[Mat<f64>],
     chol: &Mat<f64>,
     t4: bool,
+    start: Option<&Mat<f64>>,
+) -> Mat<f64> {
+    let innov = if t4 { Innov::T4 } else { Innov::Gauss };
+    simulate_innov(rng, n, c, a, chol, innov, start)
+}
+
+/// [`simulate`] with an explicit innovation law (the Gaussian and t(4) draws
+/// are exactly `simulate`'s).
+fn simulate_innov(
+    rng: &mut Lcg,
+    n: usize,
+    c: &[f64],
+    a: &[Mat<f64>],
+    chol: &Mat<f64>,
+    innov: Innov,
     start: Option<&Mat<f64>>,
 ) -> Mat<f64> {
     let k = c.len();
@@ -45,11 +88,16 @@ fn simulate(
     for t in p..total {
         for zi in z.iter_mut() {
             let g = rng.gaussian();
-            *zi = if t4 {
-                let chi: f64 = (0..4).map(|_| rng.gaussian().powi(2)).sum();
-                g / (chi / 4.0).sqrt() * (2.0f64 / 4.0).sqrt()
-            } else {
-                g
+            *zi = match innov {
+                Innov::T4 => {
+                    let chi: f64 = (0..4).map(|_| rng.gaussian().powi(2)).sum();
+                    g / (chi / 4.0).sqrt() * (2.0f64 / 4.0).sqrt()
+                }
+                Innov::Gauss => g,
+                Innov::Chi2 => {
+                    let chi = g * g + rng.gaussian().powi(2) + rng.gaussian().powi(2);
+                    (chi - 3.0) / 6.0f64.sqrt()
+                }
             };
         }
         for r in 0..k {
@@ -72,6 +120,16 @@ fn dgp_var1() -> (Vec<f64>, Vec<Mat<f64>>, Mat<f64>) {
     let c = vec![0.2, -0.1];
     let a = Mat::from_fn(2, 2, |i, j| [[0.5, 0.2], [0.1, 0.4]][i][j]);
     let chol = Mat::from_fn(2, 2, |i, j| [[1.0, 0.0], [0.5, 0.8]][i][j]);
+    (c, vec![a], chol)
+}
+
+/// A k = 3 VAR(1) with unit-variance independent innovations.
+fn dgp_var1_k3() -> (Vec<f64>, Vec<Mat<f64>>, Mat<f64>) {
+    let c = vec![0.2, -0.1, 0.05];
+    let a = Mat::from_fn(3, 3, |i, j| {
+        [[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.3]][i][j]
+    });
+    let chol = Mat::from_fn(3, 3, |i, j| if i == j { 1.0 } else { 0.0 });
     (c, vec![a], chol)
 }
 
@@ -311,20 +369,40 @@ fn implied_shocks_are_minimum_norm_and_feasible() {
     }
 }
 
+/// Rejection frequencies at 5% over `reps` simulated fits.
+struct Rates {
+    /// Unadjusted Portmanteau.
+    q: f64,
+    /// Adjusted Portmanteau.
+    adj: f64,
+    /// Cholesky Jarque-Bera (statsmodels).
+    jb: f64,
+    /// Mean adjusted Portmanteau p-value.
+    mean_p: f64,
+    /// Symmetric-root Jarque-Bera (JMulTi "Doornik & Hansen (1994)").
+    sym: f64,
+    /// Doornik-Hansen (2008) omnibus.
+    dh: f64,
+    /// Doornik-Hansen (2008) skewness component `z1'z1 ~ chi2(k)`.
+    dh_skew: f64,
+}
+
+#[allow(clippy::too_many_arguments)]
 fn reject_rates(
     seed: u64,
     reps: usize,
     fit_p: usize,
     dgp: (Vec<f64>, Vec<Mat<f64>>, Mat<f64>),
-    t4: bool,
+    innov: Innov,
     n: usize,
     nlags: usize,
-) -> (f64, f64, f64, f64) {
+) -> Rates {
     let (c, a, chol) = dgp;
     let mut rng = Lcg::new(seed);
     let (mut rej_q, mut rej_adj, mut rej_jb, mut mean_p) = (0usize, 0usize, 0usize, 0.0);
+    let (mut rej_sym, mut rej_dh, mut rej_dh_skew) = (0usize, 0usize, 0usize);
     for _ in 0..reps {
-        let y = simulate(&mut rng, n, &c, &a, &chol, t4, None);
+        let y = simulate_innov(&mut rng, n, &c, &a, &chol, innov, None);
         let res = VarSpec::new(fit_p, Trend::Constant)
             .unwrap()
             .fit(y.as_ref())
@@ -339,28 +417,46 @@ fn reject_rates(
         if d.normality.pvalue < 0.05 {
             rej_jb += 1;
         }
+        if d.normality_symmetric.unwrap().pvalue < 0.05 {
+            rej_sym += 1;
+        }
+        let dh = d.doornik_hansen.unwrap();
+        if dh.pvalue < 0.05 {
+            rej_dh += 1;
+        }
+        if dh.skewness_pvalue < 0.05 {
+            rej_dh_skew += 1;
+        }
         mean_p += d.portmanteau.adjusted_pvalue;
     }
     let r = reps as f64;
-    (
-        rej_q as f64 / r,
-        rej_adj as f64 / r,
-        rej_jb as f64 / r,
-        mean_p / r,
-    )
+    Rates {
+        q: rej_q as f64 / r,
+        adj: rej_adj as f64 / r,
+        jb: rej_jb as f64 / r,
+        mean_p: mean_p / r,
+        sym: rej_sym as f64 / r,
+        dh: rej_dh as f64 / r,
+        dh_skew: rej_dh_skew as f64 / r,
+    }
 }
 
 /// Size: on a correctly specified Gaussian VAR(1) (T = 200, k = 2, 1000
 /// replications) both Portmanteau statistics and the Jarque-Bera test
 /// reject near 5% — the unadjusted Q is known to be undersized at this T
 /// (Lütkepohl 2005, section 4.4.3), the adjusted one closer to nominal.
-/// The adjusted p-value averages 0.5 (uniform under the null).
+/// The adjusted p-value averages 0.5 (uniform under the null). The
+/// symmetric-root Jarque-Bera and the Doornik-Hansen (2008) test are
+/// measured on the same fits (the draws are unchanged).
 #[test]
 fn portmanteau_and_jarque_bera_size_under_white_noise_residuals() {
-    let (q, adj, jb, mean_p) = reject_rates(101, 1000, 1, dgp_var1(), false, 200, 8);
+    let r = reject_rates(101, 1000, 1, dgp_var1(), Innov::Gauss, 200, 8);
+    let (q, adj, jb, mean_p) = (r.q, r.adj, r.jb, r.mean_p);
     println!(
         "size at 5% (T = 200, k = 2, nlags = 8, 1000 reps): Q {q:.4}, adjusted Q {adj:.4}, \
-         Jarque-Bera {jb:.4}; mean adjusted p {mean_p:.4}"
+         Jarque-Bera {jb:.4}; mean adjusted p {mean_p:.4}; symmetric-root Jarque-Bera {:.4}, \
+         Doornik-Hansen (2008) {:.4}",
+        r.sym, r.dh
     );
     assert!((0.02..=0.08).contains(&q), "unadjusted Q size {q}");
     assert!((0.03..=0.08).contains(&adj), "adjusted Q size {adj}");
@@ -370,30 +466,286 @@ fn portmanteau_and_jarque_bera_size_under_white_noise_residuals() {
     );
     assert!((0.02..=0.08).contains(&jb), "Jarque-Bera size {jb}");
     assert!((0.45..=0.55).contains(&mean_p), "mean adjusted p {mean_p}");
+    assert!(
+        (0.02..=0.08).contains(&r.sym),
+        "symmetric JB size {}",
+        r.sym
+    );
+    assert!(
+        (0.03..=0.075).contains(&r.dh),
+        "Doornik-Hansen size {}",
+        r.dh
+    );
+}
+
+/// Size in a SMALL sample, where the asymptotic Jarque-Bera forms and the
+/// finite-sample-transformed Doornik-Hansen (2008) test part ways: a
+/// Gaussian k = 3 VAR(1) with T = 40 (2000 replications).
+#[test]
+fn normality_size_on_short_var_residuals() {
+    let r = reject_rates(404, 2000, 1, dgp_var1_k3(), Innov::Gauss, 40, 6);
+    println!(
+        "normality size at 5% on VAR(1) residuals (T = 40, k = 3, 2000 reps): Cholesky \
+         Jarque-Bera {:.4}, symmetric-root Jarque-Bera {:.4}, Doornik-Hansen (2008) {:.4}",
+        r.jb, r.sym, r.dh
+    );
+    assert!(
+        (0.03..=0.08).contains(&r.dh),
+        "Doornik-Hansen size at T = 40: {}",
+        r.dh
+    );
+    assert!(
+        r.jb <= 0.08 && r.sym <= 0.08,
+        "JB sizes {} / {}",
+        r.jb,
+        r.sym
+    );
 }
 
 /// Power: fitting a VAR(1) to a VAR(2) DGP leaves lag-2 structure in the
 /// residuals that the Portmanteau test detects; Student-t(4) innovations
-/// are detected by Jarque-Bera. (300 replications each.)
+/// are detected by Jarque-Bera and by Doornik-Hansen (2008); centred
+/// chi-squared(3) innovations by the Doornik-Hansen skewness component.
+/// (300 replications each.)
 #[test]
 fn portmanteau_and_jarque_bera_power() {
     let (c, a, chol) = dgp_var2_k3();
     // Strengthen the omitted lag so the misspecification is not subtle.
     let a2 = Mat::from_fn(3, 3, |i, j| a[1][(i, j)] + if i == j { 0.25 } else { 0.0 });
-    let (q, adj, _, _) = reject_rates(
+    let r = reject_rates(
         202,
         300,
         1,
         (c.clone(), vec![a[0].clone(), a2], chol.clone()),
-        false,
+        Innov::Gauss,
         300,
         6,
     );
+    let (q, adj) = (r.q, r.adj);
     println!("power (T = 300, 300 reps): omitted lag Q {q:.4}, adjusted Q {adj:.4}");
     assert!(q > 0.9 && adj > 0.9, "Portmanteau power {q} / {adj}");
-    let (_, _, jb, _) = reject_rates(303, 300, 2, (c, a, chol), true, 300, 6);
-    println!("power (T = 300, 300 reps): Jarque-Bera against t(4) {jb:.4}");
+    let r = reject_rates(
+        303,
+        300,
+        2,
+        (c.clone(), a.clone(), chol.clone()),
+        Innov::T4,
+        300,
+        6,
+    );
+    let jb = r.jb;
+    println!(
+        "power (T = 300, 300 reps): Jarque-Bera against t(4) {jb:.4}; symmetric-root \
+         Jarque-Bera {:.4}; Doornik-Hansen (2008) {:.4}",
+        r.sym, r.dh
+    );
     assert!(jb > 0.9, "Jarque-Bera power against t(4) {jb}");
+    assert!(r.dh > 0.9, "Doornik-Hansen power against t(4) {}", r.dh);
+    let r = reject_rates(505, 300, 2, (c, a, chol), Innov::Chi2, 300, 6);
+    println!(
+        "power (T = 300, 300 reps) against centred chi2(3) innovations: Doornik-Hansen \
+         skewness component {:.4}, omnibus {:.4}; Cholesky Jarque-Bera {:.4}",
+        r.dh_skew, r.dh, r.jb
+    );
+    assert!(
+        r.dh_skew > 0.9,
+        "DH skewness power against chi2(3) {}",
+        r.dh_skew
+    );
+}
+
+/// The null moments of the Doornik-Hansen z-scores, univariate n = 50,
+/// 20 000 replications: both near N(0, 1). `var z2` sits below 1 at this n
+/// (0.9 measured, also by an independent NumPy transcription on other
+/// seeds) — the gamma approximation's known small-sample undershoot — and
+/// the band is set around it; this is the guard on the kurtosis transform's
+/// common denominator `d`, which cancels from the exact identity.
+#[test]
+fn doornik_hansen_null_z_moments() {
+    let mut rng = Lcg::new(6060);
+    let (n, reps) = (50usize, 20_000usize);
+    let (mut s1, mut s2, mut q1, mut q2) = (0.0, 0.0, 0.0, 0.0);
+    let (mut rej_dh, mut rej_jb) = (0usize, 0usize);
+    for _ in 0..reps {
+        let x = Mat::from_fn(n, 1, |_, _| rng.gaussian());
+        let d = doornik_hansen_test(x.as_ref()).unwrap();
+        let (z1, z2) = (d.z_skewness[0], d.z_kurtosis[0]);
+        s1 += z1;
+        s2 += z2;
+        q1 += z1 * z1;
+        q2 += z2 * z2;
+        if d.pvalue < 0.05 {
+            rej_dh += 1;
+        }
+        // At k = 1 the Cholesky form is the univariate Jarque-Bera.
+        if normality_test_cholesky(x.as_ref()).unwrap().pvalue < 0.05 {
+            rej_jb += 1;
+        }
+    }
+    let r = reps as f64;
+    let (m1, m2) = (s1 / r, s2 / r);
+    let (v1, v2) = (q1 / r - m1 * m1, q2 / r - m2 * m2);
+    let (size_dh, size_jb) = (rej_dh as f64 / r, rej_jb as f64 / r);
+    println!(
+        "Doornik-Hansen null z-moments (n = 50, {reps} reps): mean z1 {m1:.4}, var z1 {v1:.4}, \
+         mean z2 {m2:.4}, var z2 {v2:.4}; univariate size at 5%: Doornik-Hansen {size_dh:.4}, \
+         asymptotic Jarque-Bera {size_jb:.4}"
+    );
+    assert!(m1.abs() < 0.03 && m2.abs() < 0.03, "means {m1} / {m2}");
+    assert!((0.96..=1.04).contains(&v1), "var z1 {v1}");
+    assert!((0.86..=1.02).contains(&v2), "var z2 {v2}");
+    assert!(
+        (0.04..=0.06).contains(&size_dh),
+        "univariate DH size {size_dh}"
+    );
+}
+
+/// Invariances on a seeded skewed panel: Doornik-Hansen (2008) is invariant
+/// to column permutation, positive rescaling, sign flips and shifts; the
+/// symmetric root to permutation, sign flips and shifts but NOT to
+/// rescaling (it depends on units); the Cholesky form to sign flips, shifts
+/// and rescaling but not to the column order. A sign flip of column j flips
+/// `z1_j` and `b1_j` exactly.
+#[test]
+fn normality_invariances() {
+    let mut rng = Lcg::new(77);
+    let (t, k) = (150usize, 3usize);
+    let mut x = Mat::from_fn(t, k, |_, _| {
+        let g = rng.gaussian();
+        g + 0.3 * (g * g - 1.0)
+    });
+    // Correlate the columns.
+    for i in 0..t {
+        x[(i, 1)] += 0.6 * x[(i, 0)];
+        x[(i, 2)] += 0.4 * x[(i, 1)] - 0.2 * x[(i, 0)];
+    }
+    let close = |a: f64, b: f64, tol: f64| (a - b).abs() <= tol * a.abs().max(1.0);
+    let dh0 = doornik_hansen_test(x.as_ref()).unwrap();
+    let sy0 = normality_test_symmetric(x.as_ref()).unwrap();
+    let ch0 = normality_test_cholesky(x.as_ref()).unwrap();
+    // Permutation.
+    let perm = [2usize, 0, 1];
+    let xp = Mat::from_fn(t, k, |i, j| x[(i, perm[j])]);
+    let dhp = doornik_hansen_test(xp.as_ref()).unwrap();
+    let syp = normality_test_symmetric(xp.as_ref()).unwrap();
+    assert!(close(dhp.statistic, dh0.statistic, 1e-10));
+    assert!(close(syp.statistic, sy0.statistic, 1e-10));
+    for (j, &pj) in perm.iter().enumerate() {
+        assert!(close(dhp.z_skewness[j], dh0.z_skewness[pj], 1e-10));
+        assert!(close(dhp.z_kurtosis[j], dh0.z_kurtosis[pj], 1e-10));
+    }
+    let chp = normality_test_cholesky(xp.as_ref()).unwrap();
+    assert!(
+        !close(chp.statistic, ch0.statistic, 1e-6),
+        "Cholesky is order-dependent"
+    );
+    // Positive rescaling by (100, 0.01, 3).
+    let sc = [100.0, 0.01, 3.0];
+    let xs = Mat::from_fn(t, k, |i, j| x[(i, j)] * sc[j]);
+    let dhs = doornik_hansen_test(xs.as_ref()).unwrap();
+    let sys = normality_test_symmetric(xs.as_ref()).unwrap();
+    let chs = normality_test_cholesky(xs.as_ref()).unwrap();
+    assert!(close(dhs.statistic, dh0.statistic, 1e-10));
+    assert!(close(chs.statistic, ch0.statistic, 1e-10));
+    println!(
+        "rescaling by (100, 0.01, 3): DH {:.6} -> {:.6}, Cholesky JB {:.6} -> {:.6}, symmetric-root JB {:.6} -> {:.6}",
+        dh0.statistic, dhs.statistic, ch0.statistic, chs.statistic, sy0.statistic, sys.statistic
+    );
+    assert!(
+        (sys.statistic - sy0.statistic).abs() > 1.0,
+        "the symmetric root should depend on units: {} vs {}",
+        sys.statistic,
+        sy0.statistic
+    );
+    // Sign flip of column 1.
+    let xf = Mat::from_fn(t, k, |i, j| if j == 1 { -x[(i, j)] } else { x[(i, j)] });
+    let dhf = doornik_hansen_test(xf.as_ref()).unwrap();
+    let syf = normality_test_symmetric(xf.as_ref()).unwrap();
+    let chf = normality_test_cholesky(xf.as_ref()).unwrap();
+    assert!(close(dhf.statistic, dh0.statistic, 1e-12));
+    assert!(close(syf.statistic, sy0.statistic, 1e-12));
+    assert!(close(chf.statistic, ch0.statistic, 1e-12));
+    for j in 0..k {
+        let sgn = if j == 1 { -1.0 } else { 1.0 };
+        assert!(close(dhf.z_skewness[j], sgn * dh0.z_skewness[j], 1e-12));
+        assert!(close(dhf.sqrt_b1[j], sgn * dh0.sqrt_b1[j], 1e-12));
+        assert!(close(dhf.z_kurtosis[j], dh0.z_kurtosis[j], 1e-12));
+        assert!(close(
+            syf.skewness_components[j],
+            sgn * sy0.skewness_components[j],
+            1e-12
+        ));
+        assert!(close(
+            chf.skewness_components[j],
+            sgn * ch0.skewness_components[j],
+            1e-12
+        ));
+    }
+    // Shift.
+    let xh = Mat::from_fn(t, k, |i, j| x[(i, j)] + [5.0, -3.0, 0.25][j]);
+    assert!(close(
+        doornik_hansen_test(xh.as_ref()).unwrap().statistic,
+        dh0.statistic,
+        1e-10
+    ));
+    assert!(close(
+        normality_test_symmetric(xh.as_ref()).unwrap().statistic,
+        sy0.statistic,
+        1e-10
+    ));
+    assert!(close(
+        normality_test_cholesky(xh.as_ref()).unwrap().statistic,
+        ch0.statistic,
+        1e-10
+    ));
+}
+
+/// The bundle never refuses on account of the added normality tests: a
+/// VAR(1) with k = 2 and T = 7 effective observations (which works since
+/// 0.10.0) returns `doornik_hansen == None`; at T = 8 it is `Some`. Series on
+/// wildly different scales leave the unit-dependent symmetric root `None`
+/// while everything else is computed.
+#[test]
+fn bundle_keeps_working_below_eight_observations_and_on_bad_scales() {
+    let (c, a, chol) = dgp_var1();
+    let mut rng = Lcg::new(31);
+    let y = simulate(&mut rng, 9, &c, &a, &chol, false, None);
+    let fit = |rows: usize| {
+        VarSpec::new(1, Trend::Constant)
+            .unwrap()
+            .fit(y.submatrix(0, 0, rows, 2))
+            .unwrap()
+    };
+    let r7 = fit(8);
+    assert_eq!(r7.nobs, 7);
+    let d7 = r7.diagnostics(2).unwrap();
+    assert!(d7.doornik_hansen.is_none());
+    assert!(d7.normality_symmetric.is_some());
+    assert_eq!(d7.normality, r7.normality_test().unwrap());
+    let e = r7.doornik_hansen_test().unwrap_err().to_string();
+    assert!(e.contains("resid") && e.contains("8 rows"), "{e}");
+    let r8 = fit(9);
+    assert_eq!(r8.nobs, 8);
+    let d8 = r8.diagnostics(2).unwrap();
+    assert_eq!(d8.doornik_hansen, Some(r8.doornik_hansen_test().unwrap()));
+    // Units: one series in 1e9, the other in 1e-9.
+    let mut rng = Lcg::new(32);
+    let y = simulate(&mut rng, 120, &c, &a, &chol, false, None);
+    let ys = Mat::from_fn(120, 2, |i, j| y[(i, j)] * if j == 0 { 1e9 } else { 1e-9 });
+    let rs = VarSpec::new(1, Trend::Constant)
+        .unwrap()
+        .fit(ys.as_ref())
+        .unwrap();
+    let ds = rs.diagnostics(5).unwrap();
+    assert!(ds.normality_symmetric.is_none());
+    let dh = ds.doornik_hansen.unwrap();
+    let r0 = VarSpec::new(1, Trend::Constant)
+        .unwrap()
+        .fit(y.as_ref())
+        .unwrap();
+    let d0 = r0.diagnostics(5).unwrap();
+    assert!((dh.statistic - d0.doornik_hansen.unwrap().statistic).abs() < 1e-8);
+    assert!((ds.normality.statistic - d0.normality.statistic).abs() < 1e-8);
 }
 
 /// The stability verdict of the bundle agrees with `VarResults::is_stable`
@@ -494,4 +846,473 @@ fn refusals_name_the_parameter() {
     }
     let e = res.portmanteau_test(1).unwrap_err().to_string();
     assert!(e.contains("nlags"), "{e}");
+}
+
+// ------------------------------------------------------- soft conditions
+
+/// The true `G = R Σ B'` (`n x m`) and `Occ = B Σ B'` (`m x m`) of the
+/// VAR(1) DGP for conditioned cells `(h, j)`: `Ψ_h = A^h`, `Σ = chol chol'`.
+/// Used to draw from the exact density-conditional distribution without
+/// touching the fitted model (which would make the coverage check circular).
+fn true_gain_pieces(
+    a: &Mat<f64>,
+    chol: &Mat<f64>,
+    steps: usize,
+    cells: &[(usize, usize)],
+) -> (Mat<f64>, Mat<f64>) {
+    let k = a.nrows();
+    let n = steps * k;
+    let m = cells.len();
+    let sigma = chol * chol.transpose();
+    let mut psi = vec![Mat::<f64>::identity(k, k)];
+    for h in 1..steps {
+        psi.push(a * &psi[h - 1]);
+    }
+    // R (n x n): block (h, s) = Psi_{h-s}.
+    let mut r = Mat::<f64>::zeros(n, n);
+    for h in 0..steps {
+        for s in 0..=h {
+            for i in 0..k {
+                for l in 0..k {
+                    r[(h * k + i, s * k + l)] = psi[h - s][(i, l)];
+                }
+            }
+        }
+    }
+    let big_s = Mat::from_fn(n, n, |i, j| {
+        if i / k == j / k {
+            sigma[(i % k, j % k)]
+        } else {
+            0.0
+        }
+    });
+    let b = Mat::from_fn(m, n, |i, c| r[(cells[i].0 * k + cells[i].1, c)]);
+    let w = &big_s * b.transpose();
+    (&r * &w, &b * &w)
+}
+
+/// SIGNAL coverage under the DGP: the readings are the realised path of
+/// series 0 over four horizons PLUS independent N(0, sd^2) noise (sd 0.3,
+/// 0.4, 0.5, 0.6). The signal-mode 95% interval must cover the TRUE value
+/// at every cell — the four read cells and the four free ones — at the
+/// nominal rate, the standardised errors must have unit variance, and the
+/// Mahalanobis statistic of the readings is a chi2(4) draw (mean 4).
+#[test]
+fn soft_signal_coverage_under_the_dgp() {
+    let (c, a, chol) = dgp_var1();
+    let mut rng = Lcg::new(20261009);
+    let y = simulate(&mut rng, 4000, &c, &a, &chol, false, None);
+    let res = VarSpec::new(1, Trend::Constant)
+        .unwrap()
+        .fit(y.as_ref())
+        .unwrap();
+    let (h, reps) = (4usize, 2000usize);
+    let sds = [0.3, 0.4, 0.5, 0.6];
+    let start = y.submatrix(y.nrows() - 1, 0, 1, 2).to_owned();
+    let mut covered = vec![[0usize; 2]; h];
+    let mut sq_err = vec![[0.0f64; 2]; h];
+    let mut mean_maha = 0.0;
+    let sd_grid: Vec<Vec<Option<f64>>> = sds.iter().map(|&s| vec![Some(s), None]).collect();
+    for _ in 0..reps {
+        let fut = simulate(&mut rng, h, &c, &a, &chol, false, Some(&start));
+        let conds: Vec<Vec<Option<f64>>> = (0..h)
+            .map(|s| vec![Some(fut[(s, 0)] + sds[s] * rng.gaussian()), None])
+            .collect();
+        let cf = res
+            .conditional_forecast_soft(h, &conds, &sd_grid, SoftMode::Signal, 0.05)
+            .unwrap();
+        assert_eq!(cf.mode, ConditionMode::Signal);
+        for s in 0..h {
+            for j in 0..2 {
+                let v = fut[(s, j)];
+                if cf.lower[(s, j)] <= v && v <= cf.upper[(s, j)] {
+                    covered[s][j] += 1;
+                }
+                let e = (v - cf.point[(s, j)]) / cf.se[(s, j)];
+                sq_err[s][j] += e * e;
+            }
+        }
+        mean_maha += cf.mahalanobis;
+    }
+    mean_maha /= reps as f64;
+    let se_mc = (0.95f64 * 0.05 / reps as f64).sqrt();
+    println!("soft signal coverage (reps {reps}, T 4000, sd {sds:?} on series 0), mean Mahalanobis {mean_maha:.3}");
+    for s in 0..h {
+        let cov = [
+            covered[s][0] as f64 / reps as f64,
+            covered[s][1] as f64 / reps as f64,
+        ];
+        let calib = [sq_err[s][0] / reps as f64, sq_err[s][1] / reps as f64];
+        println!(
+            "  h={}: read cell {:.4} free cell {:.4}; standardised-error variance {:.4} / {:.4}",
+            s + 1,
+            cov[0],
+            cov[1],
+            calib[0],
+            calib[1]
+        );
+        for j in 0..2 {
+            assert!(
+                (cov[j] - 0.95).abs() < 4.0 * se_mc + 0.005,
+                "h={} series {j}: signal coverage {}",
+                s + 1,
+                cov[j]
+            );
+            assert!(
+                (calib[j] - 1.0).abs() < 0.12,
+                "h={} series {j}: {}",
+                s + 1,
+                calib[j]
+            );
+        }
+    }
+    assert!(
+        (mean_maha - 4.0).abs() < 0.3,
+        "mean Mahalanobis {mean_maha}"
+    );
+}
+
+/// DENSITY coverage by exact conditional simulation (Matheron's rule) with
+/// the TRUE DGP's MA matrices: draw the scenario's cells `c ~ N(v, sd^2)`,
+/// draw an unconditional future `ỹ` from the DGP, and set
+/// `y = ỹ + G Occ^{-1} (c - B ỹ)` — a draw from the
+/// Andersson-Palmqvist-Waggoner distribution under the true model. The
+/// fitted model's density-mode 95% intervals must cover it at the nominal
+/// rate at every cell (the soft cells: `c` itself; the free ones: the
+/// conditional response).
+#[test]
+fn soft_density_coverage_by_exact_conditional_simulation() {
+    let (c, a, chol) = dgp_var1();
+    let mut rng = Lcg::new(20261010);
+    let y = simulate(&mut rng, 4000, &c, &a, &chol, false, None);
+    let res = VarSpec::new(1, Trend::Constant)
+        .unwrap()
+        .fit(y.as_ref())
+        .unwrap();
+    let (h, reps, k) = (4usize, 2000usize, 2usize);
+    let sds = [0.3, 0.4, 0.5, 0.6];
+    let offsets = [0.8, 0.5, 0.3, 0.1];
+    let unc = res.forecast(h).unwrap();
+    let v: Vec<f64> = (0..h).map(|s| unc[(s, 0)] + offsets[s]).collect();
+    let conds: Vec<Vec<Option<f64>>> = v.iter().map(|&x| vec![Some(x), None]).collect();
+    let sd_grid: Vec<Vec<Option<f64>>> = sds.iter().map(|&s| vec![Some(s), None]).collect();
+    let cf = res
+        .conditional_forecast_soft(h, &conds, &sd_grid, SoftMode::Density, 0.05)
+        .unwrap();
+    assert_eq!(cf.mode, ConditionMode::Density);
+    let cells: Vec<(usize, usize)> = (0..h).map(|s| (s, 0)).collect();
+    let (g_true, occ_true) = true_gain_pieces(&a[0], &chol, h, &cells);
+    // K = G Occ^{-1} (n x m), through the transpose solve Occ K' = G'.
+    let k_gain = occ_true
+        .llt(Side::Lower)
+        .unwrap()
+        .solve(g_true.transpose())
+        .transpose()
+        .to_owned();
+    let start = y.submatrix(y.nrows() - 1, 0, 1, 2).to_owned();
+    let mut covered = vec![[0usize; 2]; h];
+    let mut sq_err = vec![[0.0f64; 2]; h];
+    for _ in 0..reps {
+        let draw_c: Vec<f64> = (0..h).map(|s| v[s] + sds[s] * rng.gaussian()).collect();
+        let fut = simulate(&mut rng, h, &c, &a, &chol, false, Some(&start));
+        let gap: Vec<f64> = (0..h)
+            .map(|i| draw_c[i] - fut[(cells[i].0, cells[i].1)])
+            .collect();
+        for s in 0..h {
+            for j in 0..k {
+                let mut yv = fut[(s, j)];
+                for (i, g) in gap.iter().enumerate() {
+                    yv += k_gain[(s * k + j, i)] * g;
+                }
+                if cf.lower[(s, j)] <= yv && yv <= cf.upper[(s, j)] {
+                    covered[s][j] += 1;
+                }
+                let e = (yv - cf.point[(s, j)]) / cf.se[(s, j)];
+                sq_err[s][j] += e * e;
+            }
+        }
+    }
+    // The DGP's own density-conditional se at each cell, from the same
+    // pieces: MSE - G Occ^{-1} G' + K Om K' on the diagonal.
+    let sigma_true = &chol * chol.transpose();
+    let mut mse_true = Mat::<f64>::zeros(k, k);
+    let mut psi_h = Mat::<f64>::identity(k, k);
+    let mut true_se = vec![[0.0f64; 2]; h];
+    for (s, se_s) in true_se.iter_mut().enumerate() {
+        mse_true = &mse_true + &psi_h * &sigma_true * psi_h.transpose();
+        psi_h = &a[0] * &psi_h;
+        for (j, slot) in se_s.iter_mut().enumerate() {
+            let row = s * k + j;
+            let shrink: f64 = (0..h).map(|i| g_true[(row, i)] * k_gain[(row, i)]).sum();
+            let spread: f64 = (0..h).map(|i| (k_gain[(row, i)] * sds[i]).powi(2)).sum();
+            *slot = (mse_true[(j, j)] - shrink + spread).max(0.0).sqrt();
+        }
+    }
+    let se_mc = (0.95f64 * 0.05 / reps as f64).sqrt();
+    println!("soft density coverage (reps {reps}, T 4000, sd {sds:?} on series 0, exact conditional draws under the DGP)");
+    for s in 0..h {
+        let cov = [
+            covered[s][0] as f64 / reps as f64,
+            covered[s][1] as f64 / reps as f64,
+        ];
+        let calib = [sq_err[s][0] / reps as f64, sq_err[s][1] / reps as f64];
+        println!(
+            "  h={}: soft cell {:.4} free cell {:.4}; standardised-error variance {:.4} / {:.4}; \
+             fitted/true se {:.4} / {:.4}",
+            s + 1,
+            cov[0],
+            cov[1],
+            calib[0],
+            calib[1],
+            cf.se[(s, 0)] / true_se[s][0],
+            cf.se[(s, 1)] / true_se[s][1]
+        );
+        // The soft cell's se is the stated sd under both the DGP and the fit.
+        assert!((cf.se[(s, 0)] / true_se[s][0] - 1.0).abs() < 1e-12);
+        for j in 0..k {
+            assert!(
+                (cov[j] - 0.95).abs() < 4.0 * se_mc + 0.005,
+                "h={} series {j}: density coverage {}",
+                s + 1,
+                cov[j]
+            );
+            assert!(
+                (calib[j] - 1.0).abs() < 0.12,
+                "h={} series {j}: {}",
+                s + 1,
+                calib[j]
+            );
+        }
+    }
+}
+
+fn soft_fixture_model() -> tsecon_var::VarResults {
+    let (c, a, chol) = dgp_var2_k3();
+    let mut rng = Lcg::new(11);
+    let y = simulate(&mut rng, 300, &c, &a, &chol, false, None);
+    VarSpec::new(2, Trend::Constant)
+        .unwrap()
+        .fit(y.as_ref())
+        .unwrap()
+}
+
+/// Two soft cells (series 1 at h = 1 and h = 3) and a hard one (series 2 at
+/// h = 2), with the soft standard deviations given.
+type Grid = Vec<Vec<Option<f64>>>;
+
+fn soft_scenario(sd1: f64, sd3: f64) -> (Grid, Grid) {
+    let conds = vec![
+        vec![None, Some(0.4), None],
+        vec![None, None, Some(-0.3)],
+        vec![None, Some(0.2), None],
+    ];
+    let sd = vec![
+        vec![None, Some(sd1), None],
+        vec![None, None, Some(0.0)],
+        vec![None, Some(sd3), None],
+    ];
+    (conds, sd)
+}
+
+/// Monotonicity: a signal-mode reading is informative but not exact (its
+/// cell's se is below both its sd and its unconditional se), a noisier
+/// reading never tightens any cell (Blackwell: the signal is garbled), and
+/// stating a density spread never tightens any cell below the hard forecast.
+#[test]
+fn soft_condition_monotonicity() {
+    let res = soft_fixture_model();
+    let (h, k) = (6usize, 3usize);
+    let (conds, _) = soft_scenario(0.0, 0.0);
+    let hard = res.conditional_forecast(h, &conds, 0.05).unwrap();
+    let grid = [0.02, 0.05, 0.1, 0.2, 0.5, 1.0, 2.0, 5.0, 20.0];
+    let mut prev_sig: Option<tsecon_var::ConditionalForecast> = None;
+    for &s1 in &grid {
+        let (conds, sd) = soft_scenario(s1, 0.25);
+        let sig = res
+            .conditional_forecast_soft(h, &conds, &sd, SoftMode::Signal, 0.05)
+            .unwrap();
+        let den = res
+            .conditional_forecast_soft(h, &conds, &sd, SoftMode::Density, 0.05)
+            .unwrap();
+        assert_eq!((sig.n_soft, den.n_soft, sig.n_constrained), (2, 2, 3));
+        for (cell, sdv) in [((0usize, 1usize), s1), ((2, 1), 0.25)] {
+            let se = sig.se[cell];
+            assert!(
+                se < sdv && se < sig.unconditional_se[cell],
+                "sd {s1}: se {se}"
+            );
+            assert_eq!(den.se[cell].to_bits(), sdv.to_bits());
+        }
+        for hh in 0..h {
+            for j in 0..k {
+                assert!(
+                    den.se[(hh, j)] >= hard.se[(hh, j)] * (1.0 - 1e-12),
+                    "sd {s1}: density se ({hh},{j}) below the hard se"
+                );
+                if let Some(p) = &prev_sig {
+                    assert!(
+                        sig.se[(hh, j)] >= p.se[(hh, j)] * (1.0 - 1e-12),
+                        "sd {s1}: signal se ({hh},{j}) fell when the reading got noisier"
+                    );
+                }
+            }
+        }
+        prev_sig = Some(sig);
+    }
+}
+
+/// Limits. sd -> 0 is the hard forecast in both modes (every quantity
+/// within 1e-12); a signal reading with sd = 1e8 carries no information (the
+/// unconditional forecast, to 1e-10); and scaling every stated sd by c in
+/// density mode scales exactly the added variance term by c^2.
+#[test]
+fn soft_condition_limits_and_scaling() {
+    let res = soft_fixture_model();
+    let h = 6usize;
+    let (conds, _) = soft_scenario(0.0, 0.0);
+    let hard = res.conditional_forecast(h, &conds, 0.05).unwrap();
+    let close = |a: &Mat<f64>, b: &Mat<f64>, tol: f64, what: &str| {
+        for i in 0..a.nrows() {
+            for j in 0..a.ncols() {
+                let d = (a[(i, j)] - b[(i, j)]).abs();
+                assert!(
+                    d <= tol * b[(i, j)].abs().max(1.0),
+                    "{what}[({i},{j})]: {d:e}"
+                );
+            }
+        }
+    };
+    let (_, tiny) = soft_scenario(1e-13, 1e-13);
+    for mode in [SoftMode::Signal, SoftMode::Density] {
+        let s = res
+            .conditional_forecast_soft(h, &conds, &tiny, mode, 0.05)
+            .unwrap();
+        let what = format!("sd 1e-13 {mode:?}");
+        for (key, a, b) in [
+            ("point", &s.point, &hard.point),
+            ("se", &s.se, &hard.se),
+            ("shocks", &s.shocks, &hard.shocks),
+            ("lower", &s.lower, &hard.lower),
+        ] {
+            close(a, b, 1e-12, &format!("{what} {key}"));
+        }
+        for hh in 0..h {
+            close(
+                &s.cov[hh],
+                &hard.cov[hh],
+                1e-12,
+                &format!("{what} cov[{hh}]"),
+            );
+        }
+        assert!((s.mahalanobis - hard.mahalanobis).abs() < 1e-12);
+    }
+    // Every cell soft with sd = 1e8: the readings say nothing.
+    let conds_all = vec![
+        vec![None, Some(0.4), None],
+        vec![Some(9.0), None, Some(-0.3)],
+    ];
+    let huge = vec![
+        vec![None, Some(1e8), None],
+        vec![Some(1e8), None, Some(1e8)],
+    ];
+    let s = res
+        .conditional_forecast_soft(h, &conds_all, &huge, SoftMode::Signal, 0.05)
+        .unwrap();
+    close(&s.point, &s.unconditional, 1e-10, "sd 1e8 point");
+    close(&s.se, &s.unconditional_se, 1e-10, "sd 1e8 se");
+    assert!(s.mahalanobis < 1e-12, "{}", s.mahalanobis);
+    // Density scaling: cov(c sd) - cov_hard = c^2 (cov(sd) - cov_hard).
+    let (_, sd1) = soft_scenario(0.3, 0.2);
+    let (_, sd3) = soft_scenario(0.9, 0.6000000000000001);
+    let d1 = res
+        .conditional_forecast_soft(h, &conds, &sd1, SoftMode::Density, 0.05)
+        .unwrap();
+    let d3 = res
+        .conditional_forecast_soft(h, &conds, &sd3, SoftMode::Density, 0.05)
+        .unwrap();
+    for hh in 0..h {
+        let add1 = &d1.cov[hh] - &hard.cov[hh];
+        let add3 = &d3.cov[hh] - &hard.cov[hh];
+        let nine = Mat::from_fn(3, 3, |i, j| 9.0 * add1[(i, j)]);
+        close(&add3, &nine, 1e-10, &format!("density scaling cov[{hh}]"));
+    }
+    // The path, shocks and Mahalanobis statistic do not depend on sd.
+    assert_eq!(d1.point, hard.point);
+    assert_eq!(d3.shocks, hard.shocks);
+    assert_eq!(d3.mahalanobis.to_bits(), hard.mahalanobis.to_bits());
+}
+
+/// Rust-level refusals of `condition_sd`, each naming it (the binding adds
+/// the cell indices), and the all-zero grid that is NOT a refusal.
+#[test]
+fn soft_refusals_name_condition_sd() {
+    let res = soft_fixture_model();
+    let conds = vec![vec![None, Some(0.4), None], vec![None, None, Some(-0.3)]];
+    let ok = vec![vec![None, Some(0.2), None], vec![None, None, None]];
+    assert!(res
+        .conditional_forecast_soft(4, &conds, &ok, SoftMode::Signal, 0.05)
+        .is_ok());
+    let bad = |sd: Vec<Vec<Option<f64>>>| {
+        res.conditional_forecast_soft(4, &conds, &sd, SoftMode::Density, 0.05)
+            .unwrap_err()
+            .to_string()
+    };
+    let e = bad(vec![vec![None, Some(-0.1), None], vec![None, None, None]]);
+    assert!(
+        e.contains("condition_sd = -0.1") && e.contains("finite standard deviation >= 0"),
+        "{e}"
+    );
+    let e = bad(vec![
+        vec![None, Some(f64::INFINITY), None],
+        vec![None, None, None],
+    ]);
+    assert!(e.contains("condition_sd = inf"), "{e}");
+    let e = bad(vec![vec![None, Some(1e200), None], vec![None, None, None]]);
+    assert!(e.contains("condition_sd") && e.contains("square"), "{e}");
+    let e = bad(vec![
+        vec![Some(0.5), Some(0.2), None],
+        vec![None, None, None],
+    ]);
+    assert!(
+        e.contains("condition_sd = 0.5") && e.contains("free cell"),
+        "{e}"
+    );
+    let e = bad(vec![vec![None, Some(0.2), None]]);
+    assert!(
+        e.contains("condition_sd must have exactly one row per row of conditions")
+            && e.contains("expected 2, got 1"),
+        "{e}"
+    );
+    let e = bad(vec![vec![None, Some(0.2)], vec![None, None, None]]);
+    assert!(
+        e.contains("every row of condition_sd") && e.contains("expected 3, got 2"),
+        "{e}"
+    );
+    // conditions are checked first, with their own messages.
+    let e = res
+        .conditional_forecast_soft(
+            4,
+            &[vec![None, Some(f64::INFINITY), None]],
+            &[vec![None, Some(-1.0), None]],
+            SoftMode::Signal,
+            0.05,
+        )
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("conditions contains an infinite value"), "{e}");
+    let e = res
+        .conditional_forecast_soft(1usize << 40, &conds, &ok, SoftMode::Signal, 0.05)
+        .unwrap_err()
+        .to_string();
+    assert!(e.contains("memory budget") && e.contains("steps"), "{e}");
+    // 0, -0, None and NaN all mean hard: the hard path, mode Hard.
+    let zero = vec![
+        vec![None, Some(-0.0), Some(f64::NAN)],
+        vec![Some(0.0), None, Some(0.0)],
+    ];
+    let r = res
+        .conditional_forecast_soft(4, &conds, &zero, SoftMode::Signal, 0.05)
+        .unwrap();
+    assert_eq!((r.mode, r.n_soft), (ConditionMode::Hard, 0));
+    assert_eq!(r.mode.as_str(), "hard");
 }

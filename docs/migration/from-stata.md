@@ -76,6 +76,7 @@ callable now.
 | `estat archlm` | `arch_lm(resid, nlags)` | Engle's ARCH-LM. |
 | `vecrank y1 y2 y3` | `johansen(data, k_ar_diff)` | Trace + max-eig ranks. |
 | `vec y1 y2 y3, rank(r)` | `vecm(data, k_ar_diff, coint_rank=r, deterministic="co")` | ML VECM: `alpha`, `beta`, `gamma`, `det_coef`, `sigma_u`, `llf`. Stata's default `trend(constant)` is the unrestricted constant → `deterministic="co"`; tsecon's default `"n"` is `trend(none)`. |
+| `ardl y x1 x2, ec` + `estat ectest` | `ardl_bounds_test(y, np.column_stack([x1, x2]))` | ARDL in error-correction form and the PSS F/t bounds test. Stata's default `ardl` deterministics are case 3 (`case=3` here too); `lags(p q1 q2)` is `lags=p, order=[q1, q2]`; `aic`/`bic` is `ic=`. Two differences: Stata searches every `q_j` from **0** and parameterises `ec` with the `x_t` levels, so a `q_j = 0` model is admissible there — tsecon (like statsmodels' UECM) searches `q_j ≥ 1` and refuses `order=0` for now, so automatic picks can differ (the F is the same across the `x_t` / `x_{t-1}` level conventions whenever `q_j ≥ 1`); and `estat ectest` reports the Kripfganz-Schneider (2020) finite-sample critical values and p-values, while tsecon ships the asymptotic PSS surface only (no t bounds yet). |
 | `egranger` (user-written) | `engle_granger(data, trend="c", autolag="aic")` | Engle-Granger two-step: column 0 of `data` is the regressand, columns 1.. its regressors, deterministics come from `trend` (do not add a constant column). Statistic and p-value match `statsmodels.tsa.stattools.coint` at 1e-10 / 1e-9; the step-1 coefficients and residuals come back too. The Phillips-Ouliaris residual test is `phillips_ouliaris(y, x, trend="c", test_type="Zt")`. |
 
 ### Univariate models and volatility
@@ -152,6 +153,10 @@ outcome, as noted above.
 | `xtreg y x, fe` | `panel_fe(outcome, regressors, se_type="nonrobust")` | `outcome` is `N x T`, `regressors` is `k x N x T`. |
 | `xtreg y x, fe vce(cluster id)` | `panel_fe(..., se_type="cluster")` | Clustered by entity. |
 | `xtscc y x, fe` (Driscoll-Kraay) | `panel_fe(..., se_type="driscoll_kraay")` | Same SE, one argument. |
+| `xtreg y x, re` | `panel_re(outcome, regressors, se_type="nonrobust")` | Swamy-Arora components with a per-entity `theta_i`, pinned to linearmodels `RandomEffects` — no Stata parity is pinned. On an unbalanced panel `small_sample=True` is linearmodels' formula, **not** `xtreg, re sa` (Baltagi-Chang), so the two differ by construction there. `vce(cluster id)` → `se_type="cluster"` (no `G/(G-1)` factor — linearmodels' convention). |
+| `xtreg y x, be` / `xtreg y x, be wls` | `panel_between(outcome, regressors, se_type="nonrobust")` / `..., reweight=True` | OLS on the entity means; `wls` weights by `T_i`. |
+| `regress D.y D.x` (FD) | `panel_fd(outcome, regressors, constant=True)` | Stata's regression **includes a constant** (a linear trend in levels); `panel_fd`'s default `constant=False` is linearmodels'. Differences need `t` and `t−1` both observed — gaps are never bridged. |
+| `xtfmb y x` (user-written) | `panel_fama_macbeth(outcome, regressors)` | Pinned to linearmodels `FamaMacBeth`; `xtfmb` parity is **not** claimed. `se_type="hac"` is the Newey-West variant (`lag(#)` → `bandwidth`). |
 | `xtpmg d.y ..., pmg` | `panel_pmg(ys, xs)` | Pooled Mean Group ARDL(1,1) (Pesaran-Shin-Smith 1999). |
 | `xtpmg d.y ..., mg` | `panel_mean_group(ys, xs, method="mg")` | Mean group (Pesaran-Smith 1995). |
 | `xtmg y x, cce` (Eberhardt CCEMG) | `panel_mean_group(ys, xs, method="cce")` | Common-correlated-effects mean group. |

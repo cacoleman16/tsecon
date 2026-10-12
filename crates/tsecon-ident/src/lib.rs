@@ -92,12 +92,16 @@ pub use first_stage::{
 pub use fry_pagan::{median_target, MedianTargetResult};
 pub use haar::haar_rotation;
 pub use hetero::{box_m_test, hetero_decompose, BoxMResult, HeteroDecomp, SignConvention};
-pub use histdecomp::{decompose, HistoricalDecomposition};
-pub use long_run::{long_run_multiplier, long_run_svar, LongRunSvar};
+pub use histdecomp::{decompose, decompose_with_impact, HistoricalDecomposition};
+pub use long_run::{
+    apply_impact_signs, long_run_multiplier, long_run_ordering, long_run_svar,
+    validate_impact_signs, LongRunSvar,
+};
 pub use max_share::{max_share_shock, MaxShareResult, MaxShareSign, MaxShareWeighting};
 pub use narrative::{
-    ContributionRule, HdSetSummary, NarrativeDiagnostics, NarrativeRestriction,
-    NarrativeRestrictionSet, NarrativeSampleResult, NarrativeSampler,
+    narrative_weight_draw_work, ContributionRule, HdSetSummary, NarrativeDiagnostics,
+    NarrativeRestriction, NarrativeRestrictionSet, NarrativeSampleResult, NarrativeSampler,
+    NARRATIVE_WEIGHT_WORK,
 };
 pub use nongaussian::{nongaussian_svar, Contrast, NonGaussianSvar, OrderBy};
 pub use proxy::{proxy_svar, ProxySvarResult};
@@ -110,6 +114,7 @@ pub use sampler::{
 };
 pub use sign::{Sign, SignRestriction, SignRestrictionSet};
 pub use structural_fevd::{structural_fevd, structural_fevd_from_theta};
+pub use summary::check_irf_horizon;
 pub use zero::{zero_constrained_rotation, ZeroRestriction, ZeroRestrictionSet};
 pub use zero_sampler::{ZeroSignSampleResult, ZeroSignSampler};
 

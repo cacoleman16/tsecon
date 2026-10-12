@@ -7,7 +7,9 @@ a pandas ``DataFrame``/``Series`` (or any object exposing ``.to_numpy``, e.g.
 polars), a ``float32``/``float16`` array, a non-contiguous slice, or an
 **integer / boolean** array (data read with ``dtype=int``, ``np.arange``, a
 ``0/1`` recession dummy, a ``y > 0`` mask) — are converted to ``float64``
-C-contiguous arrays before the call.
+C-contiguous arrays before the call. A complex pandas object is the exception:
+it is handed on as the complex array it holds, as a complex ndarray is, so the
+boundary refuses it by name instead of the cast dropping the imaginary part.
 
 Integer arrays are the delicate case, because a handful of parameters
 legitimately want integers: they are *labels* and *column indices*, not data,
@@ -43,10 +45,12 @@ raw ``_core`` primitives, so they bypass this layer.
 """
 from __future__ import annotations
 
+import ast
 import functools
 import inspect
 import re
 import types
+from pathlib import Path
 
 import numpy as np
 
@@ -98,6 +102,18 @@ _EXEMPT: dict[str, frozenset[str]] = {
     "jsz_loadings": frozenset({"maturities"}),
     # Harmonics per trigonometric seasonal block: integer counts, not data.
     "unobserved_components": frozenset({"freq_seasonal_harmonics"}),
+    # ARDL orders q_j per regressor (an int or a list of ints): lag counts,
+    # not data; float64-ifying [1, 3, 2] would make the converter refuse it.
+    "ardl_bounds_test": frozenset({"order"}),
+    # Variance-ratio horizons (an int or a list of ints), parsed by hand in
+    # diag_vr.rs: float64-ifying [2, 4] would make it indistinguishable from
+    # [2.0, 4.0], which is refused like the scalar 4.0 (audit round 15).
+    "variance_ratio": frozenset({"lags"}),
+    # Hidden-layer widths (an int or a list of ints), parsed by hand in
+    # ml_neural.rs. As a float64 array a list such as [2**62] slipped past
+    # the 2**48 pre-flight below, which scans lists and tuples only, and
+    # reached the core as a saturated cast (audit round 16).
+    "mlp_regression": frozenset({"hidden"}),
 }
 
 _POSITIONAL = (
@@ -111,6 +127,51 @@ def _is_pandas(x: object) -> bool:
     # ndarray has no ``.to_numpy`` in the relevant sense, so it never matches
     # here (it is handled by the ndarray branch of ``_coerce``).
     return hasattr(x, "to_numpy") and not isinstance(x, np.ndarray)
+
+
+def _is_real_scalar(e: object) -> bool:
+    """A Python or NumPy real number (bools included), never a complex,
+    ``Decimal``, string, datetime or missing-value marker."""
+    return isinstance(e, (bool, int, float, np.bool_, np.integer, np.floating))
+
+
+def _real_object_as_float(arr: np.ndarray) -> np.ndarray:
+    """An object array whose every element is a real number, as float64.
+
+    Anything else -- a complex, ``Decimal``, string or ``pd.NA`` element, or
+    an integer too wide for a double -- leaves the array unchanged, so the
+    binding refuses it exactly as it refuses the same values in an ndarray.
+    """
+    if arr.dtype != object or arr.ndim == 0 or arr.size == 0:
+        return arr
+    if not all(_is_real_scalar(e) for e in arr.flat):
+        return arr
+    try:
+        return np.ascontiguousarray(arr, dtype=np.float64)
+    except (OverflowError, TypeError, ValueError):
+        return arr
+
+
+def _pandas_to_numpy(x: object) -> object:
+    """A pandas (or polars) object as an ndarray, cast to float64 only when
+    the values are real numbers.
+
+    A real numeric frame (bool, integer, float, or nullable columns whose
+    ``to_numpy`` is an object array of plain floats) becomes C-contiguous
+    float64, as before. Any other dtype -- complex, datetime, strings, an
+    object column of ``Decimal`` -- is returned uncast, so the ndarray rules
+    apply: the binding refuses it, naming the argument, instead of the float
+    cast truncating a complex frame to its real part, reading datetimes as
+    epoch nanoseconds or numeric strings as numbers (audit round 16).
+    """
+    arr = x.to_numpy()
+    if not isinstance(arr, np.ndarray):
+        return arr
+    if arr.dtype.kind in "biuf":
+        return np.ascontiguousarray(arr, dtype=np.float64)
+    if arr.dtype == object:
+        return _real_object_as_float(arr)
+    return arr
 
 
 def _coerce(x: object) -> object:
@@ -128,7 +189,7 @@ def _coerce(x: object) -> object:
             return np.ascontiguousarray(x, dtype=np.float64)
         return x
     if _is_pandas(x):
-        return np.ascontiguousarray(x.to_numpy(), dtype=np.float64)
+        return _pandas_to_numpy(x)
     return x
 
 
@@ -137,9 +198,13 @@ def _coerce_data(x: object) -> object:
 
     Same as :func:`_coerce` but integer (``i``/``u``) and boolean (``b``)
     arrays of rank >= 1 are converted too, since this argument cannot be a
-    label array. Complex/object/datetime arrays are still left alone:
-    converting them would silently drop information (or raise something less
-    clear than the boundary error they already produce). A **0-d** integer
+    label array, and so is an object array whose every element is a real
+    number (what a pandas nullable-float frame's ``to_numpy`` returns), so an
+    ndarray and a pandas object holding the same values get the same verdict.
+    Complex/datetime arrays, and object arrays holding anything else, are
+    still left alone: converting them would silently drop information (or
+    raise something less clear than the boundary error they already
+    produce). A **0-d** integer
     array is left alone as well — no estimator takes rank-0 data, so it is a
     scalar argument in array clothing (``lags=np.array(2)``, which the
     boundary accepts via ``__index__``).
@@ -149,9 +214,11 @@ def _coerce_data(x: object) -> object:
             return np.ascontiguousarray(x, dtype=np.float64)
         if x.dtype.kind == "f" and (x.dtype != np.float64 or not x.flags["C_CONTIGUOUS"]):
             return np.ascontiguousarray(x, dtype=np.float64)
+        if x.dtype == object:
+            return _real_object_as_float(x)
         return x
     if _is_pandas(x):
-        return np.ascontiguousarray(x.to_numpy(), dtype=np.float64)
+        return _pandas_to_numpy(x)
     if isinstance(x, list):
         # Only *lists* are considered data. A tuple is how this API spells a
         # fixed-arity option (`weighted_midas(weight_start=(2.0, 3.0))`,
@@ -381,46 +448,152 @@ def _is_negative_int(v: object) -> bool:
     return isinstance(v, (int, np.integer)) and not isinstance(v, bool) and v < 0
 
 
-def _negative_int_offenders(fn, args, kwargs) -> list[str]:
-    """``name=value`` for every plausibly offending negative integer argument.
+def _nested_negative_paths(v: object, depth: int = 3) -> list[str]:
+    """``"[0][2]=-1"`` / ``"[0]['period']=-1"`` for every negative integer
+    nested inside the elements of a list/tuple argument, up to ``depth``
+    levels (dict values included, for spec entries such as a narrative
+    restriction)."""
+    if depth <= 0:
+        return []
+    if isinstance(v, dict):
+        items = [(f"[{k!r}]", e) for k, e in v.items()]
+    elif isinstance(v, (list, tuple)):
+        items = [(f"[{i}]", e) for i, e in enumerate(v)]
+    else:
+        return []
+    found: list[str] = []
+    for key, e in items:
+        if _is_negative_int(e):
+            found.append(f"{key}={e}")
+        else:
+            found.extend(f"{key}{deeper}" for deeper in _nested_negative_paths(e, depth - 1))
+    return found
 
-    Positional indices are mapped to parameter names through the compiled
-    signature when it resolves (the same introspection ``_exempt_positions``
-    relies on); otherwise the argument is named by position. Shallow
-    tuples/lists are scanned too, for spec arguments like
-    ``arima_fit(seasonal=(0, -1, 0, 4))``.
+
+def _negative_int_offenders(fn, args, kwargs) -> tuple[list[str], list[str]]:
+    """The plausibly offending negative integers: ``(counts, entries)``.
+
+    ``counts`` holds ``name=value`` for a negative top-level argument and for
+    a shallow tuple/list holding one directly (a spec of counts such as
+    ``arima_fit(seasonal=(0, -1, 0, 4))``). ``entries`` holds
+    ``name[0][2]=-1`` for a negative integer nested deeper -- an index inside
+    a restriction spec, ``sign_restricted_svar(restrictions=[(0, 0, -1,
+    "+")])`` or ``narrative_svar(narrative_restrictions=[{"period": -1,
+    ...}])`` -- which audit round 16 found reported as an unnamed "counting"
+    parameter. Positional indices are mapped to parameter names through the
+    compiled signature when it resolves (the same introspection
+    ``_exempt_positions`` relies on); otherwise the argument is named by
+    position.
     """
     try:
         names = list(inspect.signature(fn).parameters)
     except (ValueError, TypeError):
         names = []
-    found: list[str] = []
+    counts: list[str] = []
+    entries: list[str] = []
     labeled = [
         *(((names[i] if i < len(names) else f"argument {i}"), a) for i, a in enumerate(args)),
         *kwargs.items(),
     ]
     for label, v in labeled:
         if _is_negative_int(v):
-            found.append(f"{label}={v}")
+            counts.append(f"{label}={v}")
         elif isinstance(v, (list, tuple)) and any(_is_negative_int(e) for e in v):
-            found.append(f"{label}={v!r}")
-    return found
+            counts.append(f"{label}={v!r}")
+        else:
+            entries.extend(f"{label}{path}" for path in _nested_negative_paths(v))
+    return counts, entries
 
 
 def _negative_int_error(fn, args, kwargs, original: OverflowError) -> ValueError:
     """Rebuild PyO3's bare negative-int OverflowError into a teaching error."""
-    offenders = _negative_int_offenders(fn, args, kwargs)
-    if offenders:
-        what = " and ".join(offenders)
-        verb = "are" if len(offenders) > 1 else "is"
-        subject = f"{what} {verb} negative, but this parameter"
-    else:
-        subject = "an integer argument is negative, but the parameter"
+    counts, entries = _negative_int_offenders(fn, args, kwargs)
+    if counts:
+        what = " and ".join(counts)
+        verb = "are" if len(counts) > 1 else "is"
+        return ValueError(
+            f"{fn.__name__}: {what} {verb} negative, but this parameter counts "
+            f"something — a lag length, order, horizon, window, iteration cap, "
+            f"draw count, or seed — and must be a nonnegative integer. Original "
+            f"error: {original}"
+        )
+    if entries:
+        what = " and ".join(entries)
+        verb = "are" if len(entries) > 1 else "is"
+        return ValueError(
+            f"{fn.__name__}: {what} {verb} negative, but each integer entry of "
+            f"that spec is a position — a variable, shock, horizon or period "
+            f"index — and must be a nonnegative integer (0 is the first). "
+            f"Original error: {original}"
+        )
     return ValueError(
-        f"{fn.__name__}: {subject} counts something — a lag length, order, "
-        f"horizon, window, iteration cap, draw count, or seed — and must be a "
-        f"nonnegative integer. Original error: {original}"
+        f"{fn.__name__}: an integer argument received a negative value, but it "
+        f"must be a nonnegative integer (a count such as a lag length or draw "
+        f"count, or an index inside a spec argument). Original error: {original}"
     )
+
+
+# The identification engines refuse an index past its bound as "restriction
+# out of range: <label> index <i> is not below the bound <b>", which names
+# neither the keyword nor the entry (the engine sees parsed structs). The
+# label says which field of a restriction tuple or narrative dict it was.
+_RANGE_ERROR = re.compile(
+    r"restriction out of range: (?P<label>.+?) index (?P<index>\d+) is not below the bound (?P<bound>\d+)"
+)
+_SPEC_ARGS = ("restrictions", "sign_restrictions", "zero_restrictions", "narrative_restrictions")
+
+
+def _range_field(label: str) -> tuple[int | None, tuple[str, ...]]:
+    """The tuple position and dict keys a range-error label refers to."""
+    if "variable" in label:
+        return 0, ("variable",)
+    if "shock" in label:
+        return 1, ("shock",)
+    if "period" in label:
+        return None, ("period", "start")
+    if "end" in label:
+        return None, ("end",)
+    if "horizon" in label:
+        return 2, ()
+    return None, ()
+
+
+def _range_error(fn, args, kwargs, original: ValueError) -> ValueError | None:
+    """Name the restriction-spec entry an engine range refusal is about.
+
+    Returns ``None`` (leave the original) unless exactly the reported index is
+    found at the reported field of some entry of a spec argument.
+    """
+    m = _RANGE_ERROR.search(str(original))
+    if m is None:
+        return None
+    pos, keys = _range_field(m.group("label"))
+    index, bound = int(m.group("index")), int(m.group("bound"))
+    try:
+        names = list(inspect.signature(fn).parameters)
+    except (ValueError, TypeError):
+        names = []
+    labeled = [
+        *((names[i], a) for i, a in enumerate(args) if i < len(names)),
+        *kwargs.items(),
+    ]
+    for name, spec in labeled:
+        if name not in _SPEC_ARGS or not isinstance(spec, (list, tuple)):
+            continue
+        for i, entry in enumerate(spec):
+            hit = None
+            if isinstance(entry, dict):
+                hit = next((f"[{k!r}]" for k in keys if entry.get(k) == index), None)
+            elif isinstance(entry, (list, tuple)) and pos is not None and pos < len(entry):
+                if isinstance(entry[pos], int) and entry[pos] == index:
+                    hit = f"[{pos}]"
+            if hit is not None:
+                return ValueError(
+                    f"{fn.__name__}: {name}[{i}]{hit} = {index} is out of range: it "
+                    f"must be below {bound} ({m.group('label')}). Original error: "
+                    f"{original}"
+                )
+    return None
 
 
 # A count argument of 2**48 or more asks for at least 2 PiB of f64 — beyond
@@ -448,6 +621,45 @@ _ALLOC_PANIC_HINTS = ("capacity overflow", "capacityoverflow", "allocerror")
 
 def _is_seed_name(name: str) -> bool:
     return name == "seed" or name.endswith("_seed")
+
+
+# Every seed-like keyword of the compiled API (`seed`, `band_seed`,
+# `rf_seed`, ... — the `_is_seed_name` rule) is a Rust `u64` (or
+# `Option<u64>`), so its valid range is 0 <= seed <= 2**64 - 1. PyO3 refuses a
+# value past either end as a bare ``OverflowError`` that names no argument
+# ("int too big to convert", or the negative-unsigned message rebuilt as a
+# generic "counts something" error) — audit round 16. The pre-flight in
+# `_call` refuses it by name with the range instead, before the call.
+_SEED_MAX = 2**64 - 1
+
+
+def _is_out_of_seed_range(v: object) -> bool:
+    return (
+        isinstance(v, (int, np.integer))
+        and not isinstance(v, bool)
+        and not 0 <= int(v) <= _SEED_MAX
+    )
+
+
+def _seed_range_offenders(fn, args, kwargs) -> list[tuple[str, int]]:
+    """``(name, value)`` for every seed-like argument outside
+    ``[0, 2**64 - 1]``, positional ones named through the signature."""
+    return [
+        (label, int(v))
+        for label, v in _labeled_ints(fn, args, kwargs)
+        if _is_seed_name(label) and _is_out_of_seed_range(v)
+    ]
+
+
+def _seed_range_error(fn, offenders: list[tuple[str, int]]) -> ValueError:
+    what = " and ".join(f"{label}={v}" for label, v in offenders)
+    verb = "are" if len(offenders) > 1 else "is"
+    name = offenders[0][0] if len(offenders) == 1 else "seed"
+    return ValueError(
+        f"{fn.__name__}: {what} {verb} outside the valid range "
+        f"0 <= {name} <= 2**64 - 1 = {_SEED_MAX}: a seed is an unsigned 64-bit "
+        f"integer, and every value in that range is accepted."
+    )
 
 
 def _is_huge_int(v: object) -> bool:
@@ -492,6 +704,97 @@ def _param_defaults(fn) -> dict[str, object]:
             d = {}
         _PARAM_DEFAULTS[fn] = d
     return d
+
+
+# The hand-written stub ships in the wheel beside this module (CI asserts the
+# installed package is under test, stub included). Its annotations are the
+# declared types: they say that `lags: int | None` takes an int even where the
+# signature default is a `None` sentinel that says nothing about the type.
+_STUB = Path(__file__).with_name("__init__.pyi")
+_SCALAR_NAMES = frozenset({"int", "float", "bool", "str"})
+# The stub's float-array annotations (`_ArrayLike` is NDArray[np.float64]):
+# such a data slot takes a float64 array, so it never refuses a float64.
+_FLOAT_ARRAY_ANNOTATIONS = frozenset({"_ArrayLike", "np.ndarray", "npt.ArrayLike"})
+# For each kind of value PyO3 can complain about, the declared scalar types
+# that would have ACCEPTED it — so a slot declared that way cannot be the one
+# refusing it. An int converts to a float slot (PyO3's f64 extraction takes
+# ints). A bool counts as admitted by a bool slot only (conservatively:
+# several int slots refuse bools by name).
+_ADMITTED_BY = {
+    "bool": frozenset({"bool"}),
+    "int": frozenset({"int", "float"}),
+    "float": frozenset({"float"}),
+    "str": frozenset({"str"}),
+    "None": frozenset({"None"}),
+}
+# PyO3 names a NumPy scalar by its own type (`'int64' object is not an
+# instance of 'str'`); it converts like the Python type of its kind (an
+# integer through `__index__`, a floating one through `__float__`).
+_NUMPY_KIND = (
+    (re.compile(r"(?:numpy\.)?(?:u?int(?:8|16|32|64)?|u?intp|u?intc|u?longlong|u?short|u?byte|u?long)"), "int"),
+    (re.compile(r"(?:numpy\.)?(?:float(?:16|32|64|96|128)?|half|single|double|longdouble)"), "float"),
+)
+
+
+def _value_kind(got: str) -> str | None:
+    """The Python scalar kind of PyO3's complained-about type name: `int`,
+    `float`, `bool`, `str` or `None` (a NumPy scalar maps to its kind)."""
+    if got == "NoneType":
+        return "None"
+    if got in _ADMITTED_BY:
+        return got
+    return next((kind for pat, kind in _NUMPY_KIND if pat.fullmatch(got)), None)
+
+
+def _scalar_members(ann: ast.expr) -> frozenset[str]:
+    """The scalar types a stub annotation admits: the bare names `int`,
+    `float`, `bool`, `str` and `None` in a `|` union, plus the marker
+    `float-array` for a float data array. A container (`Sequence[int]`, an
+    integer array, a tuple) admits no scalar and adds nothing."""
+    if isinstance(ann, ast.BinOp) and isinstance(ann.op, ast.BitOr):
+        return _scalar_members(ann.left) | _scalar_members(ann.right)
+    if isinstance(ann, ast.Constant) and ann.value is None:
+        return frozenset({"None"})
+    if isinstance(ann, ast.Name) and ann.id in _SCALAR_NAMES:
+        return frozenset({ann.id})
+    if ast.unparse(ann) in _FLOAT_ARRAY_ANNOTATIONS:
+        return frozenset({"float-array"})
+    return frozenset()
+
+
+@functools.lru_cache(maxsize=1)
+def _stub_scalar_types() -> dict[str, dict[str, frozenset[str]]]:
+    """``{function: {parameter: scalar types its annotation admits}}`` from
+    the shipped stub, parsed once on the error path only; empty when the stub
+    cannot be read, which restores the default-type rule alone."""
+    try:
+        tree = ast.parse(_STUB.read_text(encoding="utf-8"))
+    except (OSError, SyntaxError, ValueError):
+        return {}
+    out: dict[str, dict[str, frozenset[str]]] = {}
+    for node in tree.body:
+        if not isinstance(node, ast.FunctionDef):
+            continue
+        params = out.setdefault(node.name, {})
+        a = node.args
+        for arg in (*a.posonlyargs, *a.args, *a.kwonlyargs):
+            if arg.annotation is not None:
+                params[arg.arg] = params.get(arg.arg, frozenset()) | _scalar_members(arg.annotation)
+    return out
+
+
+def _declared_to_accept(fn, label: str, value: object, got: str) -> bool:
+    """Whether the stub declares parameter ``label`` of ``fn`` with a type
+    that accepts ``value``, whose type (or element type) is PyO3's
+    complained-about ``got``: a scalar slot of an admitting type, or a float
+    data-array slot holding a float array (it matched by its element type)."""
+    kind = _value_kind(got)
+    if kind is None:
+        return False
+    declared = _stub_scalar_types().get(fn.__name__, {}).get(label, frozenset())
+    if isinstance(value, np.ndarray):
+        return kind == "float" and value.dtype.kind == "f" and "float-array" in declared
+    return bool(declared & _ADMITTED_BY[kind])
 
 
 def _labeled_ints(fn, args, kwargs):
@@ -548,6 +851,14 @@ def _is_alloc_panic(exc: BaseException) -> bool:
     return any(h in text for h in _ALLOC_PANIC_HINTS)
 
 
+def _byte_size(n: int) -> str:
+    """A byte count for a refusal: whole GiB from 1 GiB up (as before), MiB
+    below it — a 512 MiB request used to read "0 GiB"."""
+    if n >= 2**30:
+        return f"{n / 2**30:,.0f} GiB"
+    return f"{n / 2**20:,.0f} MiB"
+
+
 def _capacity_overflow_error(fn, args, kwargs, original: BaseException) -> ValueError:
     """Rebuild a Rust allocation-sizing panic into a teaching ValueError.
 
@@ -572,7 +883,7 @@ def _capacity_overflow_error(fn, args, kwargs, original: BaseException) -> Value
     else:
         subject = "the working set implied by the arguments"
     size = re.search(r"size: (\d+)", str(original))
-    how_big = f" — a single array of {int(size.group(1)) / 2**30:,.0f} GiB was requested" if size else ""
+    how_big = f" — a single array of {_byte_size(int(size.group(1)))} was requested" if size else ""
     return ValueError(
         f"{fn.__name__}: {subject} could not be sized or allocated{how_big}. "
         f"Every integer parameter here counts something — a lag length, "
@@ -629,9 +940,19 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
     """``name=value`` for the arguments whose type PyO3 complained about.
 
     Several arguments may share the complained-about type (`p=1` and
-    `constant=1` are both ints), so the ones whose signature DEFAULT has a
-    different type (a bool default handed an int, a str default handed None)
-    are preferred; only when none stands out are all matches named."""
+    `constant=1` are both ints). First, every argument whose DECLARED type
+    (the shipped stub's annotation) accepts that type is dropped: such a slot
+    cannot be the one refusing it — `max_lag: int | None` beside `ic=1`, or
+    UC's `autoregressive: int | None` beside `mle_regression=1`, whose
+    None-sentinel defaults say nothing (audit round 15). A NumPy scalar counts
+    as its Python kind (`np.int64` as an int), and a float data array, which
+    matches a float64 complaint only through its elements, is cleared by its
+    float-array slot. Then the ones whose
+    signature DEFAULT has a different type (a bool default handed an int, a
+    str default handed None) are preferred. Failing that, a scalar whose
+    default has exactly its type is dropped — that slot takes the type, so it
+    cannot be the one refusing it (`lags=4` beside `debiased=1`). Only when
+    none stands out are all matches named."""
     defaults = _param_defaults(fn)
     labeled = _labeled_ints(fn, args, kwargs)
     if got == "ndarray":
@@ -643,7 +964,7 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
         pool = [(label, v) for label, v in arrays if v.size <= 8] or arrays
         chosen = [(label, v) for label, v in pool if v.size == 1] or pool
         return [f"{label}={_short_repr(v)}" for label, v in chosen]
-    matches: list[tuple[str, object, bool]] = []
+    matches: list[tuple[str, object, bool, bool]] = []
     for label, v in labeled:
         hit = got in _type_name(v) or _nested_hit(v, got) or (
             # A float64 array in an integer-list slot: PyO3 complains about
@@ -654,16 +975,28 @@ def _wrong_type_offenders(fn, args, kwargs, got: str) -> list[str]:
         if not hit:
             continue
         d = defaults.get(label, inspect.Parameter.empty)
-        strong = d is not inspect.Parameter.empty and d is not None and type(d) is not type(v)
-        matches.append((label, v, strong))
+        declared = d is not inspect.Parameter.empty and d is not None
+        strong = declared and type(d) is not type(v)
+        same = declared and type(d) is type(v) and not isinstance(v, (list, tuple, np.ndarray))
+        matches.append((label, v, strong, same))
+    # A slot declared to take the refused type is never the refuser; if the
+    # stub would clear every candidate (an annotation out of step with the
+    # binding), keep them all rather than name nothing.
+    matches = [m for m in matches if not _declared_to_accept(fn, m[0], m[1], got)] or matches
     # An integer-list parameter (the `_EXEMPT` entries) handed the wrong
     # element type is the offender ahead of any data array whose dtype
-    # happens to match.
+    # happens to match. Only a CONTAINER value is that case: a scalar handed
+    # to an int-or-list slot (`variance_ratio(lags=4)`) is an int it takes.
     exempt = _EXEMPT.get(fn.__name__, frozenset())
-    listed = [m for m in matches if m[0] in exempt]
-    chosen = listed or [m for m in matches if m[2]] or matches
+    listed = [m for m in matches if m[0] in exempt and isinstance(m[1], (list, tuple, np.ndarray))]
+    chosen = (
+        listed
+        or [m for m in matches if m[2]]
+        or [m for m in matches if not m[3]]
+        or matches
+    )
     out = []
-    for label, v, _ in chosen:
+    for label, v, _, _ in chosen:
         # a value nested TWO OR MORE levels down (a cell of a nested list such
         # as `conditions`) is named by its position, so the message points at
         # the cell and not at the whole table; a shallow list keeps round 13's
@@ -817,6 +1150,14 @@ def _rebuild_type_error(fn, args, kwargs, exc: TypeError) -> TypeError | None:
 def _call(fn, args, kwargs):
     """Invoke the compiled function, upgrading rank errors to teaching errors."""
     args, kwargs = _guard_callbacks(fn, args, kwargs)
+    # Fast path: no integer argument is outside [0, 2**64 - 1], so no seed
+    # can be; labels are resolved only to name an offender.
+    if any(_is_out_of_seed_range(v) for v in args) or any(
+        _is_out_of_seed_range(v) for v in kwargs.values()
+    ):
+        seeds = _seed_range_offenders(fn, args, kwargs)
+        if seeds:
+            raise _seed_range_error(fn, seeds)
     offenders = _huge_int_offenders(fn, args, kwargs)
     if offenders:
         raise _absurd_count_error(fn, offenders)
@@ -830,6 +1171,11 @@ def _call(fn, args, kwargs):
     except OverflowError as exc:
         if _NEGATIVE_INT_HINT in str(exc):
             raise _negative_int_error(fn, args, kwargs, exc) from exc
+        raise
+    except ValueError as exc:
+        rebuilt = _range_error(fn, args, kwargs, exc)
+        if rebuilt is not None:
+            raise rebuilt from exc
         raise
     except BaseException as exc:
         # Only the allocation-size panic is rebuilt; every other BaseException

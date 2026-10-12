@@ -1,7 +1,7 @@
 //! Estimation results object and companion-form stability analysis.
 
 use tsecon_linalg::faer::{Mat, MatRef, Side};
-use tsecon_linalg::{companion_from_var, spectral_radius, LinalgError};
+use tsecon_linalg::{balanced_eigenvalues, companion_from_var, spectral_radius, LinalgError};
 
 use crate::error::VarError;
 use crate::spec::VarSpec;
@@ -114,6 +114,13 @@ impl VarResults {
     /// (Lütkepohl 2005, eq. 2.1.12). A zero companion eigenvalue maps
     /// to `f64::INFINITY` (a root at infinity).
     ///
+    /// The eigenvalues come from [`balanced_eigenvalues`]: rescaling a
+    /// series is a diagonal similarity of the companion matrix, so the
+    /// roots do not depend on the units of the variables, and the exact
+    /// power-of-two balancing keeps the solve from losing the digits that
+    /// series in units far apart would otherwise cost it
+    /// (`fixtures/companion_roots.json`).
+    ///
     /// Returns an empty vector for `lags == 0`.
     ///
     /// # Errors
@@ -124,9 +131,10 @@ impl VarResults {
             return Ok(Vec::new());
         }
         let comp = self.companion()?;
-        let eigs = comp
-            .eigenvalues()
-            .map_err(|_| LinalgError::EigenFailed { what: "VAR roots" })?;
+        let eigs = balanced_eigenvalues(comp.as_ref()).map_err(|e| match e {
+            LinalgError::EigenFailed { .. } => LinalgError::EigenFailed { what: "VAR roots" },
+            other => other,
+        })?;
         let mut moduli: Vec<f64> = eigs
             .iter()
             .map(|c| {

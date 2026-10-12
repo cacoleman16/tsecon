@@ -117,7 +117,7 @@ nav:
       - Speed dashboard: reference/speed.md
       - Model cards:
           - Diagnostics: reference/model-cards/diagnostics.md
-          - Unit-root tests (DF-GLS, Ng-Perron, PP/PO, ZA): reference/model-cards/unit-root-cointegration-tests.md
+          - Unit-root & variance-ratio tests (DF-GLS, Ng-Perron, PP/PO, ZA, VR): reference/model-cards/unit-root-cointegration-tests.md
           - Check series (one-call battery): reference/model-cards/check-series.md
           - ARIMA: reference/model-cards/arima.md
           - Spectral analysis: reference/model-cards/spectral.md
@@ -145,6 +145,7 @@ nav:
           - Survey expectations: reference/model-cards/expectations.md
           - Long memory: reference/model-cards/long-memory.md
           - Specification & diagnostic tests: reference/model-cards/specification-tests.md
+          - Robust inference (HC, HAC, EWC): reference/model-cards/robust-inference.md
           - Arbitrage-free Nelson-Siegel: reference/model-cards/afns.md
           - DSGE (linear RE solver): reference/model-cards/dsge.md
           - Quantile regression & growth-at-risk: reference/model-cards/quantile.md

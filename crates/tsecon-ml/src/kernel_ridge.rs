@@ -64,6 +64,7 @@
 use tsecon_linalg::faer::{Mat, MatRef, Side};
 use tsecon_rng::Stream;
 
+use crate::budget::check_count;
 use crate::error::MlError;
 use crate::ridge::ridge;
 use crate::util::check_xy;
@@ -384,6 +385,63 @@ fn check_x_test(x_test: Option<MatRef<'_, f64>>, p: usize) -> Result<(), MlError
     Ok(())
 }
 
+/// Refuses a kernel matrix with a non-finite entry, naming what produced it.
+///
+/// The polynomial kernel `(gamma <x, y> + coef0)^degree` overflows `f64`
+/// once the base exceeds 1 by enough for the degree, and is NaN for a
+/// negative base under a non-integer degree; the inner products of the other
+/// kernels overflow only on astronomically scaled `x`. Either way the system
+/// is not a kernel ridge problem any more: left to the Cholesky it was
+/// reported as a rank-deficient kernel that a larger `alpha` would fix, and a
+/// non-finite test kernel came back as a silent NaN in `predicted`.
+fn check_kernel_finite(
+    k: MatRef<'_, f64>,
+    which: &str,
+    opts: &KernelRidgeOptions,
+    gamma: f64,
+) -> Result<(), MlError> {
+    for j in 0..k.ncols() {
+        for i in 0..k.nrows() {
+            let v = k[(i, j)];
+            if v.is_finite() {
+                continue;
+            }
+            let what = match opts.kernel {
+                KernelType::Polynomial => format!(
+                    "the polynomial kernel (gamma <x, y> + coef0)^degree is {v} at entry \
+                     ({i}, {j}) of the {which} kernel matrix (degree={}, gamma={gamma}, \
+                     coef0={}): the power overflows double precision, or a negative base \
+                     is raised to a non-integer degree. Lower degree, use an integer \
+                     degree, or rescale x, gamma or coef0 so that gamma <x, y> + coef0 \
+                     stays moderate",
+                    opts.degree, opts.coef0
+                ),
+                other => format!(
+                    "the {} kernel is {v} at entry ({i}, {j}) of the {which} kernel \
+                     matrix: the entries of x{} are too large for the kernel's \
+                     arithmetic in double precision. Rescale (standardize) the inputs",
+                    other.as_str(),
+                    if which == "test" { " and x_test" } else { "" }
+                ),
+            };
+            return Err(MlError::InvalidValue { what });
+        }
+    }
+    Ok(())
+}
+
+/// The random-Fourier-feature working set for `d` features: the drawn
+/// frequencies and offsets (`d (p + 5)`, one `Vec` header each), the
+/// feature matrices of `x` (held twice: the ridge SVD copies it) and of
+/// `x_test` (`d (2 n + m)`), and the thin-SVD factors and their workspace
+/// (`2 min(n, d) (n + d)`).
+fn rff_values(n: usize, p: usize, m: usize, d: usize) -> Option<usize> {
+    let r = n.min(d);
+    d.checked_mul(p.checked_add(5)?)?
+        .checked_add(d.checked_mul(n.checked_mul(2)?.checked_add(m)?)?)?
+        .checked_add(r.checked_mul(n.checked_add(d)?)?.checked_mul(2)?)
+}
+
 /// `K v` for a dense `K`.
 fn mat_vec(k: MatRef<'_, f64>, v: &[f64]) -> Vec<f64> {
     (0..k.nrows())
@@ -438,7 +496,11 @@ fn rff_features(x: MatRef<'_, f64>, w: &[Vec<f64>], b: &[f64]) -> Mat<f64> {
 ///   is supplied that the chosen mode cannot use (`gamma` with the linear
 ///   kernel, non-default `degree`/`coef0` with a non-polynomial kernel,
 ///   `rff_features` with a non-rbf kernel, `seed` in exact mode,
-///   `rff_features = 0`);
+///   `rff_features = 0`), when `rff_features` sizes a working set beyond
+///   the crate's [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget (checked
+///   before anything is drawn), or when the training or test kernel matrix
+///   has a non-finite entry (a polynomial `degree` that overflows, or a
+///   negative base under a non-integer `degree`);
 /// * [`MlError::NotPositiveDefinite`] if `K + alpha I` fails its Cholesky
 ///   factorization (exact mode) — increase `alpha`;
 /// * [`MlError::DecompositionFailed`] if the feature-space SVD fails
@@ -457,6 +519,15 @@ pub fn kernel_ridge(
     let g = gamma.unwrap_or(0.0);
 
     if let Some(d) = opts.rff_features {
+        let m = x_test.map_or(0, |xt| xt.nrows());
+        check_count(
+            "rff_features",
+            d,
+            1,
+            "the random-Fourier-feature design (the n x rff_features feature matrix, its \
+             SVD and the drawn frequencies)",
+            |d| rff_values(n, p, m, d),
+        )?;
         // Frequencies w_j ~ N(0, 2 gamma I): the spectral measure of
         // exp(-gamma ||x - y||^2) is Gaussian with variance 2 gamma per
         // coordinate. Offsets b_j ~ U[0, 2 pi). Draw order: for each
@@ -486,6 +557,7 @@ pub fn kernel_ridge(
     }
 
     let k = kernel_matrix(x, x, opts.kernel, g, opts.degree, opts.coef0)?;
+    check_kernel_finite(k.as_ref(), "training", opts, g)?;
     let mut k_alpha = k.clone();
     for i in 0..n {
         k_alpha[(i, i)] += opts.alpha;
@@ -515,6 +587,7 @@ pub fn kernel_ridge(
     let predicted = match x_test {
         Some(xt) => {
             let kt = kernel_matrix(xt, x, opts.kernel, g, opts.degree, opts.coef0)?;
+            check_kernel_finite(kt.as_ref(), "test", opts, g)?;
             Some(mat_vec(kt.as_ref(), &dual))
         }
         None => None,

@@ -1,0 +1,28 @@
+{
+ "tsecon": "0.10.0",
+ "ewc_cost": {
+  "ewc_lrv_n10000": {
+   "b": 186,
+   "seconds": 0.027783023000665708
+  },
+  "ewc_lrv_n100000": {
+   "b": 862,
+   "seconds": 1.3408660670029349
+  },
+  "ewc_lrv_n1000000": {
+   "b": 4000,
+   "refused_naming_b": true
+  },
+  "ols_ewc_k2_n100000": {
+   "b": 862,
+   "seconds": 1.4372003999997105
+  },
+  "cap_ewc_lrv": {
+   "largest_admitted_n_at_default_b": 972427,
+   "b": 3926,
+   "seconds_at_cap": 56.993140555001446,
+   "refused_at_n_plus_one_naming_b": true
+  },
+  "ols_ewc_b_n_minus_1_n100000_refused_naming_ewc_b": true
+ }
+}

@@ -199,8 +199,11 @@ def test_exempt_set_covers_every_integer_rust_parameter():
         src.extend(rs.read_text(encoding="utf-8").splitlines())
 
     fn_re = re.compile(r"^\s*(?:pub\s+)?fn\s+([a-z_0-9]+)\s*[<(]")
+    # An optional inline parameter attribute is allowed in front of the name:
+    # rustfmt keeps `#[pyo3(from_py_with = ...)] order: Option<Vec<usize>>`
+    # on one line (ardl_bounds_test's int-or-list `order`).
     int_param_re = re.compile(
-        r"^\s+([a-z_0-9]+)\s*:\s*(?:Option<)?Vec<\s*"
+        r"^\s+(?:#\[[^\]]*\]\s*)?([a-z_0-9]+)\s*:\s*(?:Option<)?Vec<\s*"
         r"(?:usize|isize|i8|i16|i32|i64|u8|u16|u32|u64)\s*>"
     )
     found: dict[str, set[str]] = {}
@@ -216,6 +219,25 @@ def test_exempt_set_covers_every_integer_rust_parameter():
 
     # the audit found something (guards against the regex silently matching 0)
     assert found, "integer-parameter scan matched nothing - regex is stale"
+    # Int-or-sequence parameters typed `Option<&Bound<'py, PyAny>>` and parsed
+    # by hand are invisible to the `Vec` scan, but must be exempt too (the
+    # parser has to tell [2, 4] from [2.0, 4.0]). Each must still exist in
+    # the source with that type, so this list cannot go stale either.
+    hand_parsed = {"variance_ratio": {"lags"}, "mlp_regression": {"hidden"}}
+    any_param_re = re.compile(r"^\s+([a-z_0-9]+)\s*:\s*Option<&Bound<'py,\s*PyAny>>")
+    any_found: dict[str, set[str]] = {}
+    current = None
+    for line in src:
+        m = fn_re.match(line)
+        if m:
+            current = m.group(1)
+            continue
+        m = any_param_re.match(line)
+        if m and current is not None:
+            any_found.setdefault(current, set()).add(m.group(1))
+    for fn, params in hand_parsed.items():
+        assert params <= any_found.get(fn, set()), (fn, params, any_found.get(fn))
+        found.setdefault(fn, set()).update(params)
     expected = {k: set(v) for k, v in _EXEMPT.items()}
     assert found == expected, (
         "integer parameters in src/*.rs disagree with _coerce._EXEMPT: "
@@ -449,6 +471,105 @@ def test_wrong_rank_raises_a_teaching_error():
     assert "wrong shape or type" in msg
     assert "(200,)" in msg          # reports the actual shape
     assert "df[['x']]" in msg       # tells the user what to do
+
+
+def test_an_int_flag_with_a_none_default_is_blamed_alone():
+    """A None-sentinel bool handed an int sits beside an int count: the
+    count's default is itself an int, so that slot takes ints and is not the
+    one refusing this one (both used to be named; variance_ratio's
+    `debiased`/`robust` beside `lags` are pinned in test_variance_ratio)."""
+    y = np.abs(np.random.default_rng(0).standard_normal(120)) + 10
+    with pytest.raises(TypeError) as excinfo:
+        tsecon.auto_ets(y, damped=1, horizon=5)
+    msg = str(excinfo.value)
+    assert "damped=1" in msg and "Python bool" in msg, msg
+    assert "horizon=5" not in msg, msg
+
+
+def _uc_data():
+    rng = np.random.default_rng(0)
+    y = np.cumsum(rng.standard_normal(120)) + rng.standard_normal(120)
+    return y, rng.standard_normal((120, 1))
+
+
+def _ardl_data():
+    rng = np.random.default_rng(0)
+    x = np.cumsum(rng.standard_normal((200, 2)), axis=0)
+    return 0.5 * x[:, 0] + rng.standard_normal(200), x
+
+
+def _wrong_type_cases():
+    y, ex = _uc_data()
+    ay, ax = _ardl_data()
+    return [
+        # (call, the one argument to name, innocent arguments that must not be named)
+        (lambda: tsecon.ardl_bounds_test(ay, ax, max_lag=3, max_order=2, ic=1), "ic=1",
+         ["max_lag=3", "max_order=2"]),
+        (lambda: tsecon.ardl_bounds_test(ay, ax, lags=2, ic=3), "ic=3", ["lags=2"]),
+        (lambda: tsecon.ardl_bounds_test(ay, ax, order=[1, 2], ic=1), "ic=1", ["order="]),
+        # a float slot takes an int too, even with a float default
+        (lambda: tsecon.ardl_bounds_test(ay, ax, alpha=1, ic=1), "ic=1", ["alpha=1"]),
+        (lambda: tsecon.unobserved_components(y, exog=ex, autoregressive=1, mle_regression=1),
+         "mle_regression=1", ["autoregressive=1"]),
+        (lambda: tsecon.unobserved_components(y, autoregressive=1, cycle_init=1),
+         "cycle_init=1", ["autoregressive=1"]),
+        (lambda: tsecon.unobserved_components(y, exog=ex, seasonal=4, mle_regression=1),
+         "mle_regression=1", ["seasonal=4"]),
+        (lambda: tsecon.unobserved_components(y, exog=ex, n_starts=2, mle_regression=1),
+         "mle_regression=1", ["n_starts=2"]),
+        # NumPy scalars: PyO3 names them by their own type ('int64' object),
+        # which converts like an int (or a float) all the same
+        (lambda: tsecon.ardl_bounds_test(ay, ax, max_lag=np.int64(3), max_order=np.int64(2),
+                                         ic=np.int64(1)),
+         "ic=np.int64(1)", ["max_lag=", "max_order="]),
+        (lambda: tsecon.unobserved_components(y, exog=ex, autoregressive=np.int64(1),
+                                              mle_regression=np.int64(1)),
+         "mle_regression=np.int64(1)", ["autoregressive="]),
+        # a float data array matched only by its element type is not the
+        # slot that refused a float64 either
+        (lambda: tsecon.ardl_bounds_test(ay, ax, alpha=np.float64(0.05), ic=np.float64(1.0)),
+         "ic=np.float64(1.0)", ["alpha=", "y=", "x="]),
+    ]
+
+
+@pytest.mark.parametrize("case", range(11))
+def test_a_count_declared_int_is_never_blamed_for_a_wrong_type(case):
+    """Audit round 15 (SWEEP-7 / API15-1): a None-default count (`max_lag`,
+    `lags`, UC's `autoregressive`, `seasonal`) used to be named beside the
+    real offender, and the message then said it "takes a string option" or
+    "a Python bool". Its declared type in the shipped stub (`int | None`)
+    admits an int, so it cannot be the slot that refused one."""
+    call, offender, innocent = _wrong_type_cases()[case]
+    with pytest.raises(TypeError) as excinfo:
+        call()
+    head = str(excinfo.value).split(" Original error")[0]
+    assert re.search(re.escape(offender) + r" is of type (int|int64|float64)\b", head), head
+    for name in innocent:
+        assert name not in head, head
+
+
+def test_wrong_type_blame_falls_back_to_the_defaults_without_a_stub(monkeypatch):
+    """Without a readable stub the rule degrades to the signature-default
+    one: the offender is still named (possibly beside a None-default count),
+    never nothing."""
+    from tsecon import _coerce
+
+    monkeypatch.setattr(_coerce, "_STUB", _coerce._STUB.with_name("missing.pyi"))
+    _coerce._stub_scalar_types.cache_clear()
+    try:
+        ay, ax = _ardl_data()
+        with pytest.raises(TypeError) as excinfo:
+            tsecon.ardl_bounds_test(ay, ax, max_lag=3, ic=1)
+        assert "ic=1" in str(excinfo.value)
+        # and the int-default rule still clears the int-default count
+        y = np.abs(np.random.default_rng(0).standard_normal(120)) + 10
+        with pytest.raises(TypeError) as excinfo:
+            tsecon.auto_ets(y, damped=1, horizon=5)
+        assert "horizon=5" not in str(excinfo.value).split(" Original error")[0]
+    finally:
+        monkeypatch.undo()
+        _coerce._stub_scalar_types.cache_clear()
+    assert _coerce._stub_scalar_types()["ardl_bounds_test"]["max_lag"] == {"int", "None"}
 
 
 # --------------------------------------------------------------------------- #

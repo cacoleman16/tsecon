@@ -125,6 +125,7 @@ pub use setar_ci::{
 pub use spec::MsarSpec;
 pub use star::{
     star, star_eval, star_test, StarEval, StarFit, StarModel, StarTest, StarTestResult,
+    STAR_MAX_GRID_CELLS,
 };
 pub use tvar::{threshold_var, threshold_var_test, TvarFit, TvarTest};
 pub use tvar_girf::{

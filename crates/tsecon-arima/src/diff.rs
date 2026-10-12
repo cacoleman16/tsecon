@@ -60,6 +60,13 @@ pub(crate) fn difference(
             nobs: y.len(),
             what: "differencing (each regular difference drops one observation and \
                    each seasonal difference drops a full period)",
+            remedy: if seasonal_d * s > 0 {
+                "Lower d, or the seasonal differencing order D or the period s \
+                 (seasonal=(P, D, Q, s)) — each seasonal difference drops s \
+                 observations — or supply a longer series."
+            } else {
+                "Lower p, d, or q, or supply a longer series."
+            },
         });
     }
     let mut series = y.to_vec();

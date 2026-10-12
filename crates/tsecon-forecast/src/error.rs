@@ -80,6 +80,27 @@ pub enum ForecastError {
     InvalidSteps {
         /// The offending step count.
         steps: usize,
+        /// The caller's keyword for it (`steps`, or `horizon` in the
+        /// conformal methods).
+        name: &'static str,
+    },
+    /// A size parameter asks for more than the series, the forecast-horizon
+    /// cap ([`crate::MAX_FORECAST_STEPS`]) or a work/memory budget allows.
+    /// Refused before anything is allocated; the message names the
+    /// parameter (by its Python keyword) and the largest value that fits
+    /// with every other setting as given.
+    TooLarge {
+        /// Which computation refused it.
+        what: &'static str,
+        /// The offending parameter.
+        name: &'static str,
+        /// The value that was passed.
+        value: usize,
+        /// The requirement it violates, with this call's numbers.
+        requirement: String,
+        /// The largest admissible value of `name` with every other setting
+        /// as given; `None` when no value fits.
+        max: Option<usize>,
     },
     /// The forecast horizon `h` passed to the Diebold-Mariano test is
     /// outside `1 <= h < n`: the long-run variance truncates the
@@ -174,7 +195,8 @@ pub enum ForecastError {
     },
     /// The long-run-variance lag truncation is too large for the sample:
     /// `lags` must be strictly less than the number of observations, since
-    /// the Bartlett sum needs an autocovariance at that lag.
+    /// the Bartlett sum needs an autocovariance at that lag. The message
+    /// names the `lrv_lags` argument of every test that raises it.
     InvalidLrvLags {
         /// Which test rejected the lag count.
         what: &'static str,
@@ -421,10 +443,32 @@ impl fmt::Display for ForecastError {
                 "{what}: period = {period} is invalid for a series of \
                  length {n}: requires {requirement}"
             ),
-            ForecastError::InvalidSteps { steps } => write!(
+            ForecastError::InvalidSteps { steps, name } => write!(
                 f,
-                "steps = {steps} is invalid: the forecast horizon must be a \
+                "{name} = {steps} is invalid: the forecast horizon must be a \
                  positive integer"
+            ),
+            ForecastError::TooLarge {
+                what,
+                name,
+                value,
+                requirement,
+                max: Some(max),
+            } => write!(
+                f,
+                "{what}: {name} = {value} is too large: {requirement}, so {name} can be \
+                 at most {max} here"
+            ),
+            ForecastError::TooLarge {
+                what,
+                name,
+                value,
+                requirement,
+                max: None,
+            } => write!(
+                f,
+                "{what}: {name} = {value} is too large: {requirement}, and no value of \
+                 {name} fits with the other settings as given"
             ),
             ForecastError::InvalidHorizon { h, n } => write!(
                 f,
@@ -524,9 +568,11 @@ impl fmt::Display for ForecastError {
             ),
             ForecastError::InvalidLrvLags { what, lags, n } => write!(
                 f,
-                "{what}: long-run-variance lag truncation {lags} is invalid \
-                 for {n} observations: requires lags < n so the Bartlett sum \
-                 has an autocovariance at every lag up to {lags}"
+                "{what}: lrv_lags = {lags} (the Bartlett long-run-variance lag \
+                 truncation) is invalid for {n} observations: requires \
+                 lrv_lags < n so the Bartlett sum has an autocovariance at \
+                 every lag up to lrv_lags; pass lrv_lags <= {}",
+                n.saturating_sub(1)
             ),
             ForecastError::EmptyTestFunctions => write!(
                 f,

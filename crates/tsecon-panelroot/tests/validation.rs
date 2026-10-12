@@ -242,6 +242,7 @@ fn llc_truncated_kernel_errors_instead_of_returning_nan() {
             unit,
             kernel,
             value,
+            ..
         } => {
             assert!(unit < 12, "unit index {unit} out of range");
             assert_eq!(kernel, "truncated");
@@ -414,4 +415,71 @@ fn llc_bandwidth_option_changes_statistic() {
     // A zero-bandwidth LRV (short-run variance only) generally shifts s_n and
     // hence the bias-adjusted statistic.
     assert!((base.statistic - alt.statistic).abs() > 1e-9);
+}
+
+/// A positive semi-definite kernel's estimate is non-positive only by
+/// rounding an essentially-zero value; at a bandwidth reaching the sample
+/// the demeaned autocovariances sum to zero, and the refusal names
+/// `lrv_bandwidth` — it used to recommend `lrv_kernel = "bartlett"` to a
+/// call already using it.
+#[test]
+fn llc_bandwidth_reaching_the_sample_is_named() {
+    let panel = arma11_panel(0xB41_5002, 5, 200);
+    let opts = PanelRootOpts {
+        lrv_kernel: tsecon_hac::Kernel::Bartlett,
+        lrv_bandwidth: Some(1e300),
+    };
+    let r = panel_unit_root(
+        &panel,
+        PanelRootTest::Llc,
+        AdfRegression::Constant,
+        AdfLagSelection::Fixed(1),
+        &opts,
+    );
+    // Rounding decides whether the vanishing estimate lands at or below
+    // zero; when it does, the refusal names the bandwidth, not the kernel.
+    if let Err(e @ PanelRootError::NonPsdLongRunVariance { .. }) = r {
+        let PanelRootError::NonPsdLongRunVariance {
+            kernel,
+            nobs,
+            bandwidth,
+            ..
+        } = e
+        else {
+            unreachable!()
+        };
+        assert_eq!((kernel, nobs, bandwidth), ("Bartlett", 199, 1e300));
+        let msg = e.to_string();
+        assert!(
+            msg.contains("lrv_bandwidth = 1e300 reaches the 199 first differences"),
+            "{msg}"
+        );
+        assert!(msg.contains("Pass lrv_bandwidth < 198"), "{msg}");
+        assert!(!msg.contains("Use lrv_kernel"), "{msg}");
+    }
+    // The wording itself, for each cause.
+    let at = |kernel: &'static str, bandwidth: f64| {
+        PanelRootError::NonPsdLongRunVariance {
+            unit: 2,
+            kernel,
+            value: -1.7e-15,
+            bandwidth,
+            nobs: 199,
+        }
+        .to_string()
+    };
+    let msg = at("Bartlett", 1e300);
+    assert!(
+        msg.contains("lrv_bandwidth = 1e300 reaches the 199 first differences")
+            && msg.contains("Pass lrv_bandwidth < 198"),
+        "{msg}"
+    );
+    let msg = at("Parzen", 198.0);
+    assert!(msg.contains("lrv_bandwidth = 198 reaches"), "{msg}");
+    let msg = at("Bartlett", 5.0);
+    assert!(
+        msg.contains("demeaned first differences carry (almost) no variation"),
+        "{msg}"
+    );
+    assert!(at("truncated", 5.0).contains("Use lrv_kernel = \"bartlett\""));
 }

@@ -47,8 +47,11 @@ pub struct QuantileLp {
 ///
 /// The shared shape/finiteness/tau errors of
 /// [`crate::quantile_regression`], plus
-/// [`QuantileError::HorizonExhaustsSample`] when a horizon leaves fewer
-/// usable observations than design parameters.
+/// [`QuantileError::LagControlsExhaustSample`] when `n_lag_controls`
+/// leaves even horizon 0 with no more usable observations than design
+/// parameters, and [`QuantileError::HorizonsExhaustSample`] when
+/// `horizons` does (both checked before anything is sized by
+/// `horizons`).
 pub fn quantile_lp(
     y: &[f64],
     shock: &[f64],
@@ -72,7 +75,30 @@ pub fn quantile_lp(
 
     let n = y.len();
     let p = n_lag_controls;
-    let k = 2 + 2 * p;
+    // Horizon h keeps nobs(h) = n - p - h rows for k = 2 + 2p parameters
+    // and needs nobs > k. Both sides are checked here, in checked arithmetic
+    // and before anything is sized by `horizons`: an `n_lag_controls` that
+    // leaves even horizon 0 short is refused by that name, and the largest
+    // usable horizon is n - p - k - 1.
+    let k = match p.checked_mul(2).and_then(|v| v.checked_add(2)) {
+        Some(k) if n > p && n - p > k => k,
+        _ => {
+            return Err(QuantileError::LagControlsExhaustSample {
+                n_lag_controls: p,
+                n,
+            })
+        }
+    };
+    let max_horizons = n - p - k - 1;
+    if horizons > max_horizons {
+        return Err(QuantileError::HorizonsExhaustSample {
+            horizons,
+            n,
+            n_lag_controls: p,
+            k,
+            max_horizons,
+        });
+    }
     let mut irf = vec![Vec::with_capacity(horizons + 1); taus.len()];
     let mut se = vec![Vec::with_capacity(horizons + 1); taus.len()];
     let mut converged = vec![Vec::with_capacity(horizons + 1); taus.len()];

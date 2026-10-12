@@ -54,7 +54,7 @@
 use tsecon_linalg::faer::{Mat, MatRef};
 
 use crate::error::IdentError;
-use crate::summary::structural_ma;
+use crate::summary::{mul_pow2, scale_exponent, structural_ma};
 
 /// Structural FEVD from a supplied structural MA set `theta`.
 ///
@@ -111,25 +111,46 @@ pub fn structural_fevd_from_theta(theta: &[Mat<f64>]) -> Result<Vec<Mat<f64>>, I
         }
     }
 
+    // share[i, j] reads row i alone and is invariant to rescaling that row,
+    // so each row is brought to unit scale by a power of two before
+    // squaring: the squares of entries beyond ~1e154 no longer overflow to
+    // inf (inf / inf = NaN shares) and those below ~1e-154 no longer
+    // underflow (wrong shares, then a false "degenerate" refusal). A
+    // power-of-two scale is exact, so a row whose squares were representable
+    // gives bit-identical shares.
+    let mut row_exp = vec![0i32; n];
+    for (i, e) in row_exp.iter_mut().enumerate() {
+        *e = scale_exponent(theta.iter().flat_map(|th| (0..n).map(move |j| th[(i, j)]))).ok_or(
+            IdentError::InvalidArgument {
+                what: "a variable's structural responses are all exactly zero, so its \
+                       forecast-error variance is zero and its shares are undefined \
+                       (a degenerate impact matrix)",
+            },
+        )?;
+    }
     let mut out = Vec::with_capacity(theta.len());
-    // Running sums of squared structural responses per (i, j) across horizons:
-    // cum[(i, j)] = sum_{s<=h} Theta_s[i, j]^2 after processing horizon h.
+    // Running sums of squared (row-scaled) structural responses per (i, j)
+    // across horizons: cum[(i, j)] = sum_{s<=h} (Theta_s[i, j] 2^-e_i)^2
+    // after processing horizon h.
     let mut cum = Mat::<f64>::zeros(n, n);
     for th in theta {
-        for i in 0..n {
+        for (i, &e) in row_exp.iter().enumerate() {
             for j in 0..n {
-                cum[(i, j)] += th[(i, j)] * th[(i, j)];
+                let v = mul_pow2(th[(i, j)], -e);
+                cum[(i, j)] += v * v;
             }
         }
         let mut share = Mat::<f64>::zeros(n, n);
         for i in 0..n {
-            // The i-th (h+1)-step forecast MSE diagonal (the denominator). It is
-            // a finite sum of squares (theta finiteness is validated above), so
-            // `<= 0.0` is a complete degeneracy check (no NaN can arise).
+            // The i-th (h+1)-step forecast MSE diagonal (the denominator), in
+            // row-scaled units: every scaled square is below 4, so the sum is
+            // finite, and it is zero only while row i has had no nonzero
+            // response yet (an impact row of zeros).
             let mse_i: f64 = (0..n).map(|j| cum[(i, j)]).sum();
-            if mse_i <= 0.0 {
+            if !(mse_i.is_finite() && mse_i > 0.0) {
                 return Err(IdentError::InvalidArgument {
-                    what: "forecast MSE diagonal in structural_fevd is not positive \
+                    what: "forecast MSE diagonal in structural_fevd is not positive: a \
+                           variable has no structural response up to this horizon \
                            (degenerate impact matrix)",
                 });
             }

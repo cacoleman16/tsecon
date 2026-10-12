@@ -14,11 +14,126 @@
 //! stay weight-free) and reduces to the unweighted path when every weight is
 //! equal.
 
+use tsecon_bayes::budget::{
+    self, irf_path_values, mat_values, SizeArg, STREAM_VALUES, SUMMARY_CELL_VALUES,
+};
 use tsecon_linalg::companion_from_var;
 use tsecon_linalg::faer::{Mat, MatRef};
 
 use crate::error::IdentError;
 use crate::sampler::{IrfBandPoint, StructuralIrfSummary};
+
+/// The binary exponent `e` with `2^e <= x < 2^(e + 1)`, for a finite
+/// `x > 0` (subnormals included).
+pub(crate) fn binary_exponent(x: f64) -> i32 {
+    let bits = x.to_bits();
+    let biased = ((bits >> 52) & 0x7ff) as i32;
+    if biased == 0 {
+        let mantissa = bits & ((1u64 << 52) - 1);
+        -1074 + (63 - mantissa.leading_zeros() as i32)
+    } else {
+        biased - 1023
+    }
+}
+
+/// `x * 2^k`. A power-of-two scaling is exact whenever the result is a
+/// normal number, so a computation run on scaled values and scaled back
+/// reproduces the unscaled one bit for bit wherever the latter neither
+/// overflowed nor underflowed.
+pub(crate) fn mul_pow2(mut x: f64, mut k: i32) -> f64 {
+    while k > 1000 {
+        x *= 2f64.powi(1000);
+        k -= 1000;
+    }
+    while k < -1000 {
+        x *= 2f64.powi(-1000);
+        k += 1000;
+    }
+    x * 2f64.powi(k)
+}
+
+/// The exponent `e` that brings the largest `|value|` into `[1, 2)` under
+/// `mul_pow2(., -e)`; `None` when every value is zero.
+pub(crate) fn scale_exponent(values: impl Iterator<Item = f64>) -> Option<i32> {
+    let max = values.fold(0.0f64, |m, v| m.max(v.abs()));
+    (max > 0.0 && max.is_finite()).then(|| binary_exponent(max))
+}
+
+/// Refuses a point impulse-response path whose `horizon + 1` matrices of
+/// `n x n` — the moving-average powers, the structural responses and the
+/// nested lists handed back to Python — exceed
+/// [`budget::MEMORY_BUDGET_VALUES`], naming `horizon` and the largest value
+/// that fits, before anything is allocated.
+pub fn check_irf_horizon(n: usize, horizon: usize) -> Result<(), IdentError> {
+    budget::check_memory(
+        IRF_HORIZON_WHAT,
+        &[SizeArg::new("horizon", horizon, 0)],
+        |v| irf_horizon_values(n, v[0]),
+    )?;
+    Ok(())
+}
+
+/// What [`check_irf_horizon`] counts, as its refusal states it.
+pub(crate) const IRF_HORIZON_WHAT: &str = "the (horizon + 1) n x n impulse-response matrices \
+     (and the nested lists returned for them)";
+
+/// The working set [`check_irf_horizon`] counts, in `f64` values: per
+/// horizon two `n x n` matrices and their nested list.
+pub(crate) fn irf_horizon_values(n: usize, horizon: usize) -> u128 {
+    irf_path_values(
+        n,
+        horizon,
+        mat_values(n).saturating_add(budget::py_matrix_values(n)),
+    )
+}
+
+/// The working set of a posterior-draw sampler, checked before its
+/// substreams are spawned: per draw one RNG substream, the kept
+/// `(horizon + 1)` structural-IRF matrices of `n x n`, a sort-buffer slot
+/// and `per_draw_extra` more doubles; plus the per-draw scratch cube and
+/// the per-cell summary of `(horizon + 1) n^2` cells. Refuses past
+/// [`budget::MEMORY_BUDGET_VALUES`], naming `horizon` (when one draw at that
+/// horizon does not fit) or `n_draws`, with the largest value that fits.
+pub(crate) fn check_draw_budget(
+    n: usize,
+    horizon: usize,
+    n_draws: usize,
+    per_draw_extra: u128,
+) -> Result<(), IdentError> {
+    budget::check_memory(
+        DRAW_BUDGET_WHAT,
+        &[
+            SizeArg::new("horizon", horizon, 0),
+            SizeArg::new("n_draws", n_draws, 1),
+        ],
+        |v| draw_budget_values(n, v[0], v[1], per_draw_extra),
+    )?;
+    Ok(())
+}
+
+/// What [`check_draw_budget`] counts, as its refusal states it.
+pub(crate) const DRAW_BUDGET_WHAT: &str = "the posterior draws (per draw one RNG substream and \
+     (horizon + 1) n x n structural impulse-response matrices, plus the per-cell band summary)";
+
+/// The working set [`check_draw_budget`] counts, in `f64` values.
+pub(crate) fn draw_budget_values(
+    n: usize,
+    horizon: usize,
+    n_draws: usize,
+    per_draw_extra: u128,
+) -> u128 {
+    let cells = (horizon as u128)
+        .saturating_add(1)
+        .saturating_mul((n as u128).saturating_mul(n as u128));
+    let per_draw = STREAM_VALUES
+        .saturating_add(4)
+        .saturating_add(irf_path_values(n, horizon, 0))
+        .saturating_add(per_draw_extra);
+    (n_draws as u128)
+        .saturating_mul(per_draw)
+        .saturating_add(irf_path_values(n, horizon, mat_values(n)))
+        .saturating_add(cells.saturating_mul(SUMMARY_CELL_VALUES))
+}
 
 /// Candidate structural IRF `Theta_h = Theta^chol_h Q` (post-multiplying each
 /// horizon matrix by the rotation `Q`).
@@ -62,10 +177,8 @@ pub(crate) fn normalize(mut irf: Vec<Mat<f64>>, orient: &[f64]) -> Vec<Mat<f64>>
 ///   `(1 + n p) x n`;
 /// * [`IdentError::NonFinite`] on any NaN/infinite entry in `b` or `impact`;
 /// * [`IdentError::Linalg`] if the companion construction fails.
-// Shared prerequisite for the forthcoming structural_fevd / historical_-
-// decomposition / robust_svar_bounds modules, which supply the first live
-// callers; wired ahead of them per the recommended build order.
-#[allow(dead_code)]
+// Live caller: `histdecomp::decompose_with_impact` (the arbitrary-impact
+// historical decomposition).
 pub(crate) fn structural_ma(
     b: MatRef<'_, f64>,
     impact: MatRef<'_, f64>,
@@ -82,9 +195,18 @@ pub(crate) fn structural_ma(
     }
     if p == 0 {
         return Err(IdentError::InvalidArgument {
-            what: "lag length p must be at least 1",
+            what: "lags = 0: the structural moving-average representation needs a VAR with at \
+                   least one lag; pass lags >= 1",
         });
     }
+    budget::check_memory(
+        "the (horizon + 1) n x n structural moving-average matrices",
+        &[SizeArg::new("horizon", horizon, 0)],
+        |v| {
+            irf_path_values(n, v[0], mat_values(n))
+                .saturating_add(mat_values(n.saturating_mul(p)).saturating_mul(3))
+        },
+    )?;
     let k = 1 + n * p;
     if b.nrows() != k {
         return Err(IdentError::Dimension {

@@ -179,7 +179,8 @@ impl fmt::Display for CointError {
             Self::Singular { what } => write!(f, "numerically singular: {what}"),
             Self::InvalidRank { rank, neqs } => write!(
                 f,
-                "invalid cointegration rank {rank}: must satisfy 0 <= rank <= {neqs}, the \
+                "coint_rank = {rank} is invalid: the cointegration rank must satisfy \
+                 0 <= coint_rank <= {neqs}, the \
                  number of series (rank 0 is a VAR in differences, rank {neqs} a \
                  stationary level VAR); run johansen() first and use its selected rank"
             ),

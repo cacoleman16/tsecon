@@ -1,0 +1,4 @@
+vib_boot_h12_k2_bias       size=200000   1194.2 bytes per unit   peak growth    227.8 MiB     8.49 s
+vib_boot_h12_k3_bias_lags1 size=100000   5644.3 bytes per unit   peak growth    538.3 MiB     7.27 s
+vib_boot_h12_k5_bias_lags1 size=60000    10367.9 bytes per unit   peak growth    593.3 MiB     7.81 s
+lrsb_boot_h12_k5_bias      size=60000    8079.2 bytes per unit   peak growth    462.3 MiB     8.01 s

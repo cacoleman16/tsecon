@@ -177,6 +177,10 @@ fn l1_trend_filter<'py>(
 /// run. Properties: `rss_path` is nonincreasing, a tiny learning rate with
 /// many steps approaches the OLS fit on the selected support, and the
 /// AIC-chosen model recovers a sparse truth's support on seeded designs.
+///
+/// An `n_steps` whose paths (`n_steps * (n + p + 10)` values) exceed the
+/// 2**28-value (2 GiB) memory budget is refused by name, with the largest
+/// value that fits, before anything is allocated.
 #[pyfunction]
 #[pyo3(signature = (x, y, learning_rate = 0.1, n_steps = 500, stop = "aic", x_test = None))]
 fn boosting<'py>(

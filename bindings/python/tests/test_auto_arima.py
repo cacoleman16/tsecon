@@ -91,7 +91,13 @@ def test_result_keys_are_a_superset_of_arima_fit():
     y = simulate_arma(rng, 200, ar=[0.5])
     fit = tsecon.arima_fit(y, p=1, d=0, q=0, forecast_steps=4, conf_alpha=0.10)
     auto = tsecon.auto_arima(y, d=0, forecast_steps=4, conf_alpha=0.10)
-    missing = (set(fit) - {"drift_uncertainty"}) - set(auto)
+    # arima_fit-only echoes: drift_uncertainty, and since 0.11 `method` and
+    # `nobs`, which arima_fit sets itself (not the dict builder the two
+    # share) so that auto_arima's documented key list stays unchanged.
+    only_fit = {"drift_uncertainty", "method", "nobs"}
+    assert only_fit <= set(fit)
+    assert not (only_fit & set(auto))
+    missing = (set(fit) - only_fit) - set(auto)
     assert not missing, f"auto_arima result lacks arima_fit keys: {missing}"
     for key in (
         "order",

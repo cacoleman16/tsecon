@@ -2,7 +2,9 @@
 
 use tsecon_hac::{ols, Kernel, SeType};
 
-use crate::design::{check_finite, horizon_sample, outcome_column, single_impulse_design};
+use crate::design::{
+    check_finite, check_horizons, horizon_sample, outcome_column, single_impulse_design,
+};
 use crate::error::LpError;
 use crate::spec::{LpResult, LpSpec, SeKind, SeSpec};
 
@@ -79,6 +81,20 @@ pub fn lp(y: &[f64], shock: &[f64], spec: LpSpec) -> Result<LpResult, LpError> {
         });
     }
 
+    // Lag-augmentation order at horizon h: the impulse's own lags 1..=h,
+    // which makes the horizon-h regression score serially uncorrelated
+    // (Montiel Olea & Plagborg-Møller 2021). The HAC path uses no impulse
+    // lags.
+    let shock_lags = |h: usize| match spec.se {
+        SeSpec::LagAugmented => h,
+        SeSpec::Hac { .. } => 0,
+    };
+    // Refuse an unreachable maximum horizon before sizing the outputs by it.
+    check_horizons(spec.horizons, |h| {
+        let q = shock_lags(h);
+        (horizon_sample(n, h, p, q).1, 2 + p + q)
+    })?;
+
     let se_kind = match spec.se {
         SeSpec::LagAugmented => SeKind::LagAugmentedHc1,
         SeSpec::Hac { .. } => SeKind::HacBartlett,
@@ -90,13 +106,7 @@ pub fn lp(y: &[f64], shock: &[f64], spec: LpSpec) -> Result<LpResult, LpError> {
     let mut nobs_per_h = Vec::with_capacity(spec.horizons + 1);
 
     for h in 0..=spec.horizons {
-        // Lag-augmentation order: the impulse's own lags 1..=h, which makes
-        // the horizon-h regression score serially uncorrelated (Montiel Olea
-        // & Plagborg-Møller 2021). The HAC path uses no impulse lags.
-        let n_shock_lags = match spec.se {
-            SeSpec::LagAugmented => h,
-            SeSpec::Hac { .. } => 0,
-        };
+        let n_shock_lags = shock_lags(h);
 
         let (start, nobs) = horizon_sample(n, h, p, n_shock_lags);
         let nparams = 2 + p + n_shock_lags;

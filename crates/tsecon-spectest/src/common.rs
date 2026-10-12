@@ -77,6 +77,25 @@ pub(crate) fn has_constant(x_cols: &[Vec<f64>]) -> bool {
     })
 }
 
+/// `v` multiplied by the power of two that puts its largest magnitude in
+/// `[1, 2)`. Only exponents change, so the scaling is exact (an entry more
+/// than about `2^1000` below the largest can underflow, as it would in any
+/// sum with it). A statistic invariant to rescaling `y` or a design column
+/// is therefore unchanged, while its sums of squares can neither overflow
+/// nor underflow. A zero vector is returned unchanged; `v` must be finite.
+pub(crate) fn pow2_normalized(v: &[f64]) -> Vec<f64> {
+    let max_abs = v.iter().fold(0.0_f64, |m, x| m.max(x.abs()));
+    if max_abs == 0.0 || !max_abs.is_finite() {
+        return v.to_vec();
+    }
+    // floor(log2) of a finite positive double lies in [-1074, 1023]; the
+    // factor 2^-e is applied in two halves so each stays a normal double.
+    let e = max_abs.log2().floor() as i32;
+    let s1 = -e / 2;
+    let (f1, f2) = (2.0_f64.powi(s1), 2.0_f64.powi(-e - s1));
+    v.iter().map(|x| x * f1 * f2).collect()
+}
+
 /// Fitted values `yhat_t = y_t - u_t` of an OLS fit.
 pub(crate) fn fitted(y: &[f64], fit: &OlsFit) -> Vec<f64> {
     y.iter()

@@ -117,3 +117,174 @@ def test_robust_bounds_contain_sign_restricted_band():
     band_lo, band_hi = q[..., 0], q[..., -1]                # 5% and 95%
     assert np.all(lo <= band_lo + 1e-8)
     assert np.all(hi >= band_hi - 1e-8)
+
+
+# --------------------------------------------------------------------------- #
+# historical_decomposition(identification="impact") — an arbitrary A0
+# --------------------------------------------------------------------------- #
+import json
+import re
+from pathlib import Path
+
+HDI = json.loads(
+    (Path(__file__).resolve().parents[3] / "fixtures" / "historical_decomposition_impact.json").read_text()
+)
+
+
+@pytest.mark.parametrize("case", ["bq_var8", "random_3var_p2"])
+def test_historical_decomposition_impact_reloads_the_fixture(case):
+    """statsmodels VAR reduced form + the NumPy closed form (E = U A0^{-T},
+    Theta_s = Psi_s A0, HD = sum_s Theta_s E_{t-s}); never imports tsecon."""
+    c = HDI[case]
+    data = np.asarray(c["data"])
+    r = tsecon.historical_decomposition(data, lags=c["p"], identification="impact", impact=c["impact"])
+    for key in ("hd", "baseline", "shocks", "shock_covariance", "impact"):
+        np.testing.assert_allclose(np.asarray(r[key]), np.asarray(c[key]), rtol=1e-8, atol=1e-10,
+                                   err_msg=f"{case}.{key}")
+    assert list(r["times"]) == list(range(c["t_eff"]))
+    recon = np.asarray(r["baseline"]) + np.asarray(r["hd"]).sum(axis=2)
+    assert np.abs(recon - data[c["p"]:]).max() < 1e-12
+
+
+def test_historical_decomposition_impact_takes_long_run_svar_output_verbatim():
+    """A nested list straight out of another callable is accepted (rust-numpy
+    PyArrayLike2), and the result equals the ndarray call bit for bit."""
+    B = tsecon.long_run_svar(DATA, lags=2, impact_signs=[(0, 1)])["impact"]
+    assert isinstance(B, list)
+    a = tsecon.historical_decomposition(DATA, lags=2, identification="impact", impact=B)
+    b = tsecon.historical_decomposition(DATA, lags=2, identification="impact", impact=np.asarray(B))
+    for key in ("hd", "baseline", "shocks", "shock_covariance"):
+        assert np.array_equal(np.asarray(a[key]), np.asarray(b[key]))
+    # long_run_svar's impact is built from the df-adjusted Sigma: the shock
+    # covariance is (T_eff - m) / T_eff times the identity (m = 1 + k p)
+    t_eff, m = DATA.shape[0] - 2, 1 + 3 * 2
+    np.testing.assert_allclose(np.asarray(a["shock_covariance"]), (t_eff - m) / t_eff * np.eye(3),
+                               atol=1e-12)
+    # structural_fevd accepts the same nested list (a 0.11.0 behaviour change:
+    # it used to require an ndarray)
+    f1 = tsecon.structural_fevd(DATA, lags=2, horizon=4, impact=B)
+    f2 = tsecon.structural_fevd(DATA, lags=2, horizon=4, impact=np.asarray(B))
+    assert np.array_equal(np.asarray(f1["fevd"]), np.asarray(f2["fevd"]))
+
+
+def test_historical_decomposition_impact_reduces_to_cholesky():
+    """impact = chol(Sigma_mle) reproduces identification="cholesky"."""
+    fit = tsecon.var_fit(DATA, lags=2)
+    resid = np.asarray(fit["resid"])
+    P = np.linalg.cholesky(resid.T @ resid / resid.shape[0])
+    a = tsecon.historical_decomposition(DATA, lags=2)
+    b = tsecon.historical_decomposition(DATA, lags=2, identification="impact", impact=P)
+    for key in ("hd", "baseline", "shocks"):
+        np.testing.assert_allclose(np.asarray(b[key]), np.asarray(a[key]), rtol=1e-10, atol=1e-12)
+    np.testing.assert_allclose(np.asarray(b["shock_covariance"]), np.eye(3), atol=1e-12)
+    # horizon above T_eff - 1 is inert (and never allocated); below is refused
+    big = tsecon.historical_decomposition(DATA, lags=2, identification="impact", impact=P,
+                                          horizon=2**40)
+    assert np.array_equal(np.asarray(big["hd"]), np.asarray(b["hd"]))
+    with pytest.raises(ValueError, match=r"\bhorizon\b"):
+        tsecon.historical_decomposition(DATA, lags=2, identification="impact", impact=P, horizon=5)
+
+
+def _numpy_singular(m):
+    return np.linalg.matrix_rank(np.asarray(m, dtype=float)) < len(m)
+
+
+@pytest.mark.parametrize(
+    "impact",
+    [
+        np.eye(2),                                       # wrong shape
+        np.ones((3, 2)),
+        [[1.0, 0.0, 0.0], [0.0, np.nan, 0.0], [0.0, 0.0, 1.0]],
+        [[1.0, 0.0, 0.0], [0.0, np.inf, 0.0], [0.0, 0.0, 1.0]],
+        np.ones((3, 3)),                                 # rank 1
+        [[1.0, 2.0, 3.0], [2.0, 4.0, 6.0 + 1e-15], [0.0, 1.0, 1.0]],   # rank-deficient by matrix_rank
+        [[1.0, 0.0], [0.0]],                              # ragged
+    ],
+)
+def test_historical_decomposition_bad_impact_is_refused_naming_impact(impact):
+    with pytest.raises((ValueError, TypeError)) as info:
+        tsecon.historical_decomposition(DATA, lags=2, identification="impact", impact=impact)
+    assert re.search(r"\bimpact\b", str(info.value)), str(info.value)
+
+
+@pytest.mark.parametrize(
+    "impact",
+    [
+        np.eye(3) + 1j,                                   # complex: never truncated to its real part
+        np.eye(3).astype(complex),                        # even with a zero imaginary part
+        np.array([["1", "0", "0"], ["0", "1", "0"], ["0", "0", "1"]]),   # numeric strings
+        np.eye(3).astype("datetime64[D]"),
+        [[None, 0.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 1.0]],            # object dtype
+        np.ones(3),                                       # 1-D
+        np.ones((1, 3, 3)),                               # 3-D
+        "eye",
+    ],
+)
+@pytest.mark.parametrize("fn", ["historical_decomposition", "structural_fevd"])
+def test_non_real_or_wrong_rank_impact_is_refused_naming_impact(fn, impact):
+    """`numpy.asarray(x, dtype=float64)` would drop a complex matrix's imaginary
+    part with only a warning and read strings or datetimes as numbers, so the
+    element kind is checked before the cast, on both callables."""
+    kw = {"identification": "impact"} if fn == "historical_decomposition" else {"horizon": 4}
+    with pytest.raises(ValueError) as info:
+        getattr(tsecon, fn)(DATA, lags=2, impact=impact, **kw)
+    assert re.search(r"\bimpact\b", str(info.value)), str(info.value)
+
+
+def test_lags_zero_is_refused_naming_lags():
+    for kw in ({}, {"identification": "impact", "impact": np.eye(3)}):
+        with pytest.raises(ValueError, match=r"\blags\b"):
+            tsecon.historical_decomposition(DATA, lags=0, **kw)
+
+
+def test_historical_decomposition_singularity_follows_numpy_matrix_rank():
+    # just inside numpy's tolerance: refused; just outside: accepted
+    eps = np.finfo(float).eps
+    for scale, singular in ((1.0, True), (100.0, False)):
+        m = np.diag([1.0, 1.0, 3.0 * eps * 0.5 * scale])
+        assert bool(_numpy_singular(m)) is singular
+        call = lambda: tsecon.historical_decomposition(DATA, lags=2, identification="impact", impact=m)
+        if singular:
+            with pytest.raises(ValueError, match=r"\bimpact\b"):
+                call()
+        else:
+            assert np.isfinite(np.asarray(call()["shocks"])).all()
+
+
+@pytest.mark.parametrize(
+    "kw, name",
+    [
+        ({"identification": "impact"}, "impact"),                              # missing impact
+        ({"impact": np.eye(3)}, "impact"),                                     # impact under cholesky
+        ({"identification": "sign", "restrictions": POS, "impact": np.eye(3)}, "impact"),
+        ({"identification": "impact", "impact": np.eye(3), "seed": 3}, "seed"),
+        ({"identification": "impact", "impact": np.eye(3), "n_draws": 10}, "n_draws"),
+        ({"identification": "impact", "impact": np.eye(3), "max_tries": 10}, "max_tries"),
+        ({"identification": "impact", "impact": np.eye(3), "lambda1": 0.5}, "lambda1"),
+        ({"identification": "impact", "impact": np.eye(3), "n_weight_draws": 10}, "n_weight_draws"),
+        ({"identification": "impact", "impact": np.eye(3), "restrictions": POS}, "restrictions"),
+        ({"identification": "impact", "impact": np.eye(3),
+          "narrative_restrictions": [{"t": 10, "shock": 0, "sign": "+"}]}, "narrative_restrictions"),
+        # cholesky silently ignored these before 0.11.0
+        ({"restrictions": POS}, "restrictions"),
+        ({"narrative_restrictions": [{"t": 10, "shock": 0, "sign": "+"}]}, "narrative_restrictions"),
+        ({"identification": "narrative"}, "identification"),
+    ],
+)
+def test_historical_decomposition_refusals_name_the_parameter(kw, name):
+    with pytest.raises(ValueError) as info:
+        tsecon.historical_decomposition(DATA, lags=2, **kw)
+    msg = str(info.value)
+    assert re.search(rf"\b{name}\b", msg), msg
+
+
+def test_cholesky_accepts_empty_restriction_lists_and_no_longer_suggests_narrative():
+    a = tsecon.historical_decomposition(DATA, lags=2)
+    b = tsecon.historical_decomposition(DATA, lags=2, restrictions=[], narrative_restrictions=[])
+    assert np.array_equal(np.asarray(a["hd"]), np.asarray(b["hd"]))
+    with pytest.raises(ValueError) as info:
+        tsecon.historical_decomposition(DATA, lags=2, seed=4)
+    msg = str(info.value)
+    assert '(or "narrative")' not in msg and 'identification="sign"' in msg
+    with pytest.raises(ValueError, match=r'"impact"'):
+        tsecon.historical_decomposition(DATA, lags=2, identification="bogus")

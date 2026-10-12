@@ -81,12 +81,18 @@ T = 200
 _RNG = np.random.default_rng(1)
 
 # The 33 functions of the audit's "keys named on neither surface" class,
-# each with the audit's canonical call.
+# each with the audit's canonical call (plus the 0.11.0 static-panel menu).
 CASES = {
     "accuracy": lambda: tsecon.accuracy(_ar1(T)[100:], _ar1(T, 1)[100:], _ar1(T)[:100]),
     "acf": lambda: tsecon.acf(_ar1(T)),
+    # 0.11: ADL-MIDAS, bound from Rust.
+    "adl_midas": lambda: tsecon.adl_midas(_ar1(T), np.random.default_rng(0).standard_normal((T, 6)), ar_lags=2),
+    # 0.11: method="css" adds `method` / `nobs` (returned on both methods).
+    "arima_fit": lambda: tsecon.arima_fit(_ar1(T), p=1, q=1, method="css", forecast_steps=3, conf_alpha=0.1),
     "adf": lambda: tsecon.adf(_ar1(T)),
     "arch_lm": lambda: tsecon.arch_lm(_garch(T)),
+    # 0.11.0: the ARDL bounds test returns 46 keys; every one is backticked.
+    "ardl_bounds_test": lambda: tsecon.ardl_bounds_test(_coint(T)[:, 0], _coint(T)[:, 1:2]),
     "backtest": lambda: tsecon.backtest(_ar1(T) + 5.0, train=100, horizon=2),
     "bai_perron": lambda: tsecon.bai_perron(*_break(T), max_breaks=2),
     "bvar_hierarchical": lambda: tsecon.bvar_hierarchical(_var(T)),
@@ -94,6 +100,11 @@ CASES = {
     "chow_test": lambda: tsecon.chow_test(*_yx(T), 100),
     "cusum_test": lambda: tsecon.cusum_test(*_yx(T)),
     "cw_test": lambda: tsecon.cw_test(_ar1(T), _ar1(T, 1), _ar1(T, 2), _ar1(T, 3)),
+    # 0.11: the fixed-parameter DFM smoother.
+    "dfm_smooth": lambda: tsecon.dfm_smooth(
+        np.column_stack([_ar1(T, i) for i in range(4)]), loadings=np.ones((4, 1)),
+        factor_ar=[[0.5]], idiosyncratic=np.ones(4),
+    ),
     "dcs_local_level": lambda: tsecon.dcs_local_level(_rw(T) + np.random.default_rng(0).standard_normal(T)),
     "dm_test": lambda: tsecon.dm_test(_ar1(T), _ar1(T, 1)),
     "growth_at_risk": lambda: tsecon.growth_at_risk(_ar1(T), _ar1(T, 1).reshape(-1, 1), horizon=2, taus=[0.1, 0.5, 0.9]),
@@ -110,6 +121,23 @@ CASES = {
         np.array([_ar1(T, i) for i in range(6)]),
         np.array([np.array([_ar1(T, 10 + i) for i in range(6)]), np.array([_ar1(T, 20 + i) for i in range(6)])]),
     ),
+    "panel_re": lambda: tsecon.panel_re(
+        np.array([_ar1(T, i) for i in range(6)]) + np.arange(6)[:, None],
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+    ),
+    "panel_between": lambda: tsecon.panel_between(
+        np.array([_ar1(T, i) for i in range(6)]) + np.arange(6)[:, None],
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+    ),
+    "panel_fd": lambda: tsecon.panel_fd(
+        np.array([_ar1(T, i) for i in range(6)]),
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+    ),
+    "panel_fama_macbeth": lambda: tsecon.panel_fama_macbeth(
+        np.array([_ar1(T, i) for i in range(6)]),
+        np.array([np.array([_ar1(T, 10 + i) for i in range(6)])]),
+        se_type="hac",
+    ),
     "phillips_ouliaris": lambda: tsecon.phillips_ouliaris(_coint(T)[:, 0], _coint(T)[:, 1:2]),
     "phillips_perron": lambda: tsecon.phillips_perron(_ar1(T)),
     "quantile_lp": lambda: tsecon.quantile_lp(_ar1(T), _ar1(T, 1), horizons=3, taus=[0.25, 0.5, 0.75]),
@@ -122,6 +150,10 @@ CASES = {
     ),
     "umidas": lambda: tsecon.umidas(_ar1(T), np.random.default_rng(0).standard_normal((T, 6))),
     "var_granger": lambda: tsecon.var_granger(_var(T), [0], [1]),
+    # 0.11.0: scalar and sequence `lags` return the same key set.
+    "variance_ratio": lambda: tsecon.variance_ratio(_rw(T), [2, 4]),
+    # 0.11: `cov` / `param_uncertainty` are always returned.
+    "var_forecast": lambda: tsecon.var_forecast(_var(T), param_uncertainty=True),
 }
 
 
@@ -221,11 +253,15 @@ def test_the_former_ellipsis_defaults_render_their_effective_value_or_none():
     assert default("random_forest", "max_features") is None
     assert default("var_girf", "bands") is None
     assert default("threshold_var_girf", "bands") is None
+    # 0.11.0: `lags` is a polymorphic None sentinel (int or sequence) with
+    # an explicit text_signature, so it renders its effective value.
+    assert default("variance_ratio", "lags") == 2
     # The sentinels mean exactly the documented defaults (behaviour unchanged).
     y = _ar1(T)
     a = tsecon.box_cox_lambda(np.exp(0.1 * y) + 1.0)
     b = tsecon.box_cox_lambda(np.exp(0.1 * y) + 1.0, bounds=(-2.0, 2.0))
     assert a["lambda"] == b["lambda"] and (a["lower"], a["upper"]) == (-2.0, 2.0)
+    assert tsecon.variance_ratio(y) == tsecon.variance_ratio(y, lags=2)
     r, x = _ar1(T, 1), _ar1(T, 2, 0.9)
     assert tsecon.predictive_regression(r, x)["ivx"] == tsecon.predictive_regression(r, x, cz=-1.0)["ivx"]
     v = _var(T)

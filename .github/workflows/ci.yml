@@ -119,6 +119,8 @@ jobs:
           rep = tsecon.check_stationarity(y)
           rec: str = str(rep["recommendation"])
           r = tsecon.arima_fit(y, p=1, d=1, q=1, forecast_steps=8, conf_alpha=0.1)
+          # the documented integer-array form of an int-or-sequence argument
+          vr = tsecon.variance_ratio(y, lags=np.array([2, 4, 8]))
           PY
           mypy --strict --ignore-missing-imports _typecheck.py
 

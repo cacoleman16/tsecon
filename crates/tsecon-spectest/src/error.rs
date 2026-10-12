@@ -10,7 +10,8 @@ use core::fmt;
 use tsecon_hac::HacError;
 use tsecon_stats::StatsError;
 
-/// Errors produced by the White, Breusch-Pagan, RESET, Chow, and CUSUM tests.
+/// Errors produced by the White, Breusch-Pagan, RESET, Chow, CUSUM,
+/// Breusch-Godfrey, and Durbin-Watson tests.
 #[derive(Debug, Clone, PartialEq)]
 pub enum SpecTestError {
     /// A required series was empty.
@@ -79,11 +80,88 @@ pub enum SpecTestError {
         /// The offending `max_power`.
         max_power: usize,
     },
+    /// RESET's `max_power` adds `max_power - 1` fitted-value powers, so the
+    /// augmented regression has `k + max_power - 1` regressors: refused —
+    /// before any power column is built — when that leaves no residual
+    /// degree of freedom (`n <= k + max_power - 1`) or the augmented design
+    /// exceeds the auxiliary-regression budgets of the Breusch-Godfrey test
+    /// ([`crate::BG_MAX_AUX_CELLS`], [`crate::BG_WORK_BUDGET`]).
+    ResetPowerTooLarge {
+        /// The offending `max_power`.
+        max_power: usize,
+        /// The sample size `n`.
+        n: usize,
+        /// The number of design columns `k`.
+        k: usize,
+        /// The largest admissible `max_power` (at least 2), or `None` when
+        /// even `max_power = 2` does not fit.
+        max: Option<usize>,
+        /// `true` when the order fits the sample but not the budgets.
+        over_budget: bool,
+    },
+    /// A fitted-value power `yhat^power` (`power <= max_power`) overflows to
+    /// infinity, so RESET's augmented regression cannot be formed. RESET is
+    /// invariant to the scale of `y`, so rescaling `y` (or a smaller
+    /// `max_power`) avoids it.
+    ResetPowerOverflow {
+        /// The offending `max_power`.
+        max_power: usize,
+        /// The first power that overflows.
+        power: usize,
+        /// The largest absolute fitted value.
+        max_abs_fitted: f64,
+    },
     /// A design (original, auxiliary, or a recursive-residual window) was rank
     /// deficient — collinear columns — so the normal equations have no unique
     /// solution.
     SingularDesign {
         /// Which regression's design was singular.
+        what: &'static str,
+    },
+    /// The Breusch-Godfrey order was zero — explicitly, or as the default
+    /// `min(10, n / 5)` on a sample shorter than five observations — so the
+    /// auxiliary regression would add no lagged residual to test.
+    InvalidLags {
+        /// The offending order.
+        nlags: usize,
+        /// The sample size `n`.
+        n: usize,
+        /// `true` when the zero came from the default rule, not the caller.
+        defaulted: bool,
+    },
+    /// The Breusch-Godfrey auxiliary design (`n x k_aux`: the design, the
+    /// `nlags` lagged residuals and any added constant) would exceed the
+    /// test's memory budget (`BG_MAX_AUX_CELLS` entries) or the work budget
+    /// of its regression (`BG_WORK_BUDGET` multiply-adds); refused before
+    /// any lag column is allocated.
+    AuxiliaryTooLarge {
+        /// The sample size `n`.
+        n: usize,
+        /// The number of auxiliary regressors the order asked for.
+        k_aux: usize,
+        /// The order that was asked for (or defaulted).
+        nlags: usize,
+        /// The largest order both budgets and `n > k_aux` admit (`0` when
+        /// even one lag does not fit).
+        max_nlags: usize,
+        /// `true` when the order came from the default rule.
+        defaulted: bool,
+    },
+    /// The sample is longer than an exact computation supports: the exact
+    /// Durbin-Watson p-value eigen-decomposes an `n x n` matrix, which is
+    /// cubic in `n`.
+    SampleTooLong {
+        /// The computation that is capped.
+        what: &'static str,
+        /// The sample size `n`.
+        n: usize,
+        /// The largest supported `n`.
+        max: usize,
+    },
+    /// A numerical routine (an eigendecomposition or a quadrature) failed to
+    /// reach its accuracy target.
+    NumericalBreakdown {
+        /// The routine that failed.
         what: &'static str,
     },
     /// An error propagated from the OLS engine ([`tsecon_hac`]).
@@ -147,11 +225,151 @@ impl fmt::Display for SpecTestError {
                 "invalid RESET max_power {max_power}: RESET adds fitted-value powers \
                  yhat^2 .. yhat^max_power, so it requires max_power >= 2"
             ),
+            Self::ResetPowerTooLarge {
+                max_power,
+                n,
+                k,
+                max,
+                over_budget,
+            } => {
+                let q = (*max_power as u128).saturating_sub(1);
+                let p = *k as u128 + q;
+                if *over_budget {
+                    // p < n here, so the counts fit a usize.
+                    let pu = usize::try_from(p).unwrap_or(usize::MAX);
+                    write!(
+                        f,
+                        "max_power = {max_power} makes the augmented RESET regression \
+                         n = {n} observations by k + max_power - 1 = {p} regressors ({} \
+                         entries, about {:.2e} multiply-adds), past {} (checked before any \
+                         power column is built)",
+                        n.saturating_mul(pu),
+                        crate::breusch_godfrey::breusch_godfrey_work(*n, pu) as f64,
+                        crate::breusch_godfrey::breusch_godfrey_exceeded_budget(*n, pu)
+                            .unwrap_or("the budget"),
+                    )?;
+                } else {
+                    write!(
+                        f,
+                        "max_power = {max_power} adds {q} fitted-value powers yhat^2 .. \
+                         yhat^max_power, so the augmented RESET regression has k + \
+                         max_power - 1 = {p} regressors for n = {n} observations and no \
+                         residual degree of freedom: it needs n > k + max_power - 1, with \
+                         k = {k} design columns"
+                    )?;
+                }
+                match max {
+                    Some(m) => write!(f, "; pass max_power <= {m}"),
+                    None => write!(
+                        f,
+                        "; even max_power = 2 does not fit, so supply a longer series or \
+                         fewer design columns"
+                    ),
+                }
+            }
+            Self::ResetPowerOverflow {
+                max_power,
+                power,
+                max_abs_fitted,
+            } => {
+                write!(
+                    f,
+                    "max_power = {max_power}: the fitted-value power yhat^{power} overflows to \
+                     infinity (max |yhat| = {max_abs_fitted:.4e}), so the augmented RESET \
+                     regression cannot be formed; "
+                )?;
+                if *power > 2 {
+                    write!(
+                        f,
+                        "pass max_power <= {}, or rescale y (RESET is invariant to the scale \
+                         of y)",
+                        power - 1
+                    )
+                } else {
+                    write!(f, "rescale y (RESET is invariant to the scale of y)")
+                }
+            }
             Self::SingularDesign { what } => write!(
                 f,
                 "singular design in the {what}: the columns are collinear (rank \
                  deficient), so the normal equations have no unique solution — drop a \
                  redundant regressor"
+            ),
+            Self::InvalidLags {
+                nlags,
+                n,
+                defaulted,
+            } => {
+                if *defaulted {
+                    write!(
+                        f,
+                        "invalid Breusch-Godfrey order: with n = {n} observations of y the \
+                         default nlags = min(10, n // 5) is {nlags}; the test needs at least \
+                         one lagged residual, so pass nlags >= 1 explicitly (keeping \
+                         n > k + nlags) or supply a longer y"
+                    )
+                } else {
+                    write!(
+                        f,
+                        "invalid Breusch-Godfrey order nlags = {nlags}: the test regresses the \
+                         residuals on their own lags 1..nlags, so it needs nlags >= 1"
+                    )
+                }
+            }
+            Self::AuxiliaryTooLarge {
+                n,
+                k_aux,
+                nlags,
+                max_nlags,
+                defaulted,
+            } => {
+                let order = if *defaulted {
+                    format!("the default order nlags = min(10, n // 5) = {nlags}")
+                } else {
+                    format!("nlags = {nlags}")
+                };
+                write!(
+                    f,
+                    "Breusch-Godfrey auxiliary regression too large: with {order} it has \
+                     n = {n} observations by k_aux = {k_aux} regressors ({} entries, about \
+                     {:.2e} multiply-adds), past {}; ",
+                    n.saturating_mul(*k_aux),
+                    crate::breusch_godfrey::breusch_godfrey_work(*n, *k_aux) as f64,
+                    crate::breusch_godfrey::breusch_godfrey_exceeded_budget(*n, *k_aux)
+                        .unwrap_or("the budget"),
+                )?;
+                let one_lag = k_aux.saturating_sub(*nlags).saturating_add(1);
+                if *max_nlags == 0
+                    && crate::breusch_godfrey::breusch_godfrey_work(0, one_lag)
+                        > crate::breusch_godfrey::BG_WORK_BUDGET
+                {
+                    write!(
+                        f,
+                        "even one lag does not fit with this design at any sample length \
+                         (the 6 k_aux^3 term alone is past the work budget), so use fewer \
+                         design columns"
+                    )
+                } else if *max_nlags == 0 {
+                    write!(
+                        f,
+                        "even one lag does not fit with this design, so use a shorter sample \
+                         or fewer design columns"
+                    )
+                } else {
+                    write!(f, "pass nlags <= {max_nlags} or use a shorter sample")
+                }
+            }
+            Self::SampleTooLong { what, n, max } => write!(
+                f,
+                "sample too long for the {what}: n = {n} exceeds the supported maximum of \
+                 {max} (the exact null distribution eigen-decomposes an n x n matrix, which \
+                 is cubic in n); for a long sample use the Breusch-Godfrey test, whose cost \
+                 is linear in n at a fixed order"
+            ),
+            Self::NumericalBreakdown { what } => write!(
+                f,
+                "numerical breakdown in the {what}: the computation did not reach its \
+                 accuracy target"
             ),
             Self::Hac(e) => write!(f, "OLS-engine error: {e}"),
             Self::Stats(e) => write!(f, "statistics-layer error: {e}"),

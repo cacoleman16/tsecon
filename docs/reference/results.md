@@ -15,7 +15,13 @@ hand-written summaries. For everything else, `tsecon.summarize(result)` renders
 *any* returned dict as an aligned, honest report — scalars in a key/value block,
 small matrices as shaped tables, large arrays summarized by shape and range,
 nested dicts one level deep. It never invents or hides a key, and its header
-says "generic Result" so it is never mistaken for a bespoke model summary.
+says "generic Result" so it is never mistaken for a bespoke model summary. A
+coefficient vector is labelled with its own name list (`params`, `se`/`bse`,
+`tvalues`, `pvalues` and the per-parameter `se_valid`/`boundary` flags with
+`param_names` or `names`; the `long_run*` and `full_*` vectors with theirs;
+`sigma2_beta`/`pile_up` with `coef_names`; the ETS `initial_states` and
+`final_states` with `initial_state_names`); every other vector is shown
+unlabelled, even when its length happens to match a name list.
 
 ```python
 import numpy as np, tsecon

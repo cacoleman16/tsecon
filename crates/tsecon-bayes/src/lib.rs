@@ -37,6 +37,7 @@
 
 mod dense;
 
+pub mod budget;
 pub mod convergence;
 pub mod error;
 pub mod ffbs;
@@ -47,7 +48,9 @@ pub mod ssvs;
 pub use convergence::{ess_bulk, ess_mean, ess_tail, ess_tail_prob, rhat_rank};
 pub use error::BayesError;
 pub use ffbs::FfbsSampler;
-pub use hierarchical::{bvar_hierarchical, HierarchicalConfig, HierarchicalFit, Hyperprior};
+pub use hierarchical::{
+    bvar_hierarchical, HierarchicalConfig, HierarchicalFit, Hyperprior, MAX_N_GRID,
+};
 pub use niw::{cholesky_irf, MinnesotaNiwPrior, NiwDraw, NiwPosterior};
 pub use ssvs::{bvar_ssvs, SsvsConfig, SsvsResult};
 
