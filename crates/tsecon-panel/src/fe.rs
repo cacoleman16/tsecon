@@ -44,7 +44,11 @@
 //!   `kernel="bartlett"`, `bandwidth=4` (their "bandwidth" is maxlags,
 //!   not Andrews' continuous scale). Driscoll-Kraay is consistent under
 //!   arbitrary cross-sectional dependence but needs a long time dimension;
-//!   prefer entity clustering when `T` is short.
+//!   prefer entity clustering when `T` is short. `bandwidth + 1` may not
+//!   exceed `S`, the number of periods from the first to the last that
+//!   carries a score (linearmodels raises there too): since the score sums
+//!   add to `X'e = 0`, every bandwidth past `S - 1` returns the
+//!   `S - 1` covariance times `S / (bandwidth + 1)`, which shrinks to 0.
 //!
 //! ## Which effects are swept out ([`FixedEffects`])
 //!
@@ -401,7 +405,9 @@ impl FePanelOls {
     /// # Errors
     ///
     /// [`PanelError::InvalidBandwidth`] for a negative/non-finite
-    /// Driscoll-Kraay bandwidth.
+    /// Driscoll-Kraay bandwidth; [`PanelError::InsufficientData`] (naming
+    /// `bandwidth`) for one with `bandwidth + 1` above the number of
+    /// periods that carry scores (see the module docs).
     pub fn inference(&self, se_type: PanelSeType) -> Result<PanelInference, PanelError> {
         self.within.inference(se_type)
     }
@@ -885,8 +891,8 @@ fn solve_within(
                     "within (fixed-effects) OLS: a regressor is constant within \
                      every entity, so the fixed effects absorb it and no within \
                      variation remains to identify its coefficient (the column \
-                     of regressors is the offender; drop it, or use a \
-                     random-effects / between estimator)"
+                     of regressors is the offender; drop it, or estimate it \
+                     with panel_re (random effects) or panel_between)"
                 } else {
                     "within (fixed-effects) OLS: the requested effects absorb a \
                      regressor entirely — one column of regressors is constant \
@@ -939,6 +945,39 @@ fn solve_within(
         row_entity: shape.row_entity,
         row_period: shape.row_period,
     })
+}
+
+/// Refuses a Driscoll-Kraay `bandwidth` with `bandwidth + 1 > span`, where
+/// `span` is the number of calendar periods from the first to the last that
+/// carries a score (linearmodels raises there too, and `panel_fama_macbeth`
+/// refuses the same for its HAC).
+///
+/// Past `span - 1` no further lag exists: a larger bandwidth only rescales
+/// the Bartlett weights of the lags that do. With score sums `a_t` that add
+/// to `X'e = 0` (the normal equations of any within or pooled fit),
+/// `Gamma_0 + sum_j (Gamma_j + Gamma_j') = (sum a_t)(sum a_t)' = 0`, so for
+/// every `bandwidth >= span - 1` the meat is `span / (bandwidth + 1)` times
+/// the meat at `span - 1`: each standard error shrinks like
+/// `sqrt(span / (bandwidth + 1))`, to exactly 0 in the limit (t = inf at
+/// `bandwidth = 1e300`). `bandwidth = span - 1`, every lag weighted, is the
+/// untruncated (Kiefer-Vogelsang `b = 1`) Bartlett estimator and is kept.
+pub(crate) fn check_dk_bandwidth(bandwidth: f64, span: usize) -> Result<(), PanelError> {
+    if bandwidth + 1.0 > span as f64 {
+        return Err(PanelError::InsufficientData {
+            what: format!(
+                "bandwidth: the Driscoll-Kraay covariance needs bandwidth + 1 <= S, the \
+                 number of periods that carry scores (S = {span} here); a larger bandwidth \
+                 weights no further lag, it only rescales the weights of the S - 1 lags \
+                 that exist, and when the score sums add up to X'e = 0 (any within or \
+                 pooled fit) it shrinks every standard error like \
+                 sqrt(S / (bandwidth + 1)), to 0 in the limit; \
+                 got bandwidth = {bandwidth} — pass bandwidth <= {} (linearmodels raises \
+                 here too)",
+                span.saturating_sub(1)
+            ),
+        });
+    }
+    Ok(())
 }
 
 impl WithinFit {
@@ -1000,6 +1039,9 @@ impl WithinFit {
                 if !bandwidth.is_finite() || bandwidth < 0.0 {
                     return Err(PanelError::InvalidBandwidth { value: bandwidth });
                 }
+                let first = self.row_period.iter().copied().min().unwrap_or(0);
+                let last = self.row_period.iter().copied().max().unwrap_or(0);
+                check_dk_bandwidth(bandwidth, last - first + 1)?;
                 // Per-period cross-sectional score sums a_t (calendar
                 // periods of the layout).
                 let t_len = self.n_periods;

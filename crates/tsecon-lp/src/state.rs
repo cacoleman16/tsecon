@@ -2,7 +2,7 @@
 
 use tsecon_hac::{ols, Kernel, SeType};
 
-use crate::design::{check_finite, horizon_sample, impulse_column, outcome_column};
+use crate::design::{check_finite, check_horizons, horizon_sample, impulse_column, outcome_column};
 use crate::error::LpError;
 use crate::spec::{LpSpec, LpStateResult, SeKind, SeSpec};
 
@@ -75,6 +75,17 @@ pub fn lp_state(
         SeSpec::LagAugmented => SeKind::LagAugmentedHc1,
         SeSpec::Hac { .. } => SeKind::HacBartlett,
     };
+
+    // Refuse an unreachable maximum horizon before sizing the outputs by it
+    // (the same rows and regressors as the loop below).
+    check_horizons(spec.horizons, |h| {
+        let q = match spec.se {
+            SeSpec::LagAugmented => h,
+            SeSpec::Hac { .. } => 0,
+        };
+        let min_lag = p.max(q).max(1);
+        (horizon_sample(n, h, min_lag, 0).1, 2 * (2 + p + q))
+    })?;
 
     let mut horizons = Vec::with_capacity(spec.horizons + 1);
     let mut irf_state1 = Vec::with_capacity(spec.horizons + 1);

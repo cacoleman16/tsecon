@@ -164,6 +164,10 @@ beats another without a test that accounts for dependent forecast errors.
   approach zero, and it penalizes over- and under-prediction asymmetrically.
   Prefer MASE / RMSSE.
 - **Forgetting `insample`.** `accuracy` cannot return MASE/RMSSE without it.
+- **A scale period longer than the first window.** `backtest`'s MASE/RMSSE
+  scale is the seasonal-naive error of the first training window, so
+  `insample_period` must be at most `train - 1`; it is checked before the
+  forecaster runs and refused naming `insample_period` and that maximum.
 - **Wrong `h`.** `dm_test` sets its HAC lag to `h−1`; passing `h=1` for a
   12-step forecast under-corrects the variance and overstates significance.
 - **In-sample errors.** Every test here assumes genuine out-of-sample errors;
@@ -496,7 +500,19 @@ useful ones. ACI with an aggressive γ oscillates (its `alpha_trajectory` is
 returned — look at it); when `α_t` collapses to 0 the interval is infinite
 by the paper's convention, and past 1 it is the degenerate point interval.
 EnbPI's guarantee arguments lean on its stationarity assumptions; under
-shifts it degrades fastest of the three (measured above).
+shifts it degrades fastest of the three (measured above). Sizes are checked
+before anything runs: `horizon` is capped at 1,000,000 steps; a calibration
+grid that does not fit the series (`horizon + calib + 1` observations, plus
+`n_eval` for ACI and `conformal_backtest`) is refused naming the largest of
+those keywords and the largest value it may take — as is a grid whose first
+training window is shorter than the base forecaster needs (4 observations for
+`"theta"`) — and `lags` likewise when
+the AR design's `2 * lags + 2` observations do not fit. EnbPI's bootstrap
+ensemble is sized before any random stream is drawn — `n_boot` least-squares
+fits plus `horizon` (or `n_eval`) prediction steps that each average every
+model over every row — and refused past 2^34 multiply-adds or 2^28 values,
+naming `n_boot` and the largest that fits (`horizon` when not even two
+models do); `n_boot=2**31` used to abort the interpreter.
 
 **Validated against.** Property-MC (the tables above, seeded and asserted
 in CI) plus the exchangeable-case exactness anchor, and — for the split
@@ -661,7 +677,16 @@ at four graded legs, plus seeded Monte Carlo for what no package can pin.
    each of the three re-centrings, the observed statistic, the critical values
    and the three p-values for SPA/RC; the mean losses, the pairwise variance
    matrix, the elimination order, the included/excluded sets and the MCS
-   p-values for the MCS; the superior sets for StepM at sizes 0.05 and 0.10.
+   p-values for the MCS; the superior sets for StepM at sizes 0.05 and 0.10,
+   with every step and step critical value. Two cases were chosen so that the
+   step-down actually steps — arch *completes* a run in which a later step
+   adds a model, rather than raising: `stepdown_m5_multistep` takes the path
+   `[[1], [0], []]` at size 0.10 and `stepdown_m6_multistep` the path
+   `[[0, 1, 2], [4], []]` (and, studentized, the same path at 0.05). Every
+   StepM decision carries a certified `stepm_margin` — the smallest
+   $|\bar d_k - c_\text{step}|$ over the steps and the models still in play —
+   asserted above $10^{-9}$ for both legs (smallest measured over all nine
+   cases: 2.6e-4 on the mean scale), so the sets are exact like the p-values.
    Hansen's kernel variances are pinned at 1e-13 (one `pow` in the kernel
    weights may differ by an ulp across platforms) and the single-model case at
    1e-13 (NumPy coalesces a $T \times 1$ panel into a pairwise 1-D reduction;
@@ -727,6 +752,78 @@ this leg is **measured, not validated**: the numbers above are the claim.
 scale ($n = 200$, 200 replications): the consistent p-value rejects at 5% in
 **0.985** of samples, White's upper p-value in **0.985**, and `best_model`
 identifies the right column in **0.995**.
+
+**Family-wise error and power of StepM, measured.** StepM's promise is a
+family-wise error rate (FWER) — the probability that the superior set contains
+*any* model that is not in fact better than the benchmark — at most `size`,
+asymptotically. Four designs on the loss panel above ($n = 200$, $m = 5$,
+$B = 300$, stationary bootstrap with `block_size=8`, AR(0.5) errors), scales
+listed benchmark first; model $k$'s expected loss differential is
+$(s_0^2 - s_k^2)(1 - \rho^{2(t+1)})$, so the set of true nulls
+$\{k : s_k \ge s_0\}$ is exact:
+
+- `lfc` — $[1]\times 6$, every model exactly as good as the benchmark (the
+  least favourable configuration, and exactly the `block_size=8` row of the
+  SPA size table above);
+- `partial_null` — $[1, 1, 1, 1.3, 1.6, 2.0]$: two equal, three worse;
+- `mixed` — $[1, 0.6, 0.8, 1, 1, 1.5]$: two better, three not;
+- `stepdown` — $[1, 0.5, 0.88, 1, 1, 1]$: one clearly better, one marginally
+  better, the kind of model the step-down exists to find once the first is out
+  of the maximum.
+
+`arch 8.0.0`'s own StepM was run on 1000 seeded panels per design in the
+fixture generator (`_meta.stepm_fwer_study` in `fixtures/spa.json`, with
+arch's per-replication superior sets stored); tsecon's un-studentized StepM —
+the rule arch computes, its `studentize` flag being inert — was run by the
+crate test on 400 panels of its own and must land within 4 Monte Carlo
+standard errors of arch's FWER, all-power and average power (asserted). The
+Python suite then pairs the two **panel by panel**: it rebuilds arch's 1000
+panels from the same NumPy seeds (checked against a stored SHA-256), runs
+tsecon on each with its own bootstrap draws, and compares the superior sets
+with how often arch agrees with *itself* under a second bootstrap seed.
+
+| Design | size | FWER tsecon | FWER arch | all-power tsecon | all-power arch | avg power tsecon | avg power arch | same set as arch (paired) | arch vs arch |
+|---|---|---|---|---|---|---|---|---|---|
+| `lfc` | 0.05 | 0.0625 | 0.057 | — | — | — | — | 0.977 | 0.974 |
+| `lfc` | 0.10 | 0.1200 | 0.119 | — | — | — | — | 0.965 | 0.963 |
+| `partial_null` | 0.05 | 0.0450 | 0.047 | — | — | — | — | 0.984 | 0.984 |
+| `partial_null` | 0.10 | 0.0850 | 0.096 | — | — | — | — | 0.980 | 0.978 |
+| `mixed` | 0.05 | 0.0625 | 0.057 | 0.2975 | 0.318 | 0.5687 | 0.5935 | 0.877 | 0.900 |
+| `mixed` | 0.10 | 0.1150 | 0.118 | 0.4550 | 0.472 | 0.6887 | 0.7065 | 0.912 | 0.898 |
+| `stepdown` | 0.05 | 0.0525 | 0.055 | 0.1350 | 0.117 | 0.5350 | 0.535 | 0.922 | 0.934 |
+| `stepdown` | 0.10 | 0.1150 | 0.120 | 0.2150 | 0.211 | 0.6025 | 0.5995 | 0.928 | 0.935 |
+
+The FWER columns are 400 tsecon / 1000 arch replications (MC se about 0.011
+and 0.007 at 0.05); the agreement columns are on the same 1000 panels. Read
+it the way the SPA size table reads: the two implementations agree to Monte
+Carlo error everywhere, tsecon matches arch's set as often as arch matches
+itself, and the method's own finite-sample behaviour is shared — under
+dependence at $n = 200$ the FWER runs slightly over a nominal 0.10 (0.118–0.120
+in arch on `lfc`, `mixed` and `stepdown`) and near nominal at 0.05. The `lfc`
+row is a consistency check, not new information: StepM's first step **is**
+the SPA (its critical value is the SPA's consistent critical value at
+$1 - \text{size}$, asserted per replication), so under the LFC its FWER is the
+SPA's rejection rate — arch's 0.057 / 0.119 here against its 0.050 / 0.1125
+in the SPA size study (400 replications), within the asserted 4 se. The
+power columns show what the step-down buys: in `stepdown` StepM finds the
+clearly better model in nearly every sample (any-power 0.935 at 0.05, arch
+0.953) but *both* better models only 13.5% of the time (arch 11.7%) — the
+marginal one is hard to separate at $n = 200$. Also asserted per replication:
+the size-0.05 set is inside the size-0.10 set (same resamples), and step 1 is
+non-empty exactly when the SPA statistic exceeds the step-1 critical value.
+arch itself **raised** on valid samples (its loop runs once more on an empty
+selection when every model has been added over two or more steps): 3 of 1000
+panels under `lfc` at each size, and 3 and 10 under `stepdown`; the generator
+asserts the error text and counts those as "every model superior", which is
+what tsecon returns.
+
+**The studentized default, measured.** With `studentize=True` (no package
+computes it) the same designs at size 0.05 give an FWER of **0.1025**
+(`lfc`), 0.0625 (`partial_null`), 0.085 (`mixed`) and 0.090 (`stepdown`)
+over 400 replications — the studentized SPA's over-rejection, inherited
+through step 1 — and under the LFC it falls to **0.065** at $n = 800$ (200
+replications; asserted not to grow). As with `spa_test`: in a short
+evaluation sample prefer `studentize=False`.
 
 **MCS coverage.** Design: four models, two with *exactly* equal expected
 loss (so the best set $M^*$ has two elements), one slightly worse, one

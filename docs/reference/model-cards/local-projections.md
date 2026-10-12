@@ -131,7 +131,11 @@ errors, no band at all. `band="pointwise"` adds the ordinary per-horizon band;
 its own argument, `band_alpha` — a band is not the same object as an `se`.
 `band_n_sim` and `band_seed` drive the sup-t simulation and make the band a
 **pure function** of `band_seed`; do not cut `band_n_sim` far down, since this is
-a quantile in the tail of a maximum.
+a quantile in the tail of a maximum. An absurd `band_n_sim` is refused before
+anything is estimated, naming it and the largest count that fits the sup-t
+budget every band shares ($(K+1)\cdot$`band_n_sim` values within 2^28,
+`band_n_sim`$\cdot K^2$ multiply-adds within 2^36): 19173961 at the default 12
+horizons.
 
 **How to read the output.** Asking for a band adds `lower`/`upper`,
 `critical_value`, `pointwise_critical_value`, `band_scope`, `n_cells` (the `K`),

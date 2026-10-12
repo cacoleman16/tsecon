@@ -215,17 +215,36 @@ fn period_below_two_raises() {
 fn too_short_series_raises() {
     let y = monthly(23); // < 2 * 12
     match stl(&y, 12, &StlParams::default()) {
-        Err(FiltersError::SeriesTooShort { needed, got, .. }) => {
-            assert_eq!(needed, 24);
-            assert_eq!(got, 23);
+        Err(e @ FiltersError::PeriodTooLong { .. }) => {
+            assert_eq!(
+                e,
+                FiltersError::PeriodTooLong {
+                    filter: "stl",
+                    period: 12,
+                    n: 23
+                }
+            );
+            // The refusal names the period and the largest that fits (it
+            // used to read "stl needs at least 24 observations but got 23").
+            let text = e.to_string();
+            assert!(text.starts_with("stl: period = 12 needs at least 2 * period = 24"));
+            assert!(text.contains("pass period <= 11"), "{text}");
         }
-        other => panic!("expected SeriesTooShort, got {other:?}"),
+        other => panic!("expected PeriodTooLong, got {other:?}"),
     }
     // Empty input trips the same guard.
     assert!(matches!(
         stl(&[], 12, &StlParams::default()),
-        Err(FiltersError::SeriesTooShort { .. })
+        Err(FiltersError::PeriodTooLong { n: 0, .. })
     ));
+    // An absurd period cannot overflow the bound it is checked against.
+    let msg = stl(&y, usize::MAX, &StlParams::default())
+        .unwrap_err()
+        .to_string();
+    assert!(
+        msg.contains(&format!("2 * period = {}", 2 * (usize::MAX as u128))),
+        "{msg}"
+    );
 }
 
 #[test]
@@ -356,7 +375,11 @@ fn strength_bounds_and_orderings() {
     // Errors propagate unchanged.
     assert!(matches!(
         seasonal_strength(&y[..20], 12),
-        Err(FiltersError::SeriesTooShort { .. })
+        Err(FiltersError::PeriodTooLong {
+            period: 12,
+            n: 20,
+            ..
+        })
     ));
 }
 

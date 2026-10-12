@@ -41,6 +41,37 @@ const MIX_MULT_R: u32 = 0x4973_F715;
 /// Xorshift distance (half the word width).
 const XSHIFT: u32 = 16;
 
+/// The most children (or streams) one [`SeedSequence::spawn`] or
+/// [`crate::Stream::substreams`] call materializes: 2^24 = 16 777 216.
+///
+/// A materialized child costs a 72-byte [`SeedSequence`] plus two small
+/// heap words, and a [`crate::Stream`] 96 bytes, so the cap holds the
+/// vector one call builds to about 2 GiB (1.5 GiB of streams) — the house
+/// 2^28-double working-set convention. It is checked *before* the vector is
+/// allocated, because a draw or replication count used to size it directly:
+/// `n = 2^31` asked the allocator for 154 GB and aborted the process.
+/// `try_reserve` stays as the second line of defence for a request inside
+/// the budget that the machine cannot serve. Callers that need more streams
+/// than this — or that should not hold `n` of them at once at all — derive
+/// each one lazily with [`SeedSequence::child`] / [`crate::Stream::substream`],
+/// which are bit-identical to the materialized children.
+pub const MAX_MATERIALIZED_STREAMS: usize = 1 << 24;
+
+/// Refuse a request for `n` materialized children before anything is
+/// allocated, then reserve the vector fallibly.
+pub(crate) fn reserve_children<T>(n: usize) -> Result<Vec<T>, RngError> {
+    let refused = RngError::StreamBudgetExceeded {
+        requested: n,
+        max: MAX_MATERIALIZED_STREAMS,
+    };
+    if n > MAX_MATERIALIZED_STREAMS {
+        return Err(refused);
+    }
+    let mut out = Vec::new();
+    out.try_reserve_exact(n).map_err(|_| refused)?;
+    Ok(out)
+}
+
 /// Decompose a non-negative integer into little-endian 32-bit words,
 /// mirroring NumPy's `_int_to_uint32_array` (zero maps to a single 0 word).
 fn int_to_u32_words(mut n: u128) -> Vec<u32> {
@@ -119,6 +150,13 @@ impl SeedSequence {
     /// zero entropy.
     pub fn from_entropy_words(words: &[u32]) -> Self {
         Self::with_spawn_key(words.to_vec(), Vec::new())
+    }
+
+    /// The child of a root `SeedSequence::new(entropy)` at spawn index
+    /// `index` (`SeedSequence(entropy, spawn_key=(index,))` in NumPy),
+    /// built without mixing the root's own pool first.
+    pub(crate) fn root_child(entropy: u128, index: u32) -> Self {
+        Self::with_spawn_key(int_to_u32_words(entropy), vec![index])
     }
 
     /// Internal constructor: assemble entropy + spawn key and mix the pool.
@@ -230,7 +268,11 @@ impl SeedSequence {
     /// # Errors
     ///
     /// [`RngError::SpawnLimitExceeded`] if the total number of children
-    /// would exceed the 32-bit spawn-key index space.
+    /// would exceed the 32-bit spawn-key index space;
+    /// [`RngError::StreamBudgetExceeded`] if `n` exceeds
+    /// [`MAX_MATERIALIZED_STREAMS`] (or the allocator refuses the vector).
+    /// Both are checked before anything is allocated, and a refused call
+    /// records no spawn.
     pub fn spawn(&mut self, n: usize) -> Result<Vec<SeedSequence>, RngError> {
         let available = (u64::from(u32::MAX) + 1).saturating_sub(self.n_children_spawned);
         if n as u64 > available {
@@ -239,14 +281,31 @@ impl SeedSequence {
                 available,
             });
         }
-        let mut children = Vec::with_capacity(n);
+        let mut children = reserve_children(n)?;
         for i in 0..n as u64 {
-            let mut key = self.spawn_key.clone();
-            key.push((self.n_children_spawned + i) as u32);
-            children.push(Self::with_spawn_key(self.entropy.clone(), key));
+            children.push(self.child((self.n_children_spawned + i) as u32));
         }
         self.n_children_spawned += n as u64;
         Ok(children)
+    }
+
+    /// The child at spawn index `index`, derived directly: bit-identical to
+    /// element `index` of `spawn(index + 1)` on a fresh copy of this
+    /// sequence (NumPy's `SeedSequence(entropy, spawn_key=spawn_key +
+    /// (index,))`), whatever this sequence has spawned already.
+    ///
+    /// Child `i` is fully determined by `(entropy, spawn_key + (i,))`, so a
+    /// parallel loop can derive replication `i`'s sequence inside its own
+    /// task instead of materializing all `n` children up front — O(1)
+    /// memory for any `n`, and the same streams. Nothing is recorded:
+    /// [`SeedSequence::children_spawned`] is unchanged, and a later
+    /// [`SeedSequence::spawn`] still hands out the same children it would
+    /// have.
+    pub fn child(&self, index: u32) -> SeedSequence {
+        let mut key = Vec::with_capacity(self.spawn_key.len() + 1);
+        key.extend_from_slice(&self.spawn_key);
+        key.push(index);
+        Self::with_spawn_key(self.entropy.clone(), key)
     }
 
     /// The user entropy as little-endian 32-bit words.

@@ -267,10 +267,26 @@ fn lag_bounds_are_enforced() {
         Err(DiagError::InvalidLags { .. })
     ));
     assert!(matches!(arch_lm(&y, 0), Err(DiagError::InvalidLags { .. })));
-    assert!(matches!(
-        arch_lm(&y, 15),
-        Err(DiagError::SeriesTooShort { .. })
-    ));
+    // n >= 2 nlags + 2: at n = 30 the largest order is 14, and the refusal
+    // names nlags with it (it used to read "series has 30 observations but
+    // needs at least 32").
+    match arch_lm(&y, 15) {
+        Err(e @ DiagError::LagOrderTooLong { .. }) => {
+            assert!(matches!(
+                e,
+                DiagError::LagOrderTooLong {
+                    param: "nlags",
+                    value: 15,
+                    max: Some(14),
+                    ..
+                }
+            ));
+            assert!(e.to_string().contains("nlags = 15"), "{e}");
+            assert!(e.to_string().contains("pass nlags <= 14"), "{e}");
+        }
+        other => panic!("expected LagOrderTooLong, got {other:?}"),
+    }
+    assert!(arch_lm(&y, 14).is_ok());
 }
 
 #[test]

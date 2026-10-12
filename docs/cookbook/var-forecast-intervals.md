@@ -71,11 +71,14 @@ alpha=0.05  half-width at h=1: 1.940   at h=8: 2.597
 
 ## Gotchas
 
-- **These intervals price innovation uncertainty only.** They are
+- **By default these intervals price innovation uncertainty only.** They are
   `point ± z·se` where `se` comes from the residual covariance propagated
-  forward; they do not add parameter-estimation uncertainty, and they are
-  symmetric and Gaussian. For a fan chart with genuine posterior spread, draw
-  from a [Bayesian VAR](../reference/model-cards/bayesian.md).
+  forward; by default they do not add parameter-estimation uncertainty, and
+  they are symmetric and Gaussian. `param_uncertainty=True` adds Lütkepohl's
+  first-order `Ω(h)/T` term for estimating the coefficients — a partial repair
+  (see the [VAR card](../reference/model-cards/var-svar.md#forecast-covariance-and-parameter-uncertainty-var_forecastparam_uncertaintytrue)).
+  For a fan chart with genuine posterior spread, draw from a
+  [Bayesian VAR](../reference/model-cards/bayesian.md).
 - **Pick `lags` deliberately.** Compare `aic` / `bic` / `hqic` from `var_fit`
   over a *common* effective sample — comparing ICs fitted on different samples
   flips rankings.

@@ -14,16 +14,21 @@ the bundled series is 1959-2009 real GDP), so every assertion is a SHAPE claim
 with a stated numerical band, never a published digit. The point estimates
 are deterministic OLS + closed form (no RNG), so their bands are the achieved
 values with headroom; the bootstrap assertions use 200 replications at a
-fixed seed (the docs script uses 1000). At 200 replications the 5/16/84/95
-percentiles move by at most 0.14 across seeds 0, 1, 7 and 42 (measured), so
-each band claim below carries at least 2x that margin, and the cross-seed
-cap is 0.3.
+fixed seed (the docs script uses 1000). Since 0.11.0 the bands are the native
+`tsecon.long_run_svar_bands` (re-identified in every draw) and the historical
+decomposition is the native `historical_decomposition(identification="impact")`;
+the pre-0.11.0 hand-built constructions survive as cross-checks, pinned at
+1e-12. At 200 replications the 5/16/84/95 percentiles move by at most 0.152
+across seeds 0, 1, 7 and 42 (measured: 0.152 / 0.139 / 0.078 against seed 0,
+lab/bq_bands/out/guard_numbers.txt), so the cross-seed cap is 0.3 and each
+band claim below sits clear of its threshold at both seeds checked.
 """
 import sys
 from pathlib import Path
 
 import numpy as np
 import pytest
+import tsecon
 
 REPO = Path(__file__).resolve().parents[3]
 sys.path.insert(0, str(REPO / "docs" / "examples"))
@@ -95,8 +100,10 @@ def test_long_run_restriction_is_imposed_exactly(fit):
     assert abs(LR[0, 1]) < 1e-12                               # demand -> output: zero
     assert LR[0, 0] > 0.3                                      # supply is the trend: +0.480
     # the sign convention: a demand disturbance raises output on impact
+    # (impact_signs=[(0, 1)]), and it is a relabelling of tsecon's default
     assert fit["impact"][0, 1] > 0.0
-    assert fit["flip"][0] == 1.0 and abs(fit["flip"][1]) == 1.0
+    plain = tsecon.long_run_svar(bq.transform(bq.load_macrodata())["data"], lags=8, horizon=4)
+    np.testing.assert_array_equal(np.asarray(plain["impact"]) * np.array([1.0, -1.0]), fit["impact"])
 
 
 def test_demand_output_response_is_hump_shaped_and_transitory(fit):
@@ -172,12 +179,13 @@ def test_demand_dominates_short_horizon_variance(fit):
 
 # ---------------------------------------------------------- bootstrap bands
 def test_bootstrap_bands_bracket_the_findings(boot):
-    """200 replications, seed 0. Achieved (seed 0 / seed 1): demand ->
-    unemployment 90% upper at h = 0, 4: -0.106/-0.100, -0.354/-0.360;
-    demand -> output 90% lower at h = 0, 4: +0.467/+0.433, +0.697/+0.591;
-    demand -> output 90% band at h = 40: [-0.061, +0.121] / [-0.037, +0.113];
-    supply -> output 90% lower at h = 40: +0.295/+0.293; supply ->
-    unemployment 68% lower at h = 0: +0.063/+0.051."""
+    """200 replications, seed 0, native long_run_svar_bands. Achieved (seed 0 /
+    seed 1, lab/bq_bands/out/guard_numbers.txt): demand -> unemployment 90%
+    upper at h = 0, 4: -0.098/-0.112, -0.365/-0.354; demand -> output 90%
+    lower at h = 0, 4: +0.453/+0.434, +0.612/+0.585; demand -> output 90%
+    band at h = 40: [-0.055, +0.097] / [-0.058, +0.088]; supply -> output 90%
+    lower at h = 40: +0.291/+0.304; supply -> unemployment 68% lower at h = 0:
+    +0.059/+0.049."""
     q = boot["quantiles"]                    # [h][variable][shock][prob]; probs 5/16/84/95
     assert boot["probs"] == (0.05, 0.16, 0.84, 0.95)
     assert q.shape == (H + 1, 2, 2, 4)
@@ -187,14 +195,17 @@ def test_bootstrap_bands_bracket_the_findings(boot):
     assert q[40, 0, 1, 0] < 0.0 < q[40, 0, 1, 3]                # ... and is gone by h = 40
     assert q[40, 0, 0, 0] > 0.0                                # supply is permanent (90%)
     assert q[0, 1, 0, 1] > 0.0                                 # supply raises u on impact (68%)
-    # every replication keeps the sign convention (output impact to demand > 0)
+    # every replication keeps the sign convention (output impact to demand > 0),
+    # and no draw's anchor decided differently from the point estimate's
     assert np.all(boot["draws"][:, 0, 0, 1] > 0.0)
+    assert boot["native"]["sign_anchor_mismatches"] == [0]
+    assert boot["native"]["n_unstable_draws"] == 0
 
 
 def test_bands_are_stable_across_seeds(tr, boot):
     """The docs-page band table must not be a seed artifact: at 200
-    replications the percentiles move by <= 0.14 across seeds (measured for
-    seeds 0 vs 1, 7, 42); 0.3 is a 2x cap."""
+    replications the percentiles move by <= 0.152 across seeds (measured for
+    seeds 0 vs 1, 7, 42: 0.152 / 0.139 / 0.078); 0.3 is the cap."""
     other = bq.bootstrap_bands(tr["data"], n_boot=N_BOOT, seed=1)
     assert np.abs(boot["quantiles"] - other["quantiles"]).max() < 0.3
 
@@ -207,15 +218,31 @@ def test_seeded_bootstrap_is_bit_reproducible(tr):
     assert np.array_equal(a["draws"], b["draws"])
 
 
+def test_native_bands_equal_the_hand_built_construction(tr):
+    """The pre-0.11.0 page construction (var_fit residuals, `z @ params + e`,
+    long_run_svar per pseudo-sample) on a NumPy replay of the native stream
+    (SeedSequence(seed).spawn(n_boot) Philox, bitmask rejection) gives the
+    native draws to rounding: achieved 2.4e-14 at seed 0. Not bit-identical,
+    because the two recursions sum in different orders."""
+    for seed in (0, 11):
+        hand = bq.bootstrap_draws_by_hand(tr["data"], n_boot=40, seed=seed, horizon=12)
+        nat = tsecon.long_run_svar_bands(tr["data"], lags=bq.LAGS, horizon=12,
+                                         impact_signs=bq.ANCHOR, n_boot=40, seed=seed,
+                                         return_draws=True)["irf_draws"]
+        assert np.abs(hand - nat).max() < 1e-12
+
+
 # ------------------------------------------------ historical decomposition
 def test_historical_decomposition_matches_the_library_baseline(tr, fit):
-    """The script builds the BQ decomposition from B^-1 u_t and the
-    structural MA; its baseline is identification-invariant and must equal
-    tsecon.historical_decomposition's (achieved 9e-15), as must the total
-    shock contribution (4e-15); the identity y = baseline + sum_j hd holds."""
+    """The native identification="impact" decomposition: its baseline is
+    identification-invariant and equals the Cholesky decomposition's (achieved
+    0.0), as does the total shock contribution (6.2e-15); the pre-0.11.0
+    hand-built decomposition from B^-1 u_t and the structural MA agrees
+    (3.6e-15); the identity y = baseline + sum_j hd holds."""
     hd = bq.historical_decomposition_bq(tr["data"], fit=fit)
     assert hd["baseline_check"] < 1e-10
     assert hd["total_check"] < 1e-10
+    assert hd["hand_check"] < 1e-12
     X = tr["data"][bq.LAGS:]
     assert np.abs(X - hd["baseline"] - hd["hd"].sum(axis=2)).max() < 1e-12
     # structural shocks are orthogonal with the df-adjusted unit variance
@@ -223,6 +250,7 @@ def test_historical_decomposition_matches_the_library_baseline(tr, fit):
     T, m = eps.shape[0], 1 + 2 * bq.LAGS
     assert abs(np.corrcoef(eps.T)[0, 1]) < 1e-10
     assert np.allclose(eps.var(axis=0), (T - m) / T, atol=1e-10)
+    assert np.allclose(hd["shock_covariance"], (T - m) / T * np.eye(2), atol=1e-12)
 
 
 def test_recessions_are_demand(tr, fit):

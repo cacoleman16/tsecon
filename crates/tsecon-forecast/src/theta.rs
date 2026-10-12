@@ -95,7 +95,9 @@ pub fn theta_forecast(
 /// # Errors
 ///
 /// [`ForecastError::InvalidTheta`] (`theta < 1` or non-finite),
-/// [`ForecastError::InvalidSteps`], [`ForecastError::NonFinite`],
+/// [`ForecastError::InvalidSteps`], [`ForecastError::TooLarge`] (`steps`
+/// past [`crate::MAX_FORECAST_STEPS`], refused before anything is
+/// allocated), [`ForecastError::NonFinite`],
 /// [`ForecastError::SeriesTooShort`] (`n < 4`, or `n < 2 * period` when
 /// deseasonalizing — the decomposition needs two complete cycles), or
 /// [`ForecastError::InvalidPeriod`] (`period = 0`).
@@ -106,7 +108,7 @@ pub fn theta_forecast_with(
     theta: f64,
 ) -> Result<ThetaForecast, ForecastError> {
     const WHAT: &str = "Theta method";
-    check_steps(steps)?;
+    check_steps(steps, "steps", WHAT)?;
     if !theta.is_finite() || theta < 1.0 {
         return Err(ForecastError::InvalidTheta { theta });
     }

@@ -10,8 +10,8 @@
 //!   with spawn-key propagation for hierarchical independent streams).
 //! - [`Stream`]: the user-facing API — `Stream::new(seed)`,
 //!   `Stream::from_key_counter`, raw and uniform draws with NumPy
-//!   `Generator` output conventions, and [`Stream::substreams`] for
-//!   reproducible parallel Monte Carlo.
+//!   `Generator` output conventions, and [`Stream::substreams`] /
+//!   [`Stream::substream`] for reproducible parallel Monte Carlo.
 //!
 //! ## Reproducibility contract
 //!
@@ -19,7 +19,19 @@
 //! creates entropy from the OS. Substreams are keyed by
 //! `(seed, replication_index)` through SeedSequence spawning, so a parallel
 //! bootstrap produces bit-identical results at any thread count — move each
-//! [`Stream`] into its task (all types are `Clone + Send + Sync`).
+//! [`Stream`] into its task (all types are `Clone + Send + Sync`), or derive
+//! it there with [`Stream::substream`]`(seed, i)`, which needs no vector of
+//! streams at all.
+//!
+//! ## Memory budget
+//!
+//! A call that materializes children or streams ([`SeedSequence::spawn`],
+//! [`Stream::substreams`]) holds at most [`MAX_MATERIALIZED_STREAMS`]
+//! (2^24) of them, refused with [`RngError::StreamBudgetExceeded`] before
+//! anything is allocated — a draw count of 2^31 used to size that vector
+//! directly and abort the process on the failed 154 GB allocation. The lazy
+//! [`Stream::substream`] / [`SeedSequence::child`] have no such limit beyond
+//! the 2^32 spawn-key space ([`Stream::check_substream_count`]).
 //!
 //! ```
 //! use tsecon_rng::Stream;
@@ -41,7 +53,7 @@ mod stream;
 
 pub use error::RngError;
 pub use philox::Philox;
-pub use seedseq::SeedSequence;
+pub use seedseq::{SeedSequence, MAX_MATERIALIZED_STREAMS};
 pub use stream::Stream;
 
 #[cfg(test)]

@@ -10,24 +10,24 @@ crate statically linked into the extension are in
 and shipped in every wheel and sdist through `license-files`. Wheels 0.1.0
 through 0.6.0 predate that file and carry only tsecon's own licences.
 
-Generated from `cargo metadata` — 97 third-party packages.
+Generated from `cargo metadata` — 98 third-party packages.
 
 | Crate | Version | License |
 |---|---|---|
 | autocfg | 1.5.1 | Apache-2.0 OR MIT |
-| bitflags | 2.13.1 | MIT OR Apache-2.0 |
-| bytemuck | 1.25.1 | Zlib OR Apache-2.0 OR MIT |
-| bytemuck_derive | 1.11.0 | Zlib OR Apache-2.0 OR MIT |
+| bitflags | 2.13.2 | MIT OR Apache-2.0 |
+| bytemuck | 1.25.2 | Zlib OR Apache-2.0 OR MIT |
+| bytemuck_derive | 1.12.1 | Zlib OR Apache-2.0 OR MIT |
 | byteorder | 1.5.0 | Unlicense OR MIT |
-| cfg-if | 1.0.4 | MIT OR Apache-2.0 |
-| crossbeam-deque | 0.8.7 | MIT OR Apache-2.0 |
-| crossbeam-epoch | 0.9.20 | MIT OR Apache-2.0 |
-| crossbeam-utils | 0.8.22 | MIT OR Apache-2.0 |
+| cfg-if | 1.0.5 | MIT OR Apache-2.0 |
+| crossbeam-deque | 0.8.8 | MIT OR Apache-2.0 |
+| crossbeam-epoch | 0.9.21 | MIT OR Apache-2.0 |
+| crossbeam-utils | 0.8.23 | MIT OR Apache-2.0 |
 | crunchy | 0.2.4 | MIT |
 | defer | 0.2.1 | MIT/Apache-2.0 |
 | dyn-stack | 0.13.2 | MIT |
 | dyn-stack-macros | 0.1.3 | MIT |
-| either | 1.16.0 | MIT OR Apache-2.0 |
+| either | 1.19.0 | MIT OR Apache-2.0 |
 | enum-as-inner | 0.6.1 | MIT/Apache-2.0 |
 | equator | 0.2.2 | MIT |
 | equator | 0.6.0 | MIT |
@@ -45,10 +45,10 @@ Generated from `cargo metadata` — 97 third-party packages.
 | generativity | 1.2.1 | MIT OR Apache-2.0 |
 | half | 2.7.1 | MIT OR Apache-2.0 |
 | heck | 0.5.0 | MIT OR Apache-2.0 |
-| hermit-abi | 0.5.2 | MIT OR Apache-2.0 |
+| hermit-abi | 0.5.3 | MIT OR Apache-2.0 |
 | interpol | 0.2.1 | MIT |
 | itoa | 1.0.18 | MIT OR Apache-2.0 |
-| libc | 0.2.186 | MIT OR Apache-2.0 |
+| libc | 0.2.190 | MIT OR Apache-2.0 |
 | libm | 0.2.16 | MIT |
 | matrixmultiply | 0.3.11 | MIT/Apache-2.0 |
 | memchr | 2.8.3 | Unlicense OR MIT |
@@ -61,26 +61,26 @@ Generated from `cargo metadata` — 97 third-party packages.
 | nano-gemm-f64 | 0.2.1 | MIT |
 | ndarray | 0.17.2 | MIT OR Apache-2.0 |
 | num-complex | 0.4.6 | MIT OR Apache-2.0 |
-| num-integer | 0.1.46 | MIT OR Apache-2.0 |
+| num-integer | 0.1.47 | MIT OR Apache-2.0 |
 | num-traits | 0.2.19 | MIT OR Apache-2.0 |
 | num_cpus | 1.17.0 | MIT OR Apache-2.0 |
 | numpy | 0.29.0 | BSD-2-Clause |
 | once_cell | 1.21.4 | MIT OR Apache-2.0 |
 | paste | 1.0.15 | MIT OR Apache-2.0 |
-| portable-atomic | 1.13.1 | Apache-2.0 OR MIT |
-| portable-atomic-util | 0.2.7 | Apache-2.0 OR MIT |
+| portable-atomic | 1.15.0 | Apache-2.0 OR MIT |
+| portable-atomic-util | 0.2.8 | Apache-2.0 OR MIT |
 | primal-check | 0.3.4 | MIT OR Apache-2.0 |
-| private-gemm-x86 | 0.1.20 | MIT |
-| proc-macro2 | 1.0.106 | MIT OR Apache-2.0 |
+| private-gemm-x86 | 0.1.22 | MIT |
+| proc-macro2 | 1.0.107 | MIT OR Apache-2.0 |
 | pulp | 0.22.3 | MIT |
 | pulp-wasm-simd-flag | 0.1.1 | MIT |
-| pyo3 | 0.29.0 | MIT OR Apache-2.0 |
-| pyo3-build-config | 0.29.0 | MIT OR Apache-2.0 |
-| pyo3-ffi | 0.29.0 | MIT OR Apache-2.0 |
-| pyo3-macros | 0.29.0 | MIT OR Apache-2.0 |
-| pyo3-macros-backend | 0.29.0 | MIT OR Apache-2.0 |
+| pyo3 | 0.29.3 | MIT OR Apache-2.0 |
+| pyo3-build-config | 0.29.3 | MIT OR Apache-2.0 |
+| pyo3-ffi | 0.29.3 | MIT OR Apache-2.0 |
+| pyo3-macros | 0.29.3 | MIT OR Apache-2.0 |
+| pyo3-macros-backend | 0.29.3 | MIT OR Apache-2.0 |
 | qd | 0.8.0 | MIT |
-| quote | 1.0.46 | MIT OR Apache-2.0 |
+| quote | 1.0.47 | MIT OR Apache-2.0 |
 | raw-cpuid | 11.6.0 | MIT |
 | rawpointer | 0.2.1 | MIT/Apache-2.0 |
 | rayon | 1.12.0 | MIT OR Apache-2.0 |
@@ -90,26 +90,27 @@ Generated from `cargo metadata` — 97 third-party packages.
 | rustfft | 6.4.1 | MIT OR Apache-2.0 |
 | same-file | 1.0.6 | Unlicense/MIT |
 | seq-macro | 0.3.6 | MIT OR Apache-2.0 |
-| serde | 1.0.228 | MIT OR Apache-2.0 |
-| serde_core | 1.0.228 | MIT OR Apache-2.0 |
-| serde_derive | 1.0.228 | MIT OR Apache-2.0 |
-| serde_json | 1.0.150 | MIT OR Apache-2.0 |
+| serde | 1.0.229 | MIT OR Apache-2.0 |
+| serde_core | 1.0.229 | MIT OR Apache-2.0 |
+| serde_derive | 1.0.229 | MIT OR Apache-2.0 |
+| serde_json | 1.0.151 | MIT OR Apache-2.0 |
 | strength_reduce | 0.2.4 | MIT OR Apache-2.0 |
 | syn | 1.0.109 | MIT OR Apache-2.0 |
 | syn | 2.0.119 | MIT OR Apache-2.0 |
+| syn | 3.0.6 | MIT OR Apache-2.0 |
 | sysctl | 0.6.0 | MIT |
 | target-lexicon | 0.13.5 | Apache-2.0 WITH LLVM-exception |
 | thiserror | 1.0.69 | MIT OR Apache-2.0 |
 | thiserror-impl | 1.0.69 | MIT OR Apache-2.0 |
 | transpose | 0.2.3 | MIT OR Apache-2.0 |
-| unicode-ident | 1.0.24 | (MIT OR Apache-2.0) AND Unicode-3.0 |
+| unicode-ident | 1.0.26 | (MIT OR Apache-2.0) AND Unicode-3.0 |
 | version_check | 0.9.5 | MIT/Apache-2.0 |
 | walkdir | 2.5.0 | Unlicense/MIT |
 | winapi-util | 0.1.11 | Unlicense OR MIT |
 | windows-link | 0.2.1 | MIT OR Apache-2.0 |
 | windows-sys | 0.61.2 | MIT OR Apache-2.0 |
-| zerocopy | 0.8.54 | BSD-2-Clause OR Apache-2.0 OR MIT |
-| zerocopy-derive | 0.8.54 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zerocopy | 0.8.62 | BSD-2-Clause OR Apache-2.0 OR MIT |
+| zerocopy-derive | 0.8.62 | BSD-2-Clause OR Apache-2.0 OR MIT |
 | zmij | 1.0.23 | MIT |
 
 ## Transcribed numerical constants
@@ -125,7 +126,14 @@ attribution at the transcription site:
   `arch/unitroot/critical_values/dfgls.py`).
 - **statsmodels** (BSD-3-Clause): the MacKinnon (1994, 2010) tau and
   cointegration surfaces (`crates/tsecon-diag/src/mackinnon.rs`,
-  `mackinnon_ext.rs`, from `statsmodels/tsa/adfvalues.py`).
+  `mackinnon_ext.rs`, from `statsmodels/tsa/adfvalues.py`); the
+  MacKinnon-Haug-Michelis (1999) Johansen trace and maximum-eigenvalue
+  critical values (`crates/tsecon-coint/src/critvals.rs`, from
+  `statsmodels/tsa/coint_tables.py`); and the Pesaran-Shin-Smith (2001)
+  bounds-test response surface — critical values, p-value polynomials and
+  switch points for 100 keys (`crates/tsecon-coint/src/pss.rs`, generated by
+  `lab/ardl/transcribe_pss.py` from
+  `statsmodels/tsa/ardl/pss_critical_values.py`).
 
 These are transcriptions of numeric coefficients (facts of the underlying
 MacKinnon-methodology simulations), used under the respective permissive

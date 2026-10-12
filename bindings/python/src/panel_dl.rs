@@ -9,7 +9,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 use tsecon_panel::{DistributedLagConfig, FixedEffects};
 
-use crate::{panel_data, panel_se, to_py};
+use crate::{dk_to_py, panel_data, panel_se, PANEL_DK_DEFAULT_BANDWIDTH};
 
 /// Distributed-lag panel regression — the climate-impact specification
 /// of Dell-Jones-Olken (2012, AEJ:Macro) and Burke-Hsiang-Miguel (2015,
@@ -33,7 +33,10 @@ use crate::{panel_data, panel_se, to_py};
 /// choice; needs a long T). `bandwidth` is the Driscoll-Kraay lag
 /// truncation and acts ONLY under `se_type="driscoll_kraay"` (4.0 when
 /// omitted there); passing it explicitly with any other `se_type`
-/// **raises** instead of being silently absorbed. `eval_points`
+/// **raises** instead of being silently absorbed, and so does
+/// `bandwidth + 1` above the number of periods that carry scores
+/// (`T - lags` on a balanced panel; past it the standard errors only
+/// shrink). `eval_points`
 /// (1-D, default None) are the points at which the marginal effect of
 /// the cumulative quadratic response is evaluated for every regressor;
 /// it acts ONLY under `powers=2` (None there means each regressor's
@@ -152,7 +155,8 @@ fn panel_distributed_lag<'py>(
         se_type: panel_se("panel_distributed_lag", se_type, bandwidth)?,
         eval_points: eval_points.map(|p| p.as_array().to_vec()),
     };
-    let res = tsecon_panel::panel_distributed_lag(&data, &cfg).map_err(to_py)?;
+    let res = tsecon_panel::panel_distributed_lag(&data, &cfg)
+        .map_err(dk_to_py(bandwidth, PANEL_DK_DEFAULT_BANDWIDTH))?;
     let kk = res.params.len();
     let cov: Vec<Vec<f64>> = (0..kk)
         .map(|a| (0..kk).map(|b| res.cov[(a, b)]).collect())

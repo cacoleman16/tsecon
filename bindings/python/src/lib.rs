@@ -10,19 +10,29 @@ use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
 mod ml_neural;
 
+mod coint_ardl;
 mod coint_fmols;
+mod diag_vr;
 mod ets;
+mod ewc;
 mod forecast_mcs;
 mod girf;
+mod midas_adl;
 mod ml_convex;
 mod ml_kernel;
 mod ml_structured;
 mod ml_trees;
+mod nowcast_smooth;
 mod panel_dl;
+mod panel_static;
+mod real_numeric;
 mod regime_ci;
+mod spectest_serial;
 mod ssm_uc;
+mod svar_lr;
 mod termstructure_jsz;
 mod var_cf;
+mod var_normality;
 
 fn to_py<E: std::fmt::Display>(e: E) -> PyErr {
     PyValueError::new_err(e.to_string())
@@ -37,6 +47,40 @@ fn vec1(a: &PyReadonlyArray1<'_, f64>) -> Vec<f64> {
     match a.as_slice() {
         Ok(s) => s.to_vec(),
         Err(_) => a.as_array().to_vec(),
+    }
+}
+
+/// A `tsecon_diag` refusal with the lag order renamed to the Python keyword
+/// the caller passed: the core names its orders by their Rust-side names
+/// (`maxlag` for an ADF search cap, `lags` for a fixed DF-GLS lag), and
+/// `rename` maps each to the keyword (`max_lags`, ...).
+fn diag_lag_err(e: tsecon_diag::DiagError, rename: impl Fn(&'static str) -> &'static str) -> PyErr {
+    PyValueError::new_err(diag_lag_msg(e, rename))
+}
+
+/// The message of [`diag_lag_err`], for callers that wrap it.
+fn diag_lag_msg(
+    mut e: tsecon_diag::DiagError,
+    rename: impl Fn(&'static str) -> &'static str,
+) -> String {
+    if let tsecon_diag::DiagError::LagOrderTooLong { param, .. } = &mut e {
+        *param = rename(param);
+    }
+    e.to_string()
+}
+
+/// A `tsecon_diag` refusal from a workflow that runs `adf` at its default
+/// lag search and takes no lag keyword itself (`check_stationarity`,
+/// `ndiffs`): an order refused by the lag budgets is remedied by a shorter
+/// series, or by calling `adf` with an explicit `maxlag`.
+fn diag_default_lag_err(e: tsecon_diag::DiagError, callable: &str) -> PyErr {
+    match e {
+        tsecon_diag::DiagError::LagOrderTooLong { .. } => PyValueError::new_err(format!(
+            "{callable}: {e}. {callable} itself takes no lag keyword (its ADF leg runs \
+             the default lag search), so supply a shorter series, or call tsecon.adf \
+             with an explicit maxlag"
+        )),
+        other => to_py(other),
     }
 }
 
@@ -134,6 +178,11 @@ fn jarque_bera<'py>(
 
 /// Engle's ARCH-LM test (statsmodels `het_arch` convention).
 ///
+/// `nlags` must leave `n >= 2*nlags + 2`; an order past that, or one whose
+/// `(n - nlags) x nlags` auxiliary design exceeds 2^26 entries (512 MiB) or
+/// whose normal equations exceed 2^35 multiply-adds, is refused before any
+/// lag column is built, naming `nlags` and the largest order that fits.
+///
 /// Returned keys: `df`, `nobs`, `p_value`, `statistic`.
 ///
 /// Further arguments, with defaults: `nlags` (4).
@@ -153,11 +202,27 @@ fn arch_lm<'py>(
     Ok(d)
 }
 
+/// Largest `n` `philox_uniforms` returns: 2^28 draws, a 2 GiB array (the
+/// house 2^28-value working-set convention). The output array is allocated
+/// before the first draw, so `n = 2**31` used to request 16 GiB and abort
+/// the process; refused by name before allocating instead.
+const PHILOX_MAX_UNIFORMS: usize = 1 << 28;
+
 /// Uniform draws from the tsecon Philox stream.
 ///
 /// Bit-identical to `np.random.Generator(np.random.Philox(seed)).random(n)`.
+/// `n` is at most 2^28 = 268435456 (a 2 GiB array), refused by name before
+/// anything is allocated.
 #[pyfunction]
 fn philox_uniforms(py: Python<'_>, seed: u64, n: usize) -> PyResult<Bound<'_, PyArray1<f64>>> {
+    if n > PHILOX_MAX_UNIFORMS {
+        return Err(PyValueError::new_err(format!(
+            "n = {n} exceeds the largest admissible n = {PHILOX_MAX_UNIFORMS} (2^28 draws, \
+             a 2 GiB array), checked before anything is allocated; request fewer draws \
+             (np.random.Generator(np.random.Philox(seed)).random is bit-identical and \
+             can continue the same stream in chunks)"
+        )));
+    }
     let mut stream = tsecon_rng::Stream::new(seed);
     let mut buf = vec![0.0_f64; n];
     stream.fill_uniform_f64(&mut buf);
@@ -168,7 +233,9 @@ fn philox_uniforms(py: Python<'_>, seed: u64, n: usize) -> PyResult<Bound<'_, Py
 ///
 /// `scheme`: "iid", "moving" or "circular" (require `block_length`), or
 /// "stationary" (requires `p`, the restart probability; expected block
-/// length is 1/p). Same seed always yields the same indices.
+/// length is 1/p). Same seed always yields the same indices. `n` is at most
+/// 2^28 = 268435456 (a 2 GiB index vector), refused by name before anything
+/// is allocated.
 #[pyfunction]
 #[pyo3(signature = (n, scheme = "stationary", seed = 0, block_length = None, p = None))]
 fn bootstrap_indices<'py>(
@@ -201,7 +268,16 @@ fn bootstrap_indices<'py>(
         }
     };
     let mut stream = tsecon_rng::Stream::new(seed);
-    let idx = tsecon_bootstrap::indices(s, n, &mut stream).map_err(to_py)?;
+    let idx = tsecon_bootstrap::indices(s, n, &mut stream).map_err(|e| match e {
+        // The engine's message says "block length"; name the keyword.
+        tsecon_bootstrap::BootstrapError::InvalidBlockLength { block_length, n } => {
+            PyValueError::new_err(format!(
+                "block_length = {block_length} is outside the valid range 1..={n} \
+                 (a block can be at most the series length n)"
+            ))
+        }
+        other => to_py(other),
+    })?;
     Ok(idx
         .into_iter()
         .map(|i| i as u64)
@@ -323,6 +399,15 @@ fn adf_regression(s: &str) -> PyResult<tsecon_diag::AdfRegression> {
 /// "bic", "t-stat", or None to use `maxlag` as a fixed lag.
 /// Matches statsmodels `adfuller` (validated at 1e-8).
 ///
+/// A `maxlag` past the statsmodels bound n//2 - ntrend - 1 (one less for
+/// regression "n" on an even n, which must keep a residual degree of
+/// freedom) is refused naming `maxlag` and the largest that fits, as is one
+/// whose lag design exceeds 2^26 entries (512 MiB) or whose lag search
+/// exceeds 2^35 multiply-adds (about a minute) — checked before any lag
+/// column is built. Orders up to the default cap ceil(12*(n/100)^(1/4)) are
+/// exempt from the work budget, so a default call is refused only when its
+/// design would not fit in memory (above about 610,000 observations).
+///
 /// Returned keys: `crit`, `nobs`, `p_value`, `statistic`, `used_lag`.
 #[pyfunction]
 #[pyo3(signature = (y, regression = "c", autolag = Some("aic"), maxlag = None),
@@ -415,7 +500,10 @@ fn kpss<'py>(
 
 /// The stationarity decision workflow: ADF and KPSS run together and
 /// classified into the confirmatory quadrant, with a teaching
-/// interpretation and a concrete recommendation.
+/// interpretation and a concrete recommendation. The ADF leg runs the
+/// default lag search, so a series whose default lag design exceeds the
+/// lag budget of `adf` (2^26 entries, above about 610,000 observations) is
+/// refused; run `adf` with an explicit `maxlag` there.
 ///
 /// Returned keys: `adf_p_value`, `adf_statistic`, `alpha`, `interpretation`,
 /// `kpss_p_value`, `kpss_statistic`, `quadrant`, `recommendation`.
@@ -428,7 +516,8 @@ fn check_stationarity<'py>(
     y: PyReadonlyArray1<'py, f64>,
     alpha: f64,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::check_stationarity_at(&vec1(&y), alpha).map_err(to_py)?;
+    let r = tsecon_diag::check_stationarity_at(&vec1(&y), alpha)
+        .map_err(|e| diag_default_lag_err(e, "check_stationarity"))?;
     let d = PyDict::new(py);
     d.set_item("quadrant", format!("{:?}", r.quadrant))?;
     d.set_item("recommendation", format!("{:?}", r.recommendation))?;
@@ -507,6 +596,12 @@ fn phillips_perron<'py>(
 /// OLS-detrended series (Perron-Qu 2007) searching 0..=`max_lags`
 /// (default: Schwert's ceil(12*(n/100)^(1/4)), capped at (n-1)/2 - 1).
 /// When `lags` is given, `method`/`max_lags` are ignored (arch behavior).
+/// A `lags` or `max_lags` that leaves too few observations (`n >= 2*lags +
+/// 3`, and `n >= 3 + ntrend + lags` for a fixed lag), or whose lag design or
+/// search exceeds the size budgets of `adf` (2^26 entries, 2^35
+/// multiply-adds; orders up to the default cap are exempt from the work
+/// budget), is refused before any lag column is built, naming the keyword
+/// and the largest value that fits.
 ///
 /// Returns dict keys: `statistic`, `p_value`, `used_lag`, `nobs`
 /// (= n - 1 - used_lag), `crit` ({"1%","5%","10%"}), `trend`. Statistic
@@ -548,7 +643,8 @@ fn dfgls<'py>(
             }
         },
     };
-    let r = tsecon_diag::dfgls(&vec1(&y), trend, selection).map_err(to_py)?;
+    let r = tsecon_diag::dfgls(&vec1(&y), trend, selection)
+        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }))?;
     let d = PyDict::new(py);
     d.set_item("statistic", r.statistic)?;
     d.set_item("p_value", r.p_value)?;
@@ -583,7 +679,9 @@ fn dfgls<'py>(
 /// large negative MA root is suspected (over-differenced series) — MAIC
 /// is the standard remedy for the size distortion there. Caveat
 /// (Perron-Qu 2007): on data far from the null MAIC drives the lag to its
-/// maximum and power collapses; cap `max_lags` or fix `lags` there.
+/// maximum and power collapses; cap `max_lags` or fix `lags` there. A
+/// `lags` or `max_lags` too long for the sample or past the size budgets of
+/// `dfgls` is refused the same way, naming the keyword.
 #[pyfunction]
 #[pyo3(signature = (y, trend = "c", lags = None, max_lags = None))]
 fn ng_perron<'py>(
@@ -625,7 +723,8 @@ fn ng_perron<'py>(
             }
         }
     };
-    let r = tsecon_diag::ng_perron(&vec1(&y), trend_spec, selection).map_err(to_py)?;
+    let r = tsecon_diag::ng_perron(&vec1(&y), trend_spec, selection)
+        .map_err(|e| diag_lag_err(e, |p| if p == "maxlag" { "max_lags" } else { p }))?;
     let d = PyDict::new(py);
     d.set_item("mza", r.mza)?;
     d.set_item("mzt", r.mzt)?;
@@ -732,6 +831,16 @@ fn phillips_ouliaris<'py>(
 /// search. P-values/critical values interpolate the simulated null table
 /// (statsmodels, 100k MC reps) — read at most two decimals into them.
 /// Matches statsmodels `zivot_andrews` (statistic 1e-10, break/lag exact).
+/// A `max_lags` past the base ADF's bound n//2 - 3, or past its size budgets
+/// (see `adf`), is refused naming `max_lags`. The lag the break regressions
+/// use must satisfy `lags <= int(n*trim) - 1`: a fixed `lags` past it is
+/// refused naming `lags`, a searched one naming `max_lags`. The break-date
+/// scan refits a `(n - 1 - lags) x (k + lags)` design at each of the
+/// `n - 2*int(n*trim)` candidate breaks and shares the lag budgets of `adf`
+/// (2^26 design entries, 2^35 multiply-adds; lags up to the default cap
+/// ceil(12*(n/100)^(1/4)) are exempt from the work budget): a lag past them
+/// is refused before the design is built, naming `lags` or the `max_lags`
+/// that admitted it and the longest lag that fits.
 ///
 /// Returns dict keys: `stat`, `pvalue`, `crit` {"1%","5%","10%"},
 /// `break_index`, `lags` (the shared augmentation lag), `nobs`, `trim`,
@@ -787,7 +896,47 @@ fn zivot_andrews<'py>(
             )))
         }
     };
-    let r = tsecon_diag::zivot_andrews(&vec1(&y), reg, trim, sel).map_err(to_py)?;
+    // The automatic search's cap is `max_lags` here (the base ADF calls it
+    // maxlag). The trimmed-window bound int(n*trim) - 1 binds the lag the
+    // break regressions use: `lags` when fixed or the truncated-Schwert
+    // default, and the lag the search selected — remedied by `max_lags` —
+    // otherwise.
+    let r = tsecon_diag::zivot_andrews(&vec1(&y), reg, trim, sel).map_err(|e| match e {
+        tsecon_diag::DiagError::InvalidLags {
+            what,
+            nlags,
+            n,
+            requirement,
+        } => {
+            let (order, keyword) = match (sel, max_lags) {
+                (L::Fixed(_), _) => (format!("lags = {nlags}"), "lags"),
+                (L::SchwertTrunc, _) => (
+                    format!(
+                        "the default lags = {nlags} (int(12*(n/100)^(1/4)), used when \
+                         autolag=None and lags=None)"
+                    ),
+                    "lags",
+                ),
+                (_, Some(m)) => (
+                    format!("lags = {nlags}, chosen by the lag search capped at max_lags = {m},"),
+                    "max_lags",
+                ),
+                (_, None) => (
+                    format!("lags = {nlags}, chosen by the default lag search,"),
+                    "max_lags",
+                ),
+            };
+            let remedy = match ((n as f64 * trim) as usize).checked_sub(1) {
+                Some(m) => format!("; pass {keyword} <= {m}"),
+                None => "; with int(n * trim) = 0 no lag order fits".to_string(),
+            };
+            PyValueError::new_err(format!(
+                "{what}: {order} is invalid for a series of length {n}: requires \
+                 {requirement}{remedy}"
+            ))
+        }
+        other => diag_lag_err(other, |p| if p == "maxlag" { "max_lags" } else { p }),
+    })?;
     let d = PyDict::new(py);
     d.set_item("stat", r.statistic)?;
     d.set_item("pvalue", r.p_value)?;
@@ -887,7 +1036,9 @@ fn nsdiffs_result_dict<'py>(
 /// KPSS differences while `p < alpha`, ADF/PP while `p > alpha`.
 /// Composition over the shipped tests at their conventional defaults
 /// (constant term; automatic bandwidth / AIC lag selection), so the
-/// per-order numbers match statsmodels/arch to 1e-13.
+/// per-order numbers match statsmodels/arch to 1e-13. With `test="adf"`
+/// a series whose default lag design exceeds the lag budget of `adf`
+/// (2^26 entries, above about 610,000 observations) is refused.
 ///
 /// Returns dict keys: `d`, `test`, `alpha`, `max_d`, `stop`
 /// ("Stationary" | "MaxD" | "Constant"), `steps` (one dict per order
@@ -902,7 +1053,11 @@ fn ndiffs<'py>(
     alpha: f64,
     max_d: usize,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let r = tsecon_diag::ndiffs(&vec1(&y), ndiffs_test(test)?, alpha, max_d).map_err(to_py)?;
+    let r =
+        tsecon_diag::ndiffs(&vec1(&y), ndiffs_test(test)?, alpha, max_d).map_err(|e| match e {
+            tsecon_diag::AdvisorError::Diag(d) => diag_default_lag_err(d, "ndiffs"),
+            other => to_py(other),
+        })?;
     ndiffs_result_dict(py, &r)
 }
 
@@ -1055,8 +1210,11 @@ fn long_run_variance(
 /// OLS with robust standard-error options.
 ///
 /// `x` is a 2-D design matrix used as-is (add your own constant column).
-/// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", or "hac" (Bartlett
-/// kernel; `maxlags=None` uses the Newey-West rule of thumb). HAC results
+/// `se_type`: "nonrobust", "hc0", "hc1", "hc2", "hc3", "hac" (Bartlett
+/// kernel; `maxlags=None` uses the Newey-West rule of thumb), or "ewc" (the
+/// equal-weighted cosine HAR covariance with Student-t p-values; see
+/// **EWC** below). An unknown `se_type` is refused first, before any check
+/// of the keywords that depend on it. HAC results
 /// match statsmodels `cov_type="HAC"` at 1e-10 **when `use_correction` is
 /// matched**. The defaults deliberately differ: tsecon defaults
 /// `use_correction=True` (the finite-sample `n/(n - k)` scaling — the
@@ -1081,9 +1239,40 @@ fn long_run_variance(
 /// stays clear of machine noise; a point with leverage numerically equal to
 /// 1 is refused rather than returned as a near-infinite standard error.
 ///
-/// Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+/// **EWC (`se_type="ewc"`)** is the Lazarus-Lewis-Stock-Watson (2018) HAR
+/// recommendation: the sandwich `(X'X)^-1 [n Omega_hat] (X'X)^-1` with
+/// `Omega_hat` the equal-weighted cosine long-run covariance of the scores
+/// `x_t u_t` over `ewc_b` frequencies (no `n/(n - k)` factor, no
+/// prewhitening). Its t-statistics are Student t with `ewc_b` degrees of
+/// freedom, NOT normal, so this route adds `pvalues` (two-sided, `t_ewc_b`)
+/// and `ewc_b` (the resolved B — also those degrees of freedom); build
+/// intervals as `params +/- t_{ewc_b, 0.975} * bse`. `ewc_b=None` uses
+/// `ewc_default_b(n)` = round(0.4 n^(2/3)); an explicit value must lie in
+/// `[1, n - 1]`. On a T=100 regression with AR(0.7) regressor and errors,
+/// nominal 95% slope intervals covered 0.915 with EWC (B = 9, t_9 critical
+/// value) against 0.855 with the Newey-West `hac` default and normal critical
+/// values, and 0.940 against 0.905 at T=400 (10000 seeded replications each;
+/// the robust-inference model card cites the script). `hac` stays the
+/// default for statsmodels compatibility. COST: the cosines are evaluated
+/// directly, `n * ewc_b` of them, so the work is SUPERLINEAR in `n` — about
+/// `n * ewc_b * (k + 8)` operations, like `n^(5/3)` at the default (measured
+/// 1.4 s at n = 10^5 with k = 2); past a work budget of 2^35 (about a minute)
+/// `ewc_b` is refused by name, with the largest value it admits.
+///
+/// Inert combinations are refused, naming the keyword: `ewc_b` under any
+/// other `se_type`, an explicit `maxlags` under `"ewc"`, and
+/// `use_correction=False` under `"ewc"` (EWC takes no `n/(n - k)` factor;
+/// an explicit `True` cannot be told from the default and is a documented
+/// no-op). Under `nonrobust`/`hc*` an explicit `maxlags`/`use_correction` is
+/// still silently ignored, as before 0.11.
+///
+/// Returned keys: `bse`, `params`, `se_type`, `tvalues`; under `"ewc"` also
+/// `ewc_b` and `pvalues`.
+///
+/// Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None),
+/// `use_correction` (True), `ewc_b` (None: `ewc_default_b(n)`).
 #[pyfunction]
-#[pyo3(signature = (y, x, se_type = "hac", maxlags = None, use_correction = true))]
+#[pyo3(signature = (y, x, se_type = "hac", maxlags = None, use_correction = true, ewc_b = None))]
 fn ols<'py>(
     py: Python<'py>,
     y: PyReadonlyArray1<'py, f64>,
@@ -1091,9 +1280,36 @@ fn ols<'py>(
     se_type: &str,
     maxlags: Option<usize>,
     use_correction: bool,
+    ewc_b: Option<usize>,
 ) -> PyResult<Bound<'py, PyDict>> {
     let ys = vec1(&y);
     let ys = ys.as_slice();
+    // The covariance choice first: a typo such as "ewx" or "EWC" beside
+    // `ewc_b` is an unknown se_type, not an inert ewc_b.
+    if !OLS_SE_TYPES.contains(&se_type) {
+        return Err(unknown_ols_se_type(se_type));
+    }
+    if se_type == "ewc" {
+        if let Some(l) = maxlags {
+            return Err(PyValueError::new_err(format!(
+                "ols: maxlags = {l} has no effect under se_type=\"ewc\" — EWC averages \
+                 ewc_b cosine frequencies and has no lag truncation; set ewc_b to change \
+                 its smoothing, or use se_type=\"hac\" for a Newey-West bandwidth"
+            )));
+        }
+        if !use_correction {
+            return Err(PyValueError::new_err(
+                "ols: use_correction=False has no effect under se_type=\"ewc\" — the EWC \
+                 covariance never takes the n/(n - k) factor (LLSW's t_B size results are \
+                 for the plain estimator); drop the argument",
+            ));
+        }
+    } else if let Some(b) = ewc_b {
+        return Err(PyValueError::new_err(format!(
+            "ols: ewc_b = {b} only applies to se_type=\"ewc\" (got se_type={se_type:?}); \
+             drop it, or pass se_type=\"ewc\" for the equal-weighted cosine covariance"
+        )));
+    }
     let xa = x.as_array();
     let cols: Vec<Vec<f64>> = (0..xa.ncols()).map(|j| xa.column(j).to_vec()).collect();
     let fit = tsecon_hac::ols(ys, &cols).map_err(to_py)?;
@@ -1108,19 +1324,38 @@ fn ols<'py>(
             bandwidth: maxlags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(ys.len())) as f64,
             use_correction,
         },
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown se_type {other:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac"
-            )))
+        "ewc" => {
+            let b = ewc_b.unwrap_or_else(|| tsecon_hac::ewc_default_b(fit.nobs));
+            ewc::check_ewc_b("ols", "ewc_b", b, fit.nobs)?;
+            ewc::check_ewc_work("ols", "ewc_b", b, fit.nobs, fit.nparams)?;
+            tsecon_hac::SeType::Ewc { b }
         }
+        other => return Err(unknown_ols_se_type(other)),
     };
     let inf = fit.inference(se).map_err(to_py)?;
+    let ewc = match se {
+        tsecon_hac::SeType::Ewc { b } => Some((b, ewc::t_b_pvalues(b, &inf.tvalues)?)),
+        _ => None,
+    };
     let d = PyDict::new(py);
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
     d.set_item("bse", inf.bse.into_pyarray(py))?;
     d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
     d.set_item("se_type", se_type)?;
+    if let Some((b, pvalues)) = ewc {
+        d.set_item("pvalues", pvalues.into_pyarray(py))?;
+        d.set_item("ewc_b", b)?;
+    }
     Ok(d)
+}
+
+/// The covariance choices `ols` accepts.
+const OLS_SE_TYPES: [&str; 7] = ["nonrobust", "hc0", "hc1", "hc2", "hc3", "hac", "ewc"];
+
+fn unknown_ols_se_type(se_type: &str) -> PyErr {
+    PyValueError::new_err(format!(
+        "unknown se_type {se_type:?}; expected nonrobust/hc0/hc1/hc2/hc3/hac/ewc"
+    ))
 }
 
 fn var_results(
@@ -1168,7 +1403,14 @@ fn mat_to_vec2(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f64>> {
 ///
 /// Stability: read `is_stable` (bool). `min_root`/`max_root` are the smallest
 /// and largest moduli of the reciprocal characteristic roots — the system is
-/// stable iff `min_root > 1`, so `max_root` alone is NOT a verdict.
+/// stable iff `min_root > 1`, so `max_root` alone is NOT a verdict. The roots
+/// are solved on an exactly balanced companion matrix, so they do not depend
+/// on the units of the series.
+///
+/// The sample must leave at least k residual degrees of freedom,
+/// `len(data) >= lags + n_trend + k*lags + k`: with fewer, the k x k residual
+/// covariance is singular whatever the data, and the call is refused naming
+/// the sample size and the largest lag order that fits.
 ///
 /// Returns dict keys: `params` (the `(n_trend + k p) x k` stacked coefficient
 /// matrix, statsmodels layout — rows `[const, lag-1 var 1..k, ...]`, one
@@ -1241,6 +1483,11 @@ fn var_fit<'py>(
 ///
 /// This returns the point path only. For frequentist confidence bands
 /// (delta-method or bootstrap) use `var_irf_bands`.
+///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before anything is
+/// allocated; past it the call is refused naming `horizon` and the largest
+/// horizon that fits (399456 on two variables).
 ///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c"), `cumulative`
 /// (False).
@@ -1506,6 +1753,27 @@ fn set_lp_band_items<'py>(
 /// alone reproduces it — use a large `n_boot` (999+, not 199), since this is a
 /// quantile in the tail of a maximum. Šidák and Bonferroni need neither.
 ///
+/// INERT KEYWORDS ARE REFUSED, compared to their defaults, as in
+/// `long_run_svar_bands`: `n_boot` and `seed` with `method="asymptotic"`
+/// (which draws nothing); `band_seed` and `band_n_sim` anywhere but the
+/// asymptotic sup-t band; a non-default `band_scope` with `band="pointwise"`;
+/// and `bias_correct=True` with `method="asymptotic"`.
+///
+/// SIZE BUDGET. The working set is counted as real storage (padded matrices
+/// and Python lists) and budgeted at 2^28 values (2 GiB) before anything is
+/// allocated; a refusal names the keyword whose term is over and states the
+/// largest value that fits at the other arguments. Bootstrap: each
+/// replication keeps its responses in its slot of one store plus a fixed
+/// 48-value overhead (refused naming `n_boot`, or `horizon` when no count
+/// fits: the largest `n_boot` on two variables at horizon 10 is 2886323).
+/// Asymptotic: the pointwise working set (`horizon and lags`), a
+/// simultaneous band's family covariance (`horizon and band_scope`), the
+/// sup-t simulation, (K+1)·band_n_sim values and n_families·band_n_sim·K² ≤
+/// 2^36 multiply-adds (`band_n_sim`), and the delta-method Jacobians,
+/// horizon·(horizon+1)/2 · k² · lags·k² multiply-adds, QUADRATIC in horizon
+/// and capped at 2^28 (`horizon`; a few seconds: 2047 periods on a bivariate
+/// VAR(8), 28 on a 20-variable VAR(4)).
+///
 /// Method: Montiel Olea and Plagborg-Møller, simultaneous confidence bands for
 /// SVARs.
 ///
@@ -1556,6 +1824,15 @@ fn var_irf_bands<'py>(
     // Parsed even at `band="pointwise"`, so a typo in `band_scope` is caught
     // rather than quietly ignored.
     let scope = tsecon_var::irf_asymptotic::IrfBandScope::parse(band_scope).map_err(to_py)?;
+    let asymptotic = match method {
+        "asymptotic" => true,
+        "bootstrap" => false,
+        other => {
+            return Err(PyValueError::new_err(format!(
+                "unknown method {other:?}; expected \"asymptotic\" or \"bootstrap\""
+            )))
+        }
+    };
     let d = PyDict::new(py);
     d.set_item("band", band_method.label())?;
     // Kilian bias correction is a property of the BOOTSTRAP resampling loop --
@@ -1572,9 +1849,36 @@ fn var_irf_bands<'py>(
              persistent VAR), or drop bias_correct to keep the asymptotic band.",
         ));
     }
+    // Keywords this arm and band do not read are refused, compared to their
+    // defaults (the table long_run_svar_bands applies to the same engines).
+    svar_lr::refuse_inert_band_keywords(
+        method,
+        band,
+        asymptotic,
+        band_method,
+        scope,
+        n_boot,
+        seed,
+        band_seed,
+        band_n_sim,
+        false,
+    )?;
     d.set_item("bias_correct", bias_correct)?;
     match method {
         "asymptotic" => {
+            // The whole delta-method request is sized before the fit: its
+            // working set, the quadratic Jacobian work and the sup-t
+            // simulation, each refused naming its keyword.
+            tsecon_var::irf_asymptotic::check_irf_asymptotic_budget(
+                data.as_array().ncols(),
+                lags,
+                horizon,
+                band_method
+                    .is_simultaneous()
+                    .then_some((band_method, scope)),
+                band_n_sim,
+            )
+            .map_err(to_py)?;
             let r = var_results(&data, lags, trend)?;
             // Point path: exactly what `var_irf` returns, cumulated when asked
             // so the bands are anchored on the same estimate the SE describes.
@@ -1726,6 +2030,11 @@ fn var_irf_bands<'py>(
 /// the SAME numbers variable-major (`[variable][horizon][shock]`), so
 /// `np.transpose(res.fevd(horizon).decomp, (1, 0, 2))` equals this output.
 ///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before anything is
+/// allocated; past it the call is refused naming `horizon` and the largest
+/// horizon that fits (399457 on two variables).
+///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
@@ -1757,14 +2066,16 @@ fn var_fevd<'py>(
     pyo3::types::PyList::new(py, out.iter().cloned())
 }
 
-/// Iterated VAR point forecasts with (innovation-uncertainty) intervals.
+/// Iterated VAR point forecasts with (1-alpha) intervals.
 ///
 /// `alpha` sets the interval coverage: the bands are the symmetric
 /// `1 - alpha` asymptotic intervals `point +/- z_{1-alpha/2} * se`
 /// (normal quantile; e.g. the default `alpha=0.05` is a 95% interval
 /// with z = 1.96, `alpha=0.32` a 68% interval with z ~= 0.994).
-/// Intervals reflect innovation uncertainty only (coefficients treated
-/// as known), matching statsmodels `forecast_interval`.
+/// By default the intervals reflect innovation uncertainty only
+/// (coefficients treated as known), matching statsmodels
+/// `forecast_interval`; `param_uncertainty=True` adds Lütkepohl's
+/// `Omega(h)/T` coefficient-estimation term (PARAMETER UNCERTAINTY below).
 ///
 /// SIMULTANEOUS BANDS (`band=`). `lower`/`upper` are MARGINAL whatever you
 /// pass: each covers one (horizon, series) cell. Read as a statement about a
@@ -1798,7 +2109,57 @@ fn var_fevd<'py>(
 /// that band is a pure function of `band_seed`; Šidák and Bonferroni are closed
 /// forms in K and use neither. Method: Montiel Olea and Plagborg-Møller.
 ///
-/// Further arguments, with defaults: `lags` (2), `trend` ("c").
+/// PARAMETER UNCERTAINTY (`param_uncertainty=True`). `cov` (always returned,
+/// `[h][i][j]`, `steps x k x k`, the layout of `var_conditional_forecast`) is
+/// the forecast-error covariance the bands are built from: by default the
+/// plug-in MSE(h) = sum_{i<h} Psi_i Sigma_u Psi_i' (statsmodels `mse`), so
+/// `sqrt(diag cov)` reproduces `lower`/`upper` exactly. With the flag it is
+/// MSE(h) + Omega(h)/T, Lütkepohl's (2005, pp. 96-97) first-order term for
+/// estimating the coefficients (statsmodels `forecast_cov(method="auto")`; T =
+/// effective nobs), and `lower`/`upper` = point -/+ z sqrt(diag cov). At h = 1
+/// it is (1 + m/T) Sigma_u, to rounding, with m = n_trend + k*lags. It is a PARTIAL
+/// repair: on the interval-coverage audit's VAR(1) at T=100 (experiment 3,
+/// its 6000 replications) pooled marginal coverage went from 0.931 to 0.937
+/// and the worst horizon from 0.925 to 0.932 (nominal 0.95; 0.931 to 0.941
+/// when fitted with 4 lags); the rest is small-sample coefficient bias,
+/// which no variance term fixes. It is
+/// derived for a STATIONARY VAR — on near-unit-root levels data it inflates
+/// long-horizon variances by 15-18% through an ill-conditioned Z'Z and is not
+/// a unit-root correction. Unlike statsmodels, whose public "auto" silently
+/// drops the term without a constant, it applies to `trend="n"` too. Only the
+/// pointwise band takes it: `band` other than "pointwise" with the flag is
+/// refused (the joint cross-horizon blocks are a follow-up). COST: about
+/// steps^3 (k^2 + 8) / 3 + steps^2 k^3 / 2 + 2 steps m^3 + steps^2 m^2
+/// operations, with m = n_trend + k*lags regressors per equation. On a small
+/// VAR it is CUBIC in `steps` (measured on the k = 3 VAR(2) of the VAR card:
+/// 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at 500, 0.27 s at 1000); on a
+/// wide one the 2 steps m^3 term dominates, CUBIC in k*lags (k = 60 series
+/// at lags = 20 have m = 1201 and admit at most 4 steps). A work budget of
+/// 2^34 refuses past it (1443 steps on that k = 3 VAR, 0.9 s; 0.9-2.0 s at
+/// the cap for k = 1, 2, 3): naming `steps`, with the remedy for whichever
+/// terms dominate (a shorter horizon, or fewer lags or series), or naming
+/// `lags` when not even one step fits. Without the flag nothing changes.
+///
+/// Returned keys: `point`, `lower`, `upper`, `band`, `cov`,
+/// `param_uncertainty`; with a simultaneous `band` also `se`, `sim_lower`,
+/// `sim_upper`, `critical_value`, `pointwise_critical_value`, `band_scope`,
+/// `n_cells`, `n_cells_used`.
+///
+/// SIZE BUDGET. `steps` is checked against a 2^28-value (2 GiB) memory budget,
+/// counted as real storage, before anything is allocated (refused naming
+/// `steps`, with the largest that fits: 399457 on two variables). A
+/// simultaneous band also builds the joint covariance of every cell,
+/// (steps·k)^2 values whose cross-horizon blocks cost about steps^3/6 products
+/// of k x k matrices (CUBIC in steps), budgeted at 2^28 values and 2^31 work
+/// (about ten seconds; refused naming `steps`: at most 685 on two variables at
+/// lags 2), and the sup-t simulation, (K+1)·band_n_sim values within 2^28 and
+/// n_families·band_n_sim·K^2 multiply-adds within 2^36 (refused naming
+/// `band_n_sim`: at most 15790320 at the default steps on two variables).
+///
+/// Further arguments, with defaults: `lags` (2), `steps` (8), `alpha`
+/// (0.05), `trend` ("c"), `band` ("pointwise"), `band_scope` ("all"),
+/// `band_seed` (20260807), `band_n_sim` (100000), `param_uncertainty`
+/// (False).
 #[pyfunction]
 #[pyo3(signature = (
     data,
@@ -1810,6 +2171,7 @@ fn var_fevd<'py>(
     band_scope = "all",
     band_seed = 20260807,
     band_n_sim = 100000,
+    param_uncertainty = false,
 ))]
 #[allow(clippy::too_many_arguments)]
 fn var_forecast<'py>(
@@ -1823,14 +2185,29 @@ fn var_forecast<'py>(
     band_scope: &str,
     band_seed: u64,
     band_n_sim: usize,
+    param_uncertainty: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
     let r = var_results(&data, lags, trend)?;
     let band_method = var_band_method(band)?;
     // Parsed even at `band="pointwise"`, so a typo is caught, not ignored.
     let scope = tsecon_var::forecast::ForecastBandScope::parse(band_scope).map_err(to_py)?;
+    if param_uncertainty && band_method.is_simultaneous() {
+        return Err(PyValueError::new_err(format!(
+            "var_forecast: param_uncertainty=True is only available with band=\"pointwise\" \
+             (got band={band:?}); the simultaneous bands need the cross-horizon blocks of the \
+             parameter-uncertainty term, which are not implemented. Drop one of the two"
+        )));
+    }
     let fc = if band_method.is_simultaneous() {
         r.forecast_interval_simultaneous(steps, alpha, band_method, scope, band_seed, band_n_sim)
             .map_err(to_py)?
+    } else if param_uncertainty {
+        r.forecast_interval_with(
+            steps,
+            alpha,
+            tsecon_var::ForecastOptions::new().with_param_uncertainty(true),
+        )
+        .map_err(to_py)?
     } else {
         r.forecast_interval(steps, alpha).map_err(to_py)?
     };
@@ -1839,6 +2216,9 @@ fn var_forecast<'py>(
     d.set_item("lower", mat_to_vec2(&fc.lower))?;
     d.set_item("upper", mat_to_vec2(&fc.upper))?;
     d.set_item("band", band_method.label())?;
+    let cov: Vec<Vec<Vec<f64>>> = fc.cov.iter().map(mat_to_vec2).collect();
+    d.set_item("cov", cov)?;
+    d.set_item("param_uncertainty", param_uncertainty)?;
     if let Some(s) = fc.simultaneous.as_ref() {
         d.set_item("se", mat_to_vec2(&fc.se))?;
         d.set_item("sim_lower", mat_to_vec2(&s.lower))?;
@@ -2285,8 +2665,16 @@ fn bn_decomposition<'py>(
 /// smallest odd integer > period; degrees are 0 or 1; jumps >= 1 evaluate
 /// each LOESS every jump-th point with linear interpolation in between;
 /// `inner_iter`/`outer_iter` default to 2/15 when `robust` else 5/0.
-/// Requires n >= 2*period (R's stl() bound). Matches statsmodels 0.14.6
+/// Requires n >= 2*period (R's stl() bound; a longer period is refused
+/// naming `period` and the largest that fits). Matches statsmodels 0.14.6
 /// elementwise at 1e-8 (observed ~1e-12).
+///
+/// `inner_iter` and `outer_iter` are fixed loop counts that never stop
+/// early, so they are budgeted: a request of more than 32 inner passes
+/// (`inner_iter * (outer_iter + 1)`, the robust default's count) whose LOESS
+/// work exceeds 2^32 evaluation units (about half a minute) is refused
+/// before any smoothing, naming the count and its largest admissible value.
+/// The default counts are never refused.
 ///
 /// Returns dict keys: `seasonal`, `trend`, `resid` (`y = seasonal + trend
 /// + resid`), `weights` (bisquare robustness weights, all 1 when
@@ -2364,7 +2752,8 @@ fn stl<'py>(
 /// `strength_seasonal = max(0, 1 - var(resid)/var(seasonal + resid))` and
 /// the analogous trend measure, with sample variances (ddof = 1, R's
 /// `var`) — the numbers behind `nsdiffs` and the tsfeatures/feasts
-/// feature set. Near 1: the component dominates; near 0: absent.
+/// feature set. Near 1: the component dominates; near 0: absent. A period
+/// longer than n/2 is refused naming `period` and the largest that fits.
 ///
 /// Returns dict keys: `seasonal_strength`, `trend_strength`, `period`.
 #[pyfunction]
@@ -2412,6 +2801,10 @@ fn positive_int_seq(name: &str, v: &[i64], example: &str) -> PyResult<Vec<usize>
 /// `lmbda` (Box-Cox) option is deliberately not implemented — transform
 /// `y` first if you need it. Unlike statsmodels, duplicate periods and
 /// `iterate=0` are refused with an error instead of misbehaving silently.
+/// `iterate`, `inner_iter` and `outer_iter` share the STL work budget
+/// (2^32 LOESS units over all rounds and periods, refused before any
+/// smoothing and naming the count; the default counts — at most 32 inner
+/// passes per fit over at most two rounds — are never refused).
 ///
 /// Returns dict keys: `seasonal` (a dict `{"seasonal_<period>": array}`,
 /// ascending periods; the components sum with trend and resid back to
@@ -2597,7 +2990,8 @@ fn accuracy<'py>(
 /// weakly- or non-seasonal data declared with `period > 1` the two
 /// defaults diverge; pass `use_test=False` on the statsmodels side to
 /// compare. `period=1` skips deseasonalization entirely and the pre-test
-/// difference vanishes.
+/// difference vanishes. `steps` is capped at 1,000,000 (as in `arima_fit`
+/// and `ets_fit`: every step is materialised) and refused past that.
 #[pyfunction]
 #[pyo3(signature = (y, steps, period = 1))]
 fn theta_forecast<'py>(
@@ -2749,6 +3143,9 @@ fn resolve_garch_o(vol: &str, o: Option<usize>) -> PyResult<usize> {
 /// only `forecast_horizon` 0 or 1 is accepted, and `forecast_horizon >= 2`
 /// raises a teaching ValueError (simulation-based EGARCH forecasts are not
 /// shipped; GARCH and GJR forecast analytically at every horizon).
+/// `forecast_horizon` is capped at 1,000,000 steps (as in `arima_fit` and
+/// `ets_fit`: every step is materialised) and refused past that, by name,
+/// before anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (y, vol = "garch", mean = "zero", dist = "normal", p = 1, o = None, q = 1, forecast_horizon = 0))]
 #[allow(clippy::too_many_arguments)]
@@ -2766,6 +3163,10 @@ fn garch_fit<'py>(
     use tsecon_garch::GarchModel;
     let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, dist, p, o, q, "dist")?;
+    // The forecast path is materialised: refuse an absurd horizon by name
+    // before anything is fitted (audit round 16; it used to abort the
+    // process on the failed allocation).
+    tsecon_garch::check_forecast_horizon(forecast_horizon).map_err(to_py)?;
     let model = GarchModel::new(&vec1(&y), spec).map_err(to_py)?;
     let r = model.fit().map_err(to_py)?;
     let d = garch_results_dict(py, &r)?;
@@ -2813,6 +3214,9 @@ fn garch_fit<'py>(
 ///
 /// — a `(k, K)` array aligned entry-for-entry with `posterior_mean_coefs`.
 /// Worked example on the Bayesian model card (`docs/reference/model-cards/bayesian.md`).
+///
+/// A sample too short for the AR(scale_ar) scale regressions (2*scale_ar + 2
+/// rows) is refused naming scale_ar and the largest order the sample supports.
 ///
 /// Further arguments, with defaults: `lags` (2), `lambda0` (100.0), `lambda1`
 /// (0.2), `lambda3` (1.0).
@@ -2892,6 +3296,13 @@ fn bvar_fit<'py>(
 ///
 /// `scale_ar` selects the prior's residual-scale convention exactly as
 /// in `bvar_fit` (4 = default; 1 = the GLP 2015 convention).
+///
+/// A sample too short for the AR(scale_ar) scale regressions (2*scale_ar + 2
+/// rows) is refused naming scale_ar and the largest order the sample supports.
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices and the returned lists, counted as real storage) is budgeted at
+/// 2^28 values (2 GiB), and a `horizon` or `n_draws` past it is refused by name
+/// with the largest value that fits.
 ///
 /// Further arguments, with defaults: `lags` (2), `n_draws` (500), `seed` (0),
 /// `lambda0` (100.0), `lambda1` (0.2), `lambda3` (1.0), `delta` (0.0),
@@ -2989,6 +3400,11 @@ fn mat_to_vec2_bayes(m: &tsecon_var::tsecon_linalg::faer::Mat<f64>) -> Vec<Vec<f
 /// `lambda1_fixed_log_ml`, `lambda1_opt`, `lambda3_opt`,
 /// `log_marginal_likelihood`, `log_posterior`, `n_evals`,
 /// `posterior_mean_coefs`, `sigma_posterior_mean`.
+///
+/// `n_grid` is capped at 10000 grid points (refused by name past it). A sample
+/// too short for the AR(scale_ar) scale regressions (2*scale_ar + 2 rows) is
+/// refused naming scale_ar and the largest order the sample supports, before
+/// the search, instead of surfacing as a non-converged optimization.
 ///
 /// Further arguments, with defaults: `lags` (2), `delta` (0.0), `lambda0`
 /// (100.0), `lambda1_init` (0.2), `lambda1_lo` (0.0001), `lambda1_hi` (10.0),
@@ -3098,6 +3514,12 @@ fn bvar_hierarchical<'py>(
 /// [draw][h][variable][shock] for credible bands, the off-diagonal precision
 /// inclusion probabilities `inclusion_prob_cov` (only when `ssvs_cov`), and a
 /// `diagnostics` dict.
+///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices, one RNG substream per chain, the retained-sweep traces and the
+/// returned lists, counted as real storage) is budgeted at 2^28 values (2 GiB),
+/// and a `horizon`, `n_draws` or `n_chains` past it is refused by name with the
+/// largest value that fits.
 ///
 /// Further arguments, with defaults: `lags` (2), `n_draws` (10000), `burn`
 /// (2000), `seed` (0), `prior_inclusion` (0.5), `prior_inclusion_cov` (0.5),
@@ -3209,7 +3631,8 @@ fn mcmc_diagnostics<'py>(
 /// Fit an ARIMA(p,d,q) — optionally a seasonal SARIMA(p,d,q)(P,D,Q)_s
 /// via `seasonal=(P, D, Q, s)` — by exact Gaussian maximum likelihood on
 /// the state-space engine (Monahan-transformed L-BFGS with Nelder-Mead
-/// polish; Hannan-Rissanen starting values). `d > 0` (and `D > 0`) uses
+/// polish; Hannan-Rissanen starting values), or with `method="css"` by
+/// conditional sum of squares (see below). `d > 0` (and `D > 0`) uses
 /// simple differencing (the statsmodels simple_differencing=True
 /// convention, seasonal difference applied first), and forecasts are
 /// undifferenced with exact cumulative variance.
@@ -3253,9 +3676,48 @@ fn mcmc_diagnostics<'py>(
 /// Returns dict keys: `params`, `param_names`, `loglik`, `aic`, `bic`,
 /// `converged`, `bse`, `param_cov`, `cov_ok` (plus `cov_error` on a
 /// refusal), `se_valid`, `boundary`, `boundary_note`, `residuals`,
-/// `drift_uncertainty`, and — when `forecast_steps > 0` —
-/// `forecast_mean` and `forecast_se`, plus `forecast_lower`,
-/// `forecast_upper`, and `conf_alpha` when a band level is passed.
+/// `drift_uncertainty`, `method` (echo), `nobs`, and — when
+/// `forecast_steps > 0` — `forecast_mean` and `forecast_se`, plus
+/// `forecast_lower`, `forecast_upper`, and `conf_alpha` when a band level
+/// is passed.
+///
+/// **`method="css"` — conditional sum of squares.** Minimizes the sum of
+/// squared recursive residuals `e_t = x_t - c - sum phi*_i x_{t-i} -
+/// sum theta*_j e_{t-j}` on the fully differenced series `x`, conditioning
+/// on the first `p + s*P` values and zero pre-sample innovations, with
+/// `sigma2 = SSR / nobs` concentrated out (Box-Jenkins 1976, ch. 7; R's
+/// `arima(method="CSS")`). It is the fast alternative to exact MLE and
+/// agrees with it only asymptotically. Under `"css"`: `loglik` is the
+/// CONDITIONAL Gaussian log-likelihood `-nobs/2 (ln 2 pi + 1 + ln sigma2)`
+/// and `aic`/`bic` are built from it (BIC with `ln(nobs)`) — not comparable
+/// with an exact-MLE fit's; `bse`/`param_cov` come from the numerical
+/// Hessian of that conditional likelihood with `sigma2` free;
+/// `drift_uncertainty=True` therefore uses the CSS `Var(c_hat)`
+/// (`param_cov[0][0]` of the same dict); `residuals` keep the Kalman
+/// standardized-innovation definition (evaluated at the CSS estimates),
+/// and forecasts run the exact state-space recursion at those estimates.
+/// The constant is an INTERCEPT, as for "mle": R and statsforecast report
+/// the MEAN `mu = c / (1 - sum phi*)`. R also counts its CSS log-likelihood
+/// over `n - d - D*s` observations while dividing the SSR by `n - d - D*s -
+/// (p + s*P)` (tsecon uses `nobs` in both places), so R's CSS `loglik` is
+/// lower (on the model card's ARMA(1,1) example, -650.97 vs -649.34) and
+/// its CSS AIC is NA. Validated: the recursion against statsforecast
+/// 2.1.1's port of R's `ARIMA_CSS` at fixed parameters (1e-12, no
+/// optimizer involved), the AR(2) optimum against statsmodels `AutoReg`
+/// (OLS), and the ARMA/SARIMA/MA/ARIMA optimum against a SciPy
+/// Levenberg-Marquardt reference (1e-6; achieved 5.5e-9) —
+/// `fixtures/arima_css.json`. Because the CSS objective is defined past
+/// the unit circle, a trending or unit-root-like series can drive the CSS
+/// AR estimate onto the circle itself (a root of modulus 1 to double
+/// precision), where the Kalman residuals and forecasts have no stationary
+/// model to run on; that fit is refused, naming the remedy (difference the
+/// series, or `method="mle"`), instead of failing inside the state-space
+/// engine.
+///
+/// `nobs` is the number of observations behind `loglik`: `n - d - D*s`
+/// under `"mle"` (simple differencing) and `n - d - D*s - (p + s*P)` under
+/// `"css"`. `forecast_steps` is capped at 1,000,000 (as `ets_fit`'s
+/// horizon is) and refused past that before anything is fitted.
 ///
 /// **Convergence and boundary flags.** `converged` reports whether the
 /// optimizer terminated by its convergence test (the best point found is
@@ -3274,9 +3736,27 @@ fn mcmc_diagnostics<'py>(
 /// Reduced-Hessian interior standard errors over the free directions only
 /// (the garch treatment) are a documented follow-up. `se_valid` is all
 /// False when `cov_ok` is False.
+///
+/// **Absurd orders are refused before anything is allocated.** The exact
+/// likelihood's Kalman filter runs on a state of dimension
+/// `m = max(p + s*P, q + s*Q + 1)`: one evaluation costs about
+/// `(4 n + 200) m^3` multiply-adds and holds `3 (n + 1) m^2` values, and
+/// every fit evaluates it at least `2k(k + 2) + 1` times (one gradient and
+/// the observed-information Hessian behind `bse`; `k` free parameters).
+/// A specification whose guaranteed work passes 2^37 multiply-adds (under
+/// `"css"`: its recursion plus one exact filter pass for the residuals) or
+/// whose filter would hold more than 2^28 values (2 GiB) raises a ValueError
+/// naming p, q and seasonal and the largest state dimension that fits —
+/// `seasonal=(1, 0, 0, 199)` on 200 observations used to run past 40 s
+/// without finishing, and `p=1000` on 2,000 observations would have held
+/// 48 GB per evaluation. Ordinary models stay inside the budget:
+/// an AR(30) on 200 observations took 123 s and a weekly
+/// SARMA(1,1)(1,1)_52 on 520 observations 227 s on a shared 4-core machine
+/// (`lab/arima_budget/out/arima_cost.txt`).
 #[pyfunction]
 #[pyo3(signature = (y, p = 1, d = 0, q = 0, seasonal = None, constant = true,
-                    forecast_steps = 0, conf_alpha = None, drift_uncertainty = false))]
+                    forecast_steps = 0, conf_alpha = None, drift_uncertainty = false,
+                    method = "mle"))]
 #[allow(clippy::too_many_arguments)]
 fn arima_fit<'py>(
     py: Python<'py>,
@@ -3289,7 +3769,15 @@ fn arima_fit<'py>(
     forecast_steps: usize,
     conf_alpha: Option<f64>,
     drift_uncertainty: bool,
+    method: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
+    if method != "mle" && method != "css" {
+        return Err(PyValueError::new_err(format!(
+            "unknown method {method:?}; expected \"mle\" (exact Gaussian maximum \
+             likelihood, the default) or \"css\" (conditional sum of squares)"
+        )));
+    }
+    check_arima_forecast_steps(forecast_steps)?;
     if conf_alpha.is_some() && forecast_steps == 0 {
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
@@ -3328,12 +3816,63 @@ fn arima_fit<'py>(
             .seasonal(v[0] as usize, v[1] as usize, v[2] as usize, v[3] as usize)
             .map_err(to_py)?;
     }
-    let r = spec.fit(&vec1(&y)).map_err(to_py)?;
+    let r = if method == "css" {
+        let r = spec
+            .fit_css(&vec1(&y))
+            .map_err(|e| PyValueError::new_err(format!("arima_fit(method=\"css\"): {e}")))?;
+        // The CSS objective is defined on and past the unit circle, so on a
+        // trending or unit-root-like series its optimum can saturate the
+        // Monahan map until an AR root sits on the circle to double
+        // precision (exact MLE never gets there: its likelihood needs the
+        // stationary distribution). The CSS estimates are then fine, but the
+        // Kalman residuals and forecasts below have no stationary model to
+        // run on; say so in the caller's terms, not the engine's.
+        if r.boundary().iter().any(|&b| b) {
+            if let Err(e) = r.residuals() {
+                return Err(PyValueError::new_err(format!(
+                    "arima_fit(method=\"css\"): the conditional-sum-of-squares estimate \
+                     puts a root of the AR polynomial on the unit circle to double \
+                     precision, so the standardized residuals and forecasts this \
+                     function returns, which run the exact state-space recursion at the \
+                     estimates, have no stationary model to run on ({e}). The series \
+                     behaves like a unit-root or trending process at these orders: \
+                     difference it (raise d, or D, by one), or fit with method=\"mle\", \
+                     whose exact likelihood keeps the estimate inside the stationary region"
+                )));
+            }
+        }
+        r
+    } else {
+        spec.fit(&vec1(&y)).map_err(to_py)?
+    };
     let dct = arima_results_dict(py, &r, forecast_steps, conf_alpha, drift_uncertainty)?;
     // Always present, like cov_ok, so a caller can branch on it without
     // knowing whether this particular call asked for a forecast.
     dct.set_item("drift_uncertainty", drift_uncertainty)?;
+    // Set here, not in the shared arima_results_dict, so auto_arima's
+    // documented key list is unchanged.
+    dct.set_item("method", method)?;
+    dct.set_item("nobs", r.nobs)?;
     Ok(dct)
+}
+
+/// Largest `forecast_steps` `arima_fit` and `auto_arima` accept — the cap
+/// `ets_fit` puts on its horizon. Every step is materialised (mean,
+/// standard error and, with `conf_alpha`, both bands), so a typo such as
+/// `2**33` used to request tens of GiB and abort the process on the failed
+/// allocation; refused before any fitting instead.
+const ARIMA_MAX_FORECAST_STEPS: usize = 1_000_000;
+
+fn check_arima_forecast_steps(forecast_steps: usize) -> PyResult<()> {
+    if forecast_steps > ARIMA_MAX_FORECAST_STEPS {
+        return Err(PyValueError::new_err(format!(
+            "forecast_steps = {forecast_steps} is beyond the {ARIMA_MAX_FORECAST_STEPS} \
+             steps accepted: every forecast step is materialised (mean, standard error \
+             and bands), so a request this long cannot mean what it says and would \
+             exhaust memory; forecast fewer steps"
+        )));
+    }
+    Ok(())
 }
 
 /// A fitted `ArimaResults` as the `arima_fit` result dict (shared by
@@ -3474,7 +4013,17 @@ fn arima_results_dict<'py>(
 /// `interpretation`. For drift-uncertainty forecast bands, refit the
 /// selected order with `arima_fit(..., drift_uncertainty=True)` — the
 /// option needs the constant to be a modeling choice, not a search
-/// outcome.
+/// outcome. `forecast_steps` is capped at 1,000,000, as in `arima_fit`,
+/// and refused past that before the search starts. `max_P` / `max_Q` above
+/// 6 are refused naming the keyword. A `seasonal_period` longer than half
+/// the series (when `D` comes from the seasonal-strength rule, whose STL fit
+/// needs two full cycles), a fixed `D` whose `D * seasonal_period`
+/// differences consume the series, and (with `D=0` fixed) a
+/// `seasonal_period` not shorter than the series are refused before the
+/// search, naming the option and its largest admissible value; a candidate
+/// past `arima_fit`'s
+/// estimation budget is recorded as `fit_failed` and steers the search like
+/// any failed fit.
 ///
 /// Further arguments, with defaults: `seasonal_period` (0), `max_p` (5),
 /// `max_q` (5), `max_P` (2), `max_Q` (2), `max_d` (2), `max_D` (1), `alpha`
@@ -3522,10 +4071,25 @@ fn auto_arima<'py>(
             )))
         }
     };
+    check_arima_forecast_steps(forecast_steps)?;
     if conf_alpha.is_some() && forecast_steps == 0 {
         return Err(PyValueError::new_err(
             "conf_alpha requires forecast_steps >= 1 (there is no forecast to band)",
         ));
+    }
+    // The engine's seasonal-cap refusal names its own fields
+    // (max_seasonal_p / max_seasonal_q); refuse here in the Python keywords,
+    // with the value (audit round 16).
+    let cap = tsecon_arima::auto::MAX_SEASONAL_CAP;
+    for (name, value) in [("max_P", max_P), ("max_Q", max_Q)] {
+        if value > cap {
+            return Err(PyValueError::new_err(format!(
+                "{name} = {value} is beyond the cap of {cap} on the seasonal orders the \
+                 search may visit: each seasonal order multiplies the state dimension by the \
+                 period, and R's own default caps (max.P, max.Q) are 2; {name} can be at most \
+                 {cap}"
+            )));
+        }
     }
     let opts = tsecon_arima::AutoArimaOptions {
         seasonal_period,
@@ -3748,6 +4312,16 @@ fn resolve_lp_se(se: Option<&str>, cumulation: tsecon_lp::Cumulation) -> PyResul
 /// Method: Montiel Olea and Plagborg-Møller.
 ///
 /// Returned keys: `horizons`, `irf`, `se`, `se_method`.
+///
+/// `band_n_sim` is checked, before anything is estimated, against the sup-t
+/// budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+/// band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+/// naming `band_n_sim` and the largest count that fits (19173961 at the
+/// default 12 horizons).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -3848,6 +4422,10 @@ fn lp<'py>(
 ///
 /// Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
 /// (0.1).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -3944,6 +4522,10 @@ fn lp_iv<'py>(
 /// `first_stage_f`, `horizons`, `multiplier`, `nobs_per_h`, `se`.
 ///
 /// Further arguments, with defaults: `maxlags` (None), `band_alpha` (0.1).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -4091,6 +4673,11 @@ fn lasso<'py>(
 /// plus the mandatory acceptance `diagnostics` — in set-identified settings
 /// the diagnostics are the inference.
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices, one RNG substream per draw and the returned lists, counted as real
+/// storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or `n_draws`
+/// past it is refused by name with the largest value that fits.
+///
 /// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
 /// (400), `seed` (0), `lambda1` (0.2).
 ///
@@ -4183,6 +4770,11 @@ fn sign_restricted_svar<'py>(
 /// `var_irf(orth=True)` deterministically.
 /// `arw_weighted` echoes whether the ARW importance weights were applied to
 /// `quantiles` (the `weighted` flag as resolved).
+///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices, one RNG substream per draw and the returned lists, counted as real
+/// storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or `n_draws`
+/// past it is refused by name with the largest value that fits.
 ///
 /// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
 /// (400), `seed` (0), `lambda1` (0.2).
@@ -4291,35 +4883,68 @@ fn zero_sign_svar<'py>(
 /// recursive frequency-zero restriction (the analog of R `vars::BQ`).
 ///
 /// Returns `impact` (B), `long_run` (LR), `irf`, `cumulative_irf`, `fevd`,
-/// and `long_run_multiplier` (C(1)). Point estimates, no RNG.
+/// and `long_run_multiplier` (C(1)). Point estimates, no RNG. For confidence
+/// bands use `long_run_svar_bands`.
+///
+/// `normalize="long_run"` (the default) makes each shock's long-run PIVOT
+/// positive: LR[m][s], with m the number of long-run zeros in shock s's
+/// column of `restrictions` (the first variable the shock may move
+/// permanently). Under the default recursive pattern the pivots are the
+/// long-run diagonal; under a permuted pattern the diagonal can be negative
+/// or an imposed zero. `normalize="impact"` makes the impact diagonal
+/// positive instead.
+///
+/// `impact_signs` (None) is a list of `(variable, shock)` pairs that anchor
+/// each listed shock's sign on its impact response, applied AFTER
+/// `normalize`: when `impact[variable][shock] < 0` (strictly; an exact zero
+/// is left alone) that shock's column is negated in `impact`, `long_run` and
+/// `irf`, and `cumulative_irf` is recomputed from the flipped `irf` (`fevd`
+/// is sign-invariant). Unlisted shocks keep the `normalize` rule. Blanchard
+/// and Quah sign the demand disturbance so output rises on impact, which is
+/// `impact_signs=[(0, 1)]` with output growth ordered first. Refused, naming
+/// `impact_signs`: an index outside 0..k-1, or the same shock listed twice.
+///
+/// Also refused, naming the parameter: `lags` = 0 (a VAR(0) has no long-run
+/// multiplier); a malformed `restrictions` pair (e.g. `[(0,)]`) or a pattern
+/// that is not a column permutation of the recursive one; and a `horizon`
+/// whose responses, cumulated responses and decomposition would exceed a
+/// 2^28-value (2 GiB) memory budget, counted as real storage and checked
+/// before anything is allocated (the refusal states the largest horizon that
+/// fits: 399456 on two variables).
 ///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
-/// ("c"), `restrictions` (None), `normalize` ("long_run").
+/// ("c"), `restrictions` (None), `normalize` ("long_run"), `impact_signs`
+/// (None).
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", restrictions = None, normalize = "long_run"))]
+#[pyo3(signature = (data, lags = 2, horizon = 12, trend = "c", restrictions = None, normalize = "long_run", impact_signs = None))]
+#[allow(clippy::too_many_arguments)]
 fn long_run_svar<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
     lags: usize,
     horizon: usize,
     trend: &str,
-    restrictions: Option<Vec<(usize, usize)>>,
+    #[pyo3(from_py_with = svar_lr::restrictions_arg)] restrictions: Option<Vec<(usize, usize)>>,
     normalize: &str,
+    #[pyo3(from_py_with = svar_lr::impact_signs_arg)] impact_signs: Option<Vec<(usize, usize)>>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    let normalize_impact = match normalize {
-        "long_run" => false,
-        "impact" => true,
-        other => {
-            return Err(PyValueError::new_err(format!(
-                "unknown normalize {other:?}; expected \"long_run\" or \"impact\""
-            )))
-        }
-    };
+    let normalize_impact = svar_lr::parse_normalize(normalize)?;
+    // Named here, as long_run_svar_bands names it (the identification engine
+    // would name its own `coefs` argument).
+    svar_lr::require_var_lags(lags)?;
+    // The responses, their cumulation and the decomposition are sized before
+    // the fit (the identification engine allocates them unchecked).
+    tsecon_var::budget::check_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
     // Reduced form via the existing OLS VAR path (this is the only use of
     // tsecon-var here; r.coefs is already the split [A_1..A_p] form).
     let r = var_results(&data, lags, trend)?;
     let coefs: Vec<_> = r.coefs.iter().map(|m| m.as_ref()).collect();
-    let res = tsecon_ident::long_run::long_run_svar(
+    // Anchors are validated before the identification so a bad index is
+    // refused by name even when the fit itself would fail later.
+    if let Some(anchors) = impact_signs.as_deref() {
+        tsecon_ident::validate_impact_signs(anchors, r.neqs).map_err(to_py)?;
+    }
+    let mut res = tsecon_ident::long_run::long_run_svar(
         &coefs,
         r.sigma_u.as_ref(),
         horizon,
@@ -4327,6 +4952,9 @@ fn long_run_svar<'py>(
         normalize_impact,
     )
     .map_err(to_py)?;
+    if let Some(anchors) = impact_signs.as_deref() {
+        tsecon_ident::apply_impact_signs(&mut res, anchors).map_err(to_py)?;
+    }
 
     // irf[h][i][j] and its running-sum cumulative (level response in differences).
     let irf: Vec<Vec<Vec<f64>>> = res.irf.iter().map(mat_to_vec2).collect();
@@ -4392,6 +5020,11 @@ fn long_run_svar<'py>(
 /// `fev_share` [horizon+1], `eigenvalues` (ascending; length k, or k-1 when
 /// `exclude_impact`).
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices and the returned lists, counted as real storage) is budgeted at
+/// 2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+/// largest value that fits.
+///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (
@@ -4455,6 +5088,9 @@ fn max_share_svar<'py>(
     // Reduced form via the shared VAR OLS helper (matches var_fit at 1e-8),
     // then the orthogonalized MA Theta_s = Psi_s P (identical to the array
     // behind var_fevd / var_irf orth=True).
+    // The MA path and the nested lists returned for it, sized before
+    // anything is allocated (a horizon past the budget is refused by name).
+    tsecon_ident::check_irf_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
     let r = var_results(&data, lags, trend)?;
     let theta = r.orth_ma_rep(horizon).map_err(to_py)?;
 
@@ -4477,6 +5113,44 @@ fn max_share_svar<'py>(
     d.set_item("fev_share", out.fev_share)?;
     d.set_item("eigenvalues", out.eigenvalues)?;
     Ok(d)
+}
+
+/// The proxy-SVAR bootstrap working set, checked before any replication is
+/// spawned: per replication one RNG substream, its own `(horizon + 1)`
+/// moving-average path (`n x n` each: replications run in parallel, so it
+/// is counted per replication, as `long_run_svar_bands` counts its
+/// bootstrap paths), its `(horizon + 1) x n` response rows and the per-draw
+/// diagnostics (`gamma_norm`, `rho`, the first-stage F and reliability, all
+/// also returned as lists); plus the point MA path and the reported bands.
+/// Names `horizon` (when one replication at that horizon does not fit) or
+/// `n_boot`.
+fn proxy_bands_budget(
+    n: usize,
+    horizon: usize,
+    n_boot: usize,
+) -> Result<(), tsecon_bayes::BayesError> {
+    use tsecon_bayes::budget::{check_memory, irf_path_values, mat_values, SizeArg, STREAM_VALUES};
+    let n128 = n as u128;
+    check_memory(
+        "the bootstrap replications (per replication one RNG substream, its (horizon \
+         + 1) n x n moving-average path, (horizon + 1) x n responses and the per-draw \
+         diagnostics, also returned as lists)",
+        &[
+            SizeArg::new("horizon", horizon, 0),
+            SizeArg::new("n_boot", n_boot, 2),
+        ],
+        |v| {
+            let hs = (v[0] as u128).saturating_add(1);
+            let per_rep = STREAM_VALUES
+                .saturating_add(irf_path_values(n, v[0], 0))
+                .saturating_add(hs.saturating_mul(n128.saturating_add(3)))
+                .saturating_add(n128.saturating_add(6).saturating_mul(6));
+            (v[1] as u128)
+                .saturating_mul(per_rep)
+                .saturating_add(irf_path_values(n, v[0], mat_values(n)))
+                .saturating_add(hs.saturating_mul(n128.saturating_mul(36).saturating_add(64)))
+        },
+    )
 }
 
 /// Proxy SVAR / external-instrument identification (SVAR-IV): one structural
@@ -4507,6 +5181,11 @@ fn max_share_svar<'py>(
 /// (weak-instrument-robust Anderson-Rubin sets) when it is True -- both
 /// ship in this module.
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices and the returned lists, counted as real storage) is budgeted at
+/// 2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+/// largest value that fits.
+///
 /// Further arguments, with defaults: `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, proxy, lags = 2, horizon = 12, norm_var = 0, unit = 1.0, trend = "c", robust_f = true))]
@@ -4522,6 +5201,9 @@ fn proxy_svar<'py>(
     trend: &str,
     robust_f: bool,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // The MA path and the nested lists returned for it, sized before
+    // anything is allocated (a horizon past the budget is refused by name).
+    tsecon_ident::check_irf_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
     let r = var_results(&data, lags, trend)?;
     let psi = r.ma_rep(horizon).map_err(to_py)?;
     let n_obs = data.as_array().nrows();
@@ -4795,6 +5477,11 @@ fn align_proxy_rows(pv: Vec<f64>, n_obs: usize, lags: usize, t: usize) -> PyResu
 /// `point_reliability`, `reliability_draws`, `rho_draws`, `se`, `upper`,
 /// `upper_efron`, `validity_note`.
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices, one RNG substream per replication and the returned lists, counted
+/// as real storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or
+/// `n_boot` past it is refused by name with the largest value that fits.
+///
 /// Further arguments, with defaults: `lags` (2), `horizon` (12), `trend`
 /// ("c"), `n_boot` (2000), `seed` (0), `block_length` (None), `robust_f`
 /// (True).
@@ -4854,6 +5541,7 @@ fn proxy_svar_bands<'py>(
         tsecon_var::tsecon_linalg::faer::Mat::from_fn(arr.nrows(), arr.ncols(), |i, j| arr[(i, j)]);
     let t = n_obs.saturating_sub(lags);
     let proxy_aligned = align_proxy(pv, n_obs, lags, t)?;
+    proxy_bands_budget(arr.ncols(), horizon, n_boot).map_err(to_py)?;
 
     let r = bands_fn(endog.as_ref(), &proxy_aligned, &spec).map_err(to_py)?;
 
@@ -4992,6 +5680,15 @@ fn proxy_svar_bands<'py>(
 /// `critical_value`, `first_stage_f`, `impact`, `level`, `n_proxy`,
 /// `reduced_form_uncertainty`.
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices and the returned lists, counted as real storage) is budgeted at
+/// 2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+/// largest value that fits. The delta-method Jacobians cost
+/// horizon*(horizon+1)/2 * n*lags * n*(n+1) multiply-adds, quadratic in
+/// horizon, capped at 2^32 (under half a minute; refused naming horizon), and the
+/// second-order simulation's rf_draws rows of (horizon+1)*n responses share the
+/// memory budget (refused naming horizon or rf_draws).
+///
 /// Further arguments, with defaults: `norm_var` (0), `unit` (1.0), `trend`
 /// ("c"), `hac_lags` (None).
 #[pyfunction]
@@ -5018,10 +5715,23 @@ fn proxy_ar_sets<'py>(
     rf_seed: Option<u64>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_ident::proxy_ar::{
-        pope_bias_corrected_coefs, proxy_ar_sets as ar_fn, psi_reduced_form_cov,
-        psi_reduced_form_cov_mc, ArCritical, ArReducedForm, ArVariance, ArVarianceSpec,
+        check_ar_sets_budget, pope_bias_corrected_coefs, proxy_ar_sets as ar_fn,
+        psi_reduced_form_cov, psi_reduced_form_cov_mc, ArCritical, ArReducedForm, ArRfBudget,
+        ArVariance, ArVarianceSpec,
     };
 
+    // The MA path, the nested lists returned for it and the reduced-form
+    // variance the call will run, sized together before anything is
+    // allocated, so a refusal quotes a horizon (or rf_draws) that passes
+    // every budget. An unknown rf_method is refused by name further down.
+    let rf_budget = match (reduced_form_uncertainty, rf_method) {
+        (true, "delta") => ArRfBudget::Delta,
+        (true, "second_order" | "second_order_bc") => ArRfBudget::Simulation {
+            draws: rf_draws.unwrap_or(256),
+        },
+        _ => ArRfBudget::Off,
+    };
+    check_ar_sets_budget(data.as_array().ncols(), lags, horizon, rf_budget).map_err(to_py)?;
     let r = var_results(&data, lags, trend)?;
     let psi = r.ma_rep(horizon).map_err(to_py)?;
     let n_obs = data.as_array().nrows();
@@ -5242,6 +5952,12 @@ fn proxy_ar_sets<'py>(
 /// `converged`, `n_iter`, and `order` (raw FastICA index per identified
 /// position).
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices and the returned lists, counted as real storage) is budgeted at
+/// 2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+/// largest value that fits. `lags=0` is refused naming lags before the FastICA
+/// iterations.
+///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c"), `max_iter`
 /// (200), `tol` (1e-08).
 #[pyfunction]
@@ -5350,6 +6066,11 @@ fn nongaussian_svar<'py>(
 /// B/Theta_h are not provided in this closed-form build; the >2-regime and
 /// Markov-switching/GARCH variants are deferred.
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices and the returned lists, counted as real storage) is budgeted at
+/// 2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+/// largest value that fits.
+///
 /// Further arguments, with defaults: `trend` ("c").
 #[pyfunction]
 #[pyo3(signature = (data, regime_labels, lags = 2, horizon = 12, trend = "c", base_regime = None, sign_normalization = "max"))]
@@ -5389,6 +6110,9 @@ fn hetero_svar<'py>(
     }
 
     // One pooled reduced-form VAR on the full sample.
+    // The MA path and the nested lists returned for it, sized before
+    // anything is allocated (a horizon past the budget is refused by name).
+    tsecon_ident::check_irf_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
     let r = var_results(&data, lags, trend)?;
     let resid = &r.resid; // (T - p) x n
     let t_eff = resid.nrows();
@@ -5534,7 +6258,29 @@ fn hetero_svar<'py>(
 /// The Driscoll-Kraay lag-truncation bandwidth used when the caller does
 /// not pass one (`bandwidth=None`): Bartlett weights over lags 1..=4, the
 /// same value the pre-0.6.0 signature carried as its literal default.
-const PANEL_DK_DEFAULT_BANDWIDTH: f64 = 4.0;
+pub(crate) const PANEL_DK_DEFAULT_BANDWIDTH: f64 = 4.0;
+
+/// [`to_py`] for a panel call that may compute a Driscoll-Kraay covariance.
+/// The core refuses `bandwidth + 1` past the periods that carry scores with
+/// a message starting `bandwidth:` and quoting the value; when the caller
+/// left `bandwidth` out, it adds that the value is the default (`default`),
+/// so the refusal does not seem to quote an argument nobody passed.
+pub(crate) fn dk_to_py<E: std::fmt::Display>(
+    bandwidth: Option<f64>,
+    default: f64,
+) -> impl Fn(E) -> PyErr {
+    move |e| {
+        let msg = e.to_string();
+        if bandwidth.is_none() && msg.starts_with("bandwidth:") {
+            PyValueError::new_err(format!(
+                "{msg} (bandwidth was not passed: {default:?} is its default under \
+                 se_type=\"driscoll_kraay\")"
+            ))
+        } else {
+            PyValueError::new_err(msg)
+        }
+    }
+}
 
 fn panel_se(
     caller: &str,
@@ -5619,7 +6365,10 @@ pub(crate) fn panel_data(
 /// `bandwidth` is the Driscoll-Kraay lag truncation and acts ONLY under
 /// `se_type="driscoll_kraay"` (default when omitted there: 4.0); passing
 /// it explicitly with any other `se_type` **raises** instead of being
-/// silently absorbed. Matches linearmodels PanelOLS conventions.
+/// silently absorbed. `bandwidth + 1` above the number of periods that
+/// carry scores (T on a balanced panel) raises too, naming `bandwidth`:
+/// past it no lag is added and every standard error only shrinks, like
+/// `sqrt(T / (bandwidth + 1))`. Matches linearmodels PanelOLS conventions.
 /// `mask` (default None = a balanced panel) is an `N x T` array of 0/1
 /// (False/True) flags, 1 where the entity is observed in that period, for an
 /// UNBALANCED panel: cells outside the mask are ignored and may hold NaN;
@@ -5631,7 +6380,10 @@ pub(crate) fn panel_data(
 /// panel, fixtures/panel_unbalanced.json); a mask that is 1 everywhere is
 /// bit-identical to no mask.
 ///
-/// Returned keys: `bse`, `params`, `se_type`, `tvalues`.
+/// Returned keys: `bse`, `params`, `se_type`, `tvalues`, plus (since 0.11.0)
+/// `cov` (k x k nested lists — with `panel_re`'s, the FE-vs-RE contrast),
+/// `names` (`x0`..), `nobs` (observed cells), `n_entities` (entities with an
+/// observation) and `df_resid` (`nobs - k - n_entities`).
 #[pyfunction]
 #[pyo3(signature = (outcome, regressors, se_type = "cluster", bandwidth = None, mask = None))]
 fn panel_fe<'py>(
@@ -5654,12 +6406,22 @@ fn panel_fe<'py>(
     let fit = tsecon_panel::panel_ols_fe(&data).map_err(to_py)?;
     let inf = fit
         .inference(panel_se("panel_fe", se_type, bandwidth)?)
-        .map_err(to_py)?;
+        .map_err(dk_to_py(bandwidth, PANEL_DK_DEFAULT_BANDWIDTH))?;
+    let kk = fit.params.len();
+    let cov: Vec<Vec<f64>> = (0..kk)
+        .map(|a| (0..kk).map(|b| inf.cov[(a, b)]).collect())
+        .collect();
+    let n_entities = data.entity_counts().iter().filter(|&&c| c > 0).count();
     let d = PyDict::new(py);
     d.set_item("params", fit.params.clone().into_pyarray(py))?;
     d.set_item("bse", inf.bse.into_pyarray(py))?;
     d.set_item("tvalues", inf.tvalues.into_pyarray(py))?;
     d.set_item("se_type", se_type)?;
+    d.set_item("cov", cov)?;
+    d.set_item("names", fit.names.clone())?;
+    d.set_item("nobs", fit.nobs)?;
+    d.set_item("n_entities", n_entities)?;
+    d.set_item("df_resid", fit.df_resid)?;
     Ok(d)
 }
 
@@ -5675,7 +6437,13 @@ fn panel_fe<'py>(
 /// `se_type="driscoll_kraay"` (the default se_type; bandwidth defaults to
 /// 4.0 when omitted there). Passing bandwidth explicitly with
 /// `se_type="cluster"`/`"nonrobust"` **raises** instead of being silently
-/// absorbed — those estimators use no kernel.
+/// absorbed — those estimators use no kernel. `bandwidth + 1` above the
+/// number of periods that carry scores at some horizon `h` (`T - h -
+/// n_lag_controls` on a balanced panel) raises too, naming `bandwidth` and
+/// `h`: past it no lag is added and the standard errors only shrink. At the
+/// default bandwidth that is any horizon with `T - h - n_lag_controls < 5`
+/// (every `T <= 14` at the default `horizon` and `n_lag_controls`), and the
+/// message then says the 4.0 is the default.
 ///
 /// JACKKNIFE CAVEAT (measured): the DJ correction removes the O(1/T) bias
 /// but inflates the estimator's finite-sample variance while `se` is kept
@@ -5775,7 +6543,8 @@ fn panel_lp<'py>(
             )))
         }
     };
-    let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg).map_err(to_py)?;
+    let r = tsecon_panel::panel_lp(&data, &vec1(&shock), &cfg)
+        .map_err(dk_to_py(bandwidth, PANEL_DK_DEFAULT_BANDWIDTH))?;
     // Closed-form band over the horizons of this one response. Same machinery
     // and same refusal (`sup-t` needs a cross-horizon covariance nobody
     // estimates here) as lp_iv / lp_multiplier / lp_state.
@@ -5927,6 +6696,8 @@ fn lp_did<'py>(
 
 /// Clark-West test for nested-model equal predictive accuracy (Clark-West
 /// 2007). One-sided; the null is that the small (nested) model is as good.
+/// `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+/// below the number of observations (refused by name otherwise).
 ///
 /// Returned keys: `cw_stat`, `mean_adj_diff`, `p_value`.
 ///
@@ -5958,6 +6729,8 @@ fn cw_test<'py>(
 
 /// Giacomini-White unconditional test of equal predictive ability
 /// (Giacomini-White 2006), chi-squared(1) on a loss differential.
+/// `lrv_lags` is the Bartlett long-run-variance lag truncation and must be
+/// below the number of observations (refused by name otherwise).
 ///
 /// Returned keys: `df`, `gw_stat`, `p_value`.
 ///
@@ -6373,7 +7146,10 @@ fn vecm<'py>(
 /// the beta grid search never runs (`beta_grid` is returned empty), so
 /// passing `n_grid_beta`/`beta_span` explicitly alongside it **raises**
 /// rather than being silently ignored (they default to 50/10.0 when
-/// `None`).
+/// `None`). The searched grid is budgeted at
+/// `n_grid_beta * min(n_grid_gamma, n) <= 2^20` cells (`n` the usable
+/// rows): a larger `n_grid_beta` is refused by name, with its largest
+/// admissible value, before the grid is allocated.
 ///
 /// Returns `beta`, `threshold`, per-regime coefficients
 /// (`params_low`/`params_high`, k x n_regressors) with EICKER-WHITE
@@ -6489,7 +7265,9 @@ fn threshold_vecm<'py>(
 /// `engle_granger`). Unlike `threshold_vecm` — whose `beta=None` grid
 /// SEARCH is bivariate-only — the null beta here is the linear Johansen
 /// ML estimate, defined for any k, so k > 2 with an estimated (null)
-/// beta is accepted.
+/// beta is accepted. `n_boot` is at most 1000000 (the p-value's Monte
+/// Carlo standard error is at most 0.0005 there), refused by name before
+/// any replication runs.
 ///
 /// Returns `stat`, `p_value`, `threshold` (the sup's location), `beta`
 /// (the vector used), `n_boot`, `nobs`, the candidate grid `thresholds`
@@ -6797,7 +7575,9 @@ fn spread_zscore<'py>(
 /// reports `converged` (whether the log-likelihood improvement fell below
 /// `tol`) and `iterations` (EM steps actually run — `converged = False`
 /// with `iterations == max_iter` means the cap bound, so raise `max_iter`
-/// or loosen `tol`).
+/// or loosen `tol`). `k_regimes >= 2`, and the filter's expanded state
+/// space `k_regimes^(order + 1)` is at most 4096 (refused by name, stating
+/// the largest admissible `k_regimes` and `order`).
 /// `smoothed_prob_last_regime` (= `smoothed_prob[:, -1]`) is kept for
 /// back-compatibility with 0.2.0, which returned only that column.
 ///
@@ -6994,7 +7774,9 @@ fn setar<'py>(
 /// `eta` iid standard normal) on the same fixed regressors and recomputes
 /// the sup; `p_value = (1 + #{F* >= F}) / (n_boot + 1)`. Replications run
 /// in parallel with one seeded RNG substream each, so the p-value is
-/// bit-identical for a given `seed` at any thread count.
+/// bit-identical for a given `seed` at any thread count. `n_boot` is at
+/// most 1000000 (the p-value's Monte Carlo standard error is at most
+/// 0.0005 there), refused by name before any replication runs.
 ///
 /// Returns stat, p_value, the threshold attaining the sup, delay, n_boot,
 /// nobs, ssr_linear, ssr_setar, the candidate grid (`thresholds`) with the
@@ -7106,7 +7888,10 @@ fn star_eval_into_dict<'py>(
 /// (`grid_gamma` raw, `grid_c`, `ssr_grid` shaped (n_gamma, n_c) with NaN
 /// for singular cells, `best_cell`, `fevals`). Validated against an
 /// independent NumPy transcription (fixtures/star.json) plus seeded MC
-/// recovery; see `star_test` for the modeling-cycle battery.
+/// recovery; see `star_test` for the modeling-cycle battery. The grid is
+/// budgeted at `n_gamma * n_c <= 2^20` cells per candidate delay (the
+/// default is 25 x 25): a larger grid is refused by name, with the largest
+/// admissible `n_gamma` and `n_c`, before it is allocated.
 ///
 /// Further arguments, with defaults: `constant` (True).
 #[pyfunction]
@@ -7363,7 +8148,9 @@ fn threshold_var<'py>(
 /// replications draws y*_t = u_t * eta_t (eta iid N(0,1)),
 /// re-residualizes on the same fixed regressors, and recomputes the same
 /// sup; `p_value` = (1 + #{W* >= W}) / (n_boot + 1) — seeded, parallel,
-/// bit-identical at any thread count. (R tsDyn's TVAR.LRtest is a
+/// bit-identical at any thread count; `n_boot` is at most 1000000 (the
+/// p-value's Monte Carlo standard error is at most 0.0005 there), refused
+/// by name before any replication runs. (R tsDyn's TVAR.LRtest is a
 /// DIFFERENT convention — sup-LR with a residual bootstrap; same
 /// question, non-comparable statistic values.)
 ///
@@ -7426,7 +8213,8 @@ fn threshold_var_test<'py>(
 
 /// MIDAS weight function (normalized to sum 1). `scheme`: "exp_almon"
 /// (uses theta1, theta2) or "beta" (uses theta1, theta2 as the two shape
-/// parameters). `k` is the number of high-frequency lags.
+/// parameters). `k` is the number of high-frequency lags, at most
+/// 2^27 = 134217728 (refused by name before anything is allocated).
 #[pyfunction]
 #[pyo3(signature = (scheme, theta1, theta2, k))]
 fn midas_weights<'py>(
@@ -7453,6 +8241,11 @@ fn midas_weights<'py>(
 /// constant plus the `hf_lags` columns). `hf_lags` is `nobs x K` (each
 /// column a high-frequency lag). Returns params, HAC standard errors, and R².
 ///
+/// `se_type`: `"hac"` (default) — Bartlett/Newey-West with the `n/(n - k)`
+/// small-sample factor at `maxlags` (None: the Newey-West rule
+/// `floor(4 (nobs/100)^(2/9))`); or `"nonrobust"`, where an explicit
+/// `maxlags` is refused — it is the HAC bandwidth and would be ignored.
+///
 /// Returned keys: `bse`, `params`, `rsquared`.
 ///
 /// Further arguments, with defaults: `se_type` ("hac"), `maxlags` (None).
@@ -7468,7 +8261,15 @@ fn umidas<'py>(
     let a = hf_lags.as_array();
     let cols: Vec<Vec<f64>> = (0..a.ncols()).map(|j| a.column(j).to_vec()).collect();
     let se = match se_type {
-        "nonrobust" => tsecon_midas::SeType::NonRobust,
+        "nonrobust" => {
+            if let Some(l) = maxlags {
+                return Err(PyValueError::new_err(format!(
+                    "umidas: maxlags = {l} has no effect under se_type=\"nonrobust\" (it is \
+                     the HAC bandwidth); drop it, or pass se_type=\"hac\""
+                )));
+            }
+            tsecon_midas::SeType::NonRobust
+        }
         "hac" => tsecon_midas::SeType::Hac {
             kernel: tsecon_hac::Kernel::Bartlett,
             bandwidth: maxlags.unwrap_or_else(|| tsecon_hac::newey_west_maxlags(a.nrows())) as f64,
@@ -7595,6 +8396,11 @@ fn returns_to_series(r: &numpy::PyReadonlyArray2<'_, f64>) -> Vec<Vec<f64>> {
 /// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
 /// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
 /// the simulation route is not shipped).
+/// `forecast_horizon` is capped at 1,000,000 steps and at a working set of
+/// 2^28 values (2 GiB) for the forecast matrices and their nested lists, so
+/// the largest admissible horizon shrinks with the number of series `k`;
+/// past that it is refused, naming the largest horizon for `k`, before
+/// anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (returns, forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -7611,6 +8417,17 @@ fn ccc_garch<'py>(
 ) -> PyResult<Bound<'py, PyDict>> {
     let o = resolve_garch_o(vol, o)?;
     let spec = parse_garch_spec(vol, mean, univariate_dist, p, o, q, "univariate_dist")?;
+    // The (forecast_horizon, k, k) forecast is materialised (and converted
+    // to nested lists): refuse a horizon past the size budget for k series
+    // by name before anything is fitted (audit round 16).
+    if forecast_horizon > 0 {
+        tsecon_mgarch::check_forecast_horizon(
+            tsecon_mgarch::ForecastKind::Ccc,
+            returns.as_array().ncols(),
+            forecast_horizon,
+        )
+        .map_err(to_py)?;
+    }
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::CccGarch::new(spec)
         .fit(&series)
@@ -7736,6 +8553,11 @@ fn ccc_garch<'py>(
 /// accepts `forecast_horizon` 0 or 1 only and raises a teaching ValueError at
 /// 2 or more (no closed-form multi-step EGARCH variance forecast exists and
 /// the simulation route is not shipped).
+/// `forecast_horizon` is capped at 1,000,000 steps and at a working set of
+/// 2^28 values (2 GiB) for the two forecast paths of `k x k` matrices and
+/// their nested lists, so the largest admissible horizon shrinks with the
+/// number of series `k`; past that it is refused, naming the largest
+/// horizon for `k`, before anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (returns, variant = "dcc", dist = "normal", forecast_horizon = 0, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -7777,6 +8599,17 @@ fn dcc_garch<'py>(
             )))
         }
     };
+    // The two (forecast_horizon, k, k) forecast paths are materialised (and
+    // converted to nested lists): refuse a horizon past the size budget for
+    // k series by name before anything is fitted (audit round 16).
+    if forecast_horizon > 0 {
+        tsecon_mgarch::check_forecast_horizon(
+            tsecon_mgarch::ForecastKind::Dcc,
+            returns.as_array().ncols(),
+            forecast_horizon,
+        )
+        .map_err(to_py)?;
+    }
     let series = returns_to_series(&returns);
     let fit = tsecon_mgarch::DccGarch::new(spec)
         .with_variant(v)
@@ -7875,7 +8708,11 @@ fn dcc_garch<'py>(
 /// `lags`, `nobs`, and `n_stacked` (`(T - lags) * k(k-1)/2` pooled
 /// regression observations). The diagonal outer products are excluded on
 /// purpose, so univariate GARCH misfit does not masquerade as correlation
-/// dynamics.
+/// dynamics. `lags` must leave the `(T - lags) * k(k-1)/2` stacked rows
+/// one residual degree of freedom beyond the `lags + 1` coefficients and
+/// keep the pooled regression within 2^26 normal-equation entries and 2^34
+/// multiply-adds (`T * k(k-1)/2 * (lags + 1)^2`); a longer lag length is
+/// refused naming `lags` and the largest that fits.
 #[pyfunction]
 #[pyo3(signature = (returns, lags = 5, vol = "garch", mean = "zero", univariate_dist = "normal", p = 1, o = None, q = 1))]
 #[allow(clippy::too_many_arguments)]
@@ -8000,6 +8837,11 @@ fn har_rv<'py>(
 /// Keys: `total`, `to_others`, `from_others`, `net`, `pairwise_net` (k x k), and
 /// `gfevd` (the k x k row-normalized generalized FEVD share matrix at `horizon`
 /// the indices are built from).
+///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before the VAR is fitted;
+/// past it the call is refused naming `horizon` and the largest horizon that
+/// fits (262143 on three variables).
 #[pyfunction]
 #[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c"))]
 fn connectedness<'py>(
@@ -8009,6 +8851,9 @@ fn connectedness<'py>(
     horizon: usize,
     trend: &str,
 ) -> PyResult<Bound<'py, PyDict>> {
+    // The moving-average weights are sized before the fit (the engine would
+    // refuse too, behind a "VAR layer failure" prefix).
+    tsecon_var::budget::check_horizon(data.as_array().ncols(), horizon).map_err(to_py)?;
     let res = var_results(&data, lags, trend)?;
     let table = tsecon_connect::ConnectednessTable::from_var(&res, horizon).map_err(to_py)?;
     let d = PyDict::new(py);
@@ -8043,6 +8888,15 @@ fn factor_model<'py>(
     let (n, big_n) = (a.nrows(), a.ncols());
     let m = Mat::from_fn(n, big_n, |i, j| a[(i, j)]);
     let model = tsecon_favar::FactorModel::fit(m.as_ref()).map_err(to_py)?;
+    // The engine's count check speaks of `r`; say n_factors.
+    let max_r = model.max_factors();
+    if n_factors == 0 || n_factors > max_r {
+        return Err(PyValueError::new_err(format!(
+            "factor_model: n_factors = {n_factors} is out of range: a T x N = {n} x {big_n} \
+             panel has at most min(T, N) = {max_r} principal components, so pass \
+             1 <= n_factors <= {max_r}"
+        )));
+    }
     let factors = model.factors(n_factors).map_err(to_py)?;
     let loadings = model.loadings(n_factors).map_err(to_py)?;
     let eigenvalues = model.eigenvalues().to_vec();
@@ -8263,6 +9117,12 @@ fn iv_gmm<'py>(
 /// has meaning where training rows can follow a test block, which
 /// walk-forward training windows never do; a nonzero `embargo` therefore
 /// raises on `"expanding"`/`"rolling"` instead of being silently ignored.
+///
+/// Splits whose returned lists would hold more than 2**28 values (2 GiB; an
+/// index counts 6, its int object and list slot included, and a fold 80)
+/// are refused before any fold is built, naming `n` with the largest `n`
+/// that fits, or `train`, `horizon` or `k` when not even one fold of that
+/// size fits.
 #[pyfunction]
 #[pyo3(signature = (n, scheme = "expanding", train = 0, horizon = 1, step = 1,
                     k = 5, purge = 0, embargo = 0))]
@@ -8372,6 +9232,11 @@ fn adaptive_lasso<'py>(
 /// lambda.
 ///
 /// Further arguments, with defaults: `tol` (1e-07), `max_iter` (100000).
+///
+/// Raises ValueError naming `max_iter` when it is 0 and `tol` when it is
+/// not finite and positive (as `lasso` does), and naming `n_lambdas` when
+/// the path (`n_lambdas * (p + 8)` values) exceeds the 2**28-value (2
+/// GiB) memory budget, with the largest value that fits.
 #[pyfunction]
 #[pyo3(signature = (x, y, l1_ratio = 1.0, n_lambdas = 100, eps = 1e-3, tol = 1e-7, max_iter = 100000))]
 #[allow(clippy::too_many_arguments)]
@@ -8588,6 +9453,10 @@ fn reraise_stashed<T, E: std::fmt::Display>(
 /// and `targets`, and an `accuracy` table (ME/MSE/RMSE/MAE/MdAE, plus
 /// MAPE/sMAPE/MASE/RMSSE where defined) whose scaled measures use the
 /// first training window at `insample_period` — never the test sample.
+/// That window must hold `insample_period + 1` observations
+/// (`1 <= insample_period <= train - 1`); the period is checked before the
+/// forecaster runs and refused naming `insample_period` and its largest
+/// admissible value.
 ///
 /// Returned keys: `accuracy`, `forecasts`, `horizon`, `n_origins`, `origins`,
 /// `targets`.
@@ -8658,6 +9527,11 @@ fn backtest<'py>(
         }
     };
     let bt = Backtest::new(win, horizon, refit_every).map_err(to_py)?;
+    // The MASE/RMSSE scale period is checked against the first training
+    // window before the forecaster runs over every origin (audit round 16:
+    // the refusal used to come from the accuracy table at the end, naming
+    // an internal `period`).
+    bt.check_insample_period(insample_period).map_err(to_py)?;
     let res = match &forecaster {
         ForecasterArg::Name(fc_name) => {
             // Dispatch the forecaster string to a built-in point forecaster.
@@ -8813,11 +9687,22 @@ fn conformal_base<'a>(
         "ar" => Box::new(move |train, h| ar_forecast(train, lags, h)),
         "arima" => {
             let (p, d, q) = order;
+            // The estimation-budget refusal speaks of arima_fit's p, q and
+            // seasonal; here the orders come from the `order` keyword.
+            let wrap_fit = move |e: tsecon_arima::ArimaError| match e {
+                e @ tsecon_arima::ArimaError::TooLarge { .. } => ForecastError::BaseForecaster {
+                    message: format!(
+                        "base=\"arima\": order = ({p}, {d}, {q}) is too large to estimate \
+                         on the training window ({e})"
+                    ),
+                },
+                e => wrap(e),
+            };
             Box::new(move |train, h| {
                 let spec = tsecon_arima::ArimaSpec::new(p, d, q)
                     .map_err(wrap)?
                     .with_constant(true);
-                let fit = spec.fit(train).map_err(wrap)?;
+                let fit = spec.fit(train).map_err(wrap_fit)?;
                 Ok(fit.forecast(h).map_err(wrap)?.mean)
             })
         }
@@ -9002,6 +9887,20 @@ fn parse_conformal_mode(mode: &str, method: &str) -> PyResult<bool> {
 /// runs the bootstrap ensemble with seed 0, so two default calls are
 /// bit-identical; pass an explicit `seed` for a different ensemble draw
 /// (`n_boot=None` likewise means 25).
+///
+/// **Sizes are checked before anything runs.** `horizon` is capped at
+/// 1,000,000 steps. A calibration grid that does not fit the series
+/// (`horizon + calib + 1` observations, plus `n_eval` for ACI) is refused
+/// naming the largest of those keywords and the largest value it may take,
+/// and so is one whose first training window (`n - horizon - calib + 1`
+/// observations) is shorter than the base forecaster needs (4 for
+/// `"theta"`); `lags` likewise when the AR design's `2 * lags + 2` observations do not
+/// fit (for split/aci the first training window holds
+/// `n - horizon - calib + 1` of them). Under `method="enbpi"` the bootstrap
+/// ensemble is sized before any random stream is drawn: past a work budget
+/// of 2^34 multiply-adds or a memory budget of 2^28 values, `n_boot` is
+/// refused with the largest that fits (or `horizon`, when not even two
+/// models fit).
 #[pyfunction]
 #[pyo3(signature = (y, horizon = 1, method = "split", base = None, alpha = 0.1,
                     calib = None, mode = "symmetric", period = 1, gamma = None,
@@ -9220,6 +10119,15 @@ fn conformal_forecast<'py>(
 /// runs the bootstrap ensemble with seed 0, so two default calls are
 /// bit-identical; pass an explicit `seed` for a different ensemble draw
 /// (`n_boot=None` likewise means 25).
+///
+/// Sizes are checked before anything runs, as in `conformal_forecast`: the
+/// evaluation grid `horizon + calib + n_eval + 1` and its first training
+/// window against what the base forecaster needs (refused naming the
+/// largest of those keywords and its largest admissible value), the AR
+/// design's `2 * lags + 2` observations, and — under `method="enbpi"`, where
+/// the ensemble trains on the observations before the `n_eval` evaluation
+/// points — the bootstrap ensemble's 2^34 multiply-add / 2^28-value budget,
+/// refused naming `n_boot` (or `n_eval`) with the largest that fits.
 ///
 /// Further arguments, with defaults: `mode` ("symmetric").
 #[pyfunction]
@@ -9637,6 +10545,10 @@ fn weighted_midas<'py>(
 ///
 /// Further arguments, with defaults: `n_lag_controls` (4), `band_alpha`
 /// (0.1).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (
     y,
@@ -9706,6 +10618,13 @@ fn lp_state<'py>(
     Ok(d)
 }
 
+/// The subject of `mean_group_var`'s horizon refusal.
+const MEAN_GROUP_HORIZON_WHAT: &str = "horizon: every horizon adds one k x k matrix to each \
+    entity's response path (all kept until they are averaged) and to each copy of the reported \
+    paths (matrices and Python nested lists, counted as real storage), and at this horizon \
+    with this many entities that working set exceeds the 2^28-value (2 GiB) budget, checked \
+    before anything is allocated; reduce horizon";
+
 /// Pesaran-Smith (1995) mean-group panel VAR: fit a reduced-form VAR(p)
 /// to every entity (equation-by-equation OLS via `tsecon-var`) and average,
 /// with dispersion-based cross-entity standard errors `sd(theta_i)/sqrt(N)`.
@@ -9722,6 +10641,12 @@ fn lp_state<'py>(
 /// k x k matrices), `irf_path`/`irf_path_se` (the `mg_irf_path` response=
 /// `response`, impulse=`impulse` series over horizons), and the scalars
 /// `n_entities`, `neqs`, `lags`.
+///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists) with every entity's path
+/// kept until the average, before anything is fitted; past it the call is
+/// refused naming `horizon` and the largest horizon that fits (266304 for four
+/// bivariate entities).
 #[pyfunction]
 #[pyo3(signature = (entities, lags = 1, trend = "c", horizon = 10, response = 0, impulse = 0))]
 fn mean_group_var<'py>(
@@ -9742,6 +10667,20 @@ fn mean_group_var<'py>(
             )))
         }
     };
+    // Every entity's response path is kept until they are averaged, so the
+    // horizon budget counts one cube per entity on top of the reported ones.
+    if let Some(first) = entities.first() {
+        tsecon_var::budget::check_cube(
+            MEAN_GROUP_HORIZON_WHAT,
+            "horizon",
+            horizon,
+            0,
+            1,
+            first.as_array().ncols(),
+            tsecon_var::budget::CUBE_COPIES.saturating_add(entities.len()),
+        )
+        .map_err(to_py)?;
+    }
     let mats: Vec<_> = entities.iter().map(to_faer).collect();
     let mg = tsecon_panel::mean_group_var(&mats, lags, tr, horizon).map_err(to_py)?;
     let d = PyDict::new(py);
@@ -9840,6 +10779,11 @@ fn dynamic_ns<'py>(
 /// and the recursive policy-shock IRFs `irf_panel` (`N x (horizon + 1)`) and
 /// `irf_policy`.
 ///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices and the returned lists, counted as real storage) is budgeted at
+/// 2^28 values (2 GiB), and a `horizon` past it is refused by name with the
+/// largest value that fits.
+///
 /// Further arguments, with defaults: `orth` (True).
 #[pyfunction]
 #[pyo3(signature = (panel, policy, n_factors = 2, lags = 2, trend = "c",
@@ -9868,6 +10812,31 @@ fn favar<'py>(
             )))
         }
     };
+    // Name the keywords, not the engine's `r` and "slow index".
+    let (t_obs, n_series) = (m.nrows(), m.ncols());
+    let max_factors = t_obs.min(n_series);
+    if n_factors == 0 || n_factors > max_factors {
+        return Err(PyValueError::new_err(format!(
+            "n_factors = {n_factors} is invalid: it must satisfy 1 <= n_factors <= \
+             min(T, N) = {max_factors} for a {t_obs} x {n_series} panel"
+        )));
+    }
+    if let Some(ref idx) = slow_indices {
+        if let Some((i, &v)) = idx.iter().enumerate().find(|&(_, &v)| v >= n_series) {
+            return Err(PyValueError::new_err(format!(
+                "slow_indices[{i}] = {v} is out of range: a slow series is a column of \
+                 panel, so its index must be below N = {n_series}"
+            )));
+        }
+        if !idx.is_empty() && idx.len() < n_factors {
+            return Err(PyValueError::new_err(format!(
+                "slow_indices holds {} series but n_factors = {n_factors}: the slow-fast \
+                 scheme needs at least n_factors slow series to extract n_factors slow \
+                 factors; pass more slow_indices or a smaller n_factors",
+                idx.len()
+            )));
+        }
+    }
     let fit = match slow_indices {
         Some(ref idx) => {
             tsecon_favar::Favar::two_step_slow_fast(m.as_ref(), pol, idx, n_factors, lags, tr)
@@ -9877,6 +10846,28 @@ fn favar<'py>(
             tsecon_favar::Favar::two_step(m.as_ref(), pol, n_factors, lags, tr).map_err(to_py)?
         }
     };
+    // The policy-shock responses: one (horizon + 1) MA path of the factor VAR
+    // per call, and N x (horizon + 1) panel responses returned as lists;
+    // sized before anything is allocated.
+    {
+        use tsecon_bayes::budget::{check_memory, irf_path_values, mat_values, SizeArg};
+        let (k, n_series) = (fit.n_endog(), fit.factor_model().n_series());
+        check_memory(
+            "the policy-shock responses ((horizon + 1) factor-VAR moving-average \
+             matrices, and (horizon + 1) responses for each of the N panel series, \
+             returned as lists)",
+            &[SizeArg::new("horizon", horizon, 0)],
+            |v| {
+                irf_path_values(k, v[0], mat_values(k)).saturating_add(
+                    (v[0] as u128)
+                        .saturating_add(1)
+                        .saturating_mul((n_series as u128).saturating_add(1))
+                        .saturating_mul(5),
+                )
+            },
+        )
+        .map_err(to_py)?;
+    }
     let d = PyDict::new(py);
     d.set_item("factors", mat_to_vec2(&fit.factors().to_owned()))?;
     d.set_item("params", mat_to_vec2(&fit.var().params))?;
@@ -9988,7 +10979,8 @@ fn realized_range(
 /// `bic`, the one-step-ahead `next_variance`, convergence info, and — if
 /// `horizon > 0` — an `h`-step variance `forecast`.
 /// The convergence info is `converged` (the optimizer's certificate) and
-/// `iterations`.
+/// `iterations`. `horizon` is capped at 1,000,000 steps (every step is
+/// materialised) and refused past that, by name, before anything is fitted.
 #[pyfunction]
 #[pyo3(signature = (y, density = "gaussian", horizon = 0))]
 fn gas_volatility<'py>(
@@ -10006,6 +10998,9 @@ fn gas_volatility<'py>(
             )))
         }
     };
+    // The forecast path is materialised: refuse an absurd horizon by name
+    // before anything is fitted (audit round 16).
+    tsecon_gas::check_forecast_horizon(horizon).map_err(to_py)?;
     let yv = vec1(&y);
     let model = tsecon_gas::GasModel::new(&yv, dens).map_err(to_py)?;
     let res = model.fit().map_err(to_py)?;
@@ -10158,6 +11153,59 @@ fn panel_mean_group<'py>(
     Ok(d)
 }
 
+/// `dfm_nowcast` / `dfm_news` two-step fit errors in the caller's
+/// vocabulary: the factor VAR's lag order `p` is `factor_order` and its
+/// series are the `n_factors` factors of the balanced training block, and a
+/// non-stationary fitted factor VAR is named as such rather than as "the
+/// transition matrix".
+fn dfm_fit_error(
+    fname: &str,
+    e: tsecon_nowcast::NowcastError,
+    n_factors: usize,
+    factor_order: usize,
+) -> PyErr {
+    use tsecon_ssm::tsecon_linalg::LinalgError;
+    use tsecon_ssm::SsmError;
+    match e {
+        // The fitted factor VAR has no stationary distribution, so the
+        // smoother cannot be initialized: an order too high for the block
+        // (or factors that trend) — the engine's message speaks of "the
+        // transition matrix".
+        tsecon_nowcast::NowcastError::Ssm(SsmError::Linalg(LinalgError::Unstable {
+            spectral_radius,
+        })) => PyValueError::new_err(format!(
+            "{fname}: the VAR({factor_order}) fitted to the n_factors = {n_factors} factor(s) \
+             is not stationary (its companion matrix has spectral radius {spectral_radius} \
+             >= 1), so the Kalman smoother has no stationary distribution to start from. \
+             Lower factor_order, or transform trending series to stationarity first"
+        )),
+        tsecon_nowcast::NowcastError::Var(tsecon_var::VarError::InsufficientObservations {
+            needed,
+            got,
+            lags,
+            neqs,
+            n_trend,
+        }) => {
+            let p_max = got.saturating_sub(n_trend + 1) / (neqs + 1);
+            let hint = if p_max >= 1 {
+                format!("pass factor_order <= {p_max}")
+            } else {
+                "no factor order fits this many factors".to_owned()
+            };
+            PyValueError::new_err(format!(
+                "{fname}: factor_order = {lags} is too large for the {got}-row balanced \
+                 training block (the rows before the first missing value): the VAR of the \
+                 n_factors = {neqs} factor(s) needs at least {needed} rows (factor_order \
+                 rows go to the lags, then each equation has n_factors * factor_order = {} \
+                 coefficients and needs a residual degree of freedom); {hint}, lower \
+                 n_factors, or supply a longer balanced block",
+                neqs.saturating_mul(lags)
+            ))
+        }
+        e => to_py(e),
+    }
+}
+
 /// Dynamic-factor-model nowcast (Doz-Giannone-Reichlin 2011 two-step).
 ///
 /// Fits `n_factors` common factors with an order-`factor_order` factor VAR
@@ -10200,7 +11248,11 @@ fn panel_mean_group<'py>(
 /// estimates. State space: `z_t = Lambda f_t + e_t`, `e_t ~ N(0,
 /// diag(idiosyncratic))`; `f_t = A_1 f_{t-1} + ... + A_p f_{t-p} + eta_t`,
 /// `eta_t ~ N(0, factor_cov)` — with these six keys the fitted model is
-/// fully reproducible.
+/// fully reproducible: `dfm_smooth(data, loadings=..., factor_ar=...,
+/// idiosyncratic=..., factor_cov=..., center=..., scale=...)` re-smooths
+/// any data vintage at these parameters, and on this call's panel returns
+/// its `loglik`, `edge_factor` and `nowcast` bit for bit (the edge nowcast
+/// here is computed by that same routine).
 ///
 /// With `method="mle"` the dict additionally carries `converged` and
 /// `iterations`: `converged` is the certificate of the optimizer stage
@@ -10239,7 +11291,7 @@ fn dfm_nowcast<'py>(
     let nc = match method {
         "two_step" => {
             tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
-                .map_err(to_py)?
+                .map_err(|e| dfm_fit_error("dfm_nowcast", e, n_factors, factor_order))?
         }
         "mle" => {
             if n_factors != 1 {
@@ -10247,7 +11299,8 @@ fn dfm_nowcast<'py>(
                     "method=\"mle\" supports a single factor only (n_factors=1)",
                 ));
             }
-            tsecon_nowcast::Nowcaster::fit_mle(train.as_ref(), factor_order).map_err(to_py)?
+            tsecon_nowcast::Nowcaster::fit_mle(train.as_ref(), factor_order)
+                .map_err(|e| dfm_fit_error("dfm_nowcast", e, n_factors, factor_order))?
         }
         other => {
             return Err(PyValueError::new_err(format!(
@@ -10366,7 +11419,10 @@ fn panel_pmg<'py>(
 /// common length). `test` is "ips" (default), "llc", or "fisher". `lags` is
 /// None (per-unit auto AIC), an int (fixed common lag), or "aic"/"bic"/
 /// "t-stat". `regression` is "c" (default), "ct", or "n" ("n" is invalid for
-/// "ips"). `lrv_kernel`/`lrv_bandwidth` configure the LLC long-run variance.
+/// "ips"). `lrv_kernel`/`lrv_bandwidth` configure the LLC long-run variance
+/// (`lrv_bandwidth` a finite value >= 0; None uses round(3.21 T^(1/3))). A
+/// per-unit lag order too long for a unit, or past the size budgets of
+/// `adf`, is refused naming `lags` (fixed) or `max_lags` (the search cap).
 /// Conventions match plm::purtest (validated to plm, and for "fisher" to statsmodels).
 /// Keys: `statistic`, `p_value`, `per_unit_tstat`/`per_unit_pvalue`/
 /// `per_unit_lags`/`per_unit_nobs`, `n_units`, `regression`, `test`, plus the
@@ -10442,11 +11498,35 @@ fn panel_unit_root<'py>(
         }
     };
 
+    if let Some(bw) = lrv_bandwidth {
+        if !(bw.is_finite() && bw >= 0.0) {
+            return Err(PyValueError::new_err(format!(
+                "lrv_bandwidth = {bw} is invalid: requires a finite value >= 0 (the \
+                 lag-truncation parameter of the Levin-Lin-Chu long-run variance for \
+                 the Bartlett, Parzen and truncated kernels, Andrews' real-valued S_T \
+                 for quadratic spectral); None uses the Levin-Lin-Chu rule \
+                 round(3.21 T^(1/3))"
+            )));
+        }
+    }
     let opts = PanelRootOpts {
         lrv_kernel: hac_kernel(lrv_kernel)?,
         lrv_bandwidth,
     };
-    let r = run(&units, test_enum, reg, sel, &opts).map_err(to_py)?;
+    // The per-unit ADF names its lag order `maxlag`; here it is `lags` when
+    // fixed and `max_lags` when it caps the automatic search.
+    let lag_keyword = if matches!(sel, L::Fixed(_)) {
+        "lags"
+    } else {
+        "max_lags"
+    };
+    let r = run(&units, test_enum, reg, sel, &opts).map_err(|e| match e {
+        tsecon_panelroot::PanelRootError::Adf { unit, source } => {
+            let inner = diag_lag_msg(source, |_| lag_keyword);
+            PyValueError::new_err(format!("per-unit ADF failed for unit {unit}: {inner}"))
+        }
+        other => to_py(other),
+    })?;
 
     let d = PyDict::new(py);
     d.set_item("test", test)?;
@@ -10540,11 +11620,18 @@ fn dfm_news<'py>(
             break;
         }
     }
+    if n > 0 && target_series >= n {
+        return Err(PyValueError::new_err(format!(
+            "dfm_news: target_series = {target_series} is out of range: the vintages have \
+             N = {n} series (columns), so target_series must be in 0..={}",
+            n - 1
+        )));
+    }
     let train = Mat::from_fn(first_ragged, n, |r, j| old_arr[(r, j)]);
     let old_m = to_faer(&old_vintage);
     let new_m = to_faer(&new_vintage);
     let nc = tsecon_nowcast::Nowcaster::fit_two_step(train.as_ref(), n_factors, factor_order)
-        .map_err(to_py)?;
+        .map_err(|e| dfm_fit_error("dfm_news", e, n_factors, factor_order))?;
     let period = target_period.unwrap_or(t.saturating_sub(1));
     let nd = nc
         .news_decomposition(old_m.as_ref(), new_m.as_ref(), target_series, period)
@@ -11009,6 +12096,14 @@ fn heteroskedasticity_test<'py>(
 /// Ramsey RESET functional-form test: F-test of powers of the fitted values
 /// (`yhat^2 .. yhat^max_power`) added to the OLS of `y` on `x` (`T x k`).
 ///
+/// The augmented regression has `k + max_power - 1` regressors, so
+/// `max_power` must leave `T > k + max_power - 1` and the augmented design
+/// within the Breusch-Godfrey auxiliary-regression budgets (2^26 entries,
+/// 2^34 multiply-adds); a larger one is refused before any power column is
+/// built, naming `max_power` and the largest that fits. A power of a large
+/// fitted value that overflows to infinity is refused naming `max_power`
+/// (RESET is invariant to the scale of `y`, so rescaling it also helps).
+///
 /// Returned keys: `df_den`, `df_num`, `fstat`, `pvalue`.
 #[pyfunction]
 #[pyo3(signature = (y, x, max_power = 3))]
@@ -11122,6 +12217,9 @@ fn afns_adjustment<'py>(
 /// whose neighbour n - 1 is also in the grid (supply a contiguous grid or
 /// pairs around the return maturities, interpolating the curve first if
 /// needed — ACM interpolate the GSW curve to monthly maturities 1..120).
+/// The price recursions are tabulated at every integer period up to the
+/// longest maturity, so each maturity is at most 120000 periods (the
+/// `jsz_fit` cap), refused by index before anything is allocated.
 ///
 /// Returns factors (T x K), factor_loadings, mu, phi, sigma, rx_maturities,
 /// a/beta/c (the excess-return regression), sigma2, lambda0, lambda1,
@@ -11192,8 +12290,13 @@ fn acm_term_premium<'py>(
 /// `n_predetermined` backward-looking variables then the forward-looking
 /// ones. Returns the decision rule `g` (jump = g·predetermined), the law of
 /// motion `p`/`q` (predetermined_{t+1} = p·predetermined + q·z), the
-/// `eigenvalue_moduli`, and the Blanchard-Kahn `verdict` (unique /
-/// indeterminate / no stable solution).
+/// `eigenvalue_moduli`, and the Blanchard-Kahn `verdict` string, which on
+/// return always reads "unique stable solution (...)". An indeterminate
+/// model (fewer unstable eigenvalues than jump variables) or one with no
+/// stable solution (more) raises ValueError instead, naming the regime and
+/// both counts.
+///
+/// Returned keys: `eigenvalue_moduli`, `g`, `p`, `q`, `verdict`.
 #[pyfunction]
 fn dsge_solve<'py>(
     py: Python<'py>,
@@ -11318,6 +12421,11 @@ fn quantile_regression<'py>(
 /// Returned keys: `converged`, `horizons`, `irf`, `se`, `taus`.
 ///
 /// Further arguments, with defaults: `horizons` (12).
+///
+/// A `horizons` or `n_lag_controls` that leaves a horizon with no more
+/// usable rows than parameters (`2 + 2 * n_lag_controls`) is refused by
+/// name, before anything is sized by `horizons`, with its largest
+/// admissible value.
 #[pyfunction]
 #[pyo3(signature = (y, shock, taus = None, horizons = 12, n_lag_controls = 4))]
 fn quantile_lp<'py>(
@@ -11480,6 +12588,10 @@ fn functional_pca<'py>(
 /// correction off; this function always applies it).
 /// Keys: `horizons`, `n_factors`, `betas` ((H+1) x K), `covs` ((H+1) x K x K
 /// joint HAC covariances), `se` ((H+1) x K), `nobs` (per horizon).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (y, scores, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 fn flp<'py>(
@@ -11536,6 +12648,10 @@ fn flp<'py>(
 ///
 /// Further arguments, with defaults: `n_factors` (3), `n_lag_controls` (2),
 /// `hac_maxlags` (None).
+///
+/// A `horizons` the sample cannot reach (a horizon that would keep no
+/// more usable rows than regressors) is refused before anything is sized
+/// by it, naming the largest admissible `horizons`.
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, horizons = 8, n_lag_controls = 2, hac_maxlags = None))]
 #[allow(clippy::too_many_arguments)] // py + 7 user args; the composite scenario call genuinely needs them
@@ -11592,6 +12708,11 @@ fn flp_scenario<'py>(
 /// `responses` ((H+1) x (K+1), scores first then outcome),
 /// `implied_outcome_innovation`.
 ///
+/// `horizon` is checked against a 2^28-value (2 GiB) memory budget, counted as
+/// real storage (padded matrices and Python lists), before the VAR is fitted;
+/// past it the call is refused naming `horizon` and the largest horizon that
+/// fits (262143 with two factors).
+///
 /// Further arguments, with defaults: `n_factors` (3), `horizon` (10).
 #[pyfunction]
 #[pyo3(signature = (y, curves, delta, n_factors = 3, lags = 2, horizon = 10))]
@@ -11607,6 +12728,9 @@ fn fvar_scenario<'py>(
     let fpca = tsecon_funcshock::functional_pca(&rows2(&curves), n_factors).map_err(to_py)?;
     let w =
         tsecon_funcshock::scenario_weights(&fpca.eigenfunctions, &vec1(&delta)).map_err(to_py)?;
+    // The VAR on [scores, y] has K + 1 series; its responses are sized
+    // before it is fitted.
+    tsecon_var::budget::check_horizon(w.len() + 1, horizon).map_err(to_py)?;
     let r = tsecon_funcshock::fvar_scenario(&fpca.scores, &vec1(&y), &w, lags, horizon)
         .map_err(to_py)?;
     let d = PyDict::new(py);
@@ -11864,6 +12988,12 @@ fn sup_f_test<'py>(
 /// empty when `lam` is a fixed float), `theta`, `irf_raw`, `se_raw`, plus the
 /// band keys above when `band` is set.
 ///
+/// `band_n_sim` is checked, before anything is estimated, against the sup-t
+/// budget every band shares: (K+1)·band_n_sim values within 2^28 (2 GiB) and
+/// band_n_sim·K^2 multiply-adds within 2^36. Past it the call is refused
+/// naming `band_n_sim` and the largest count that fits (19173961 at the
+/// default 12 horizons).
+///
 /// Further arguments, with defaults: `degree` (3), `n_basis` (None).
 #[pyfunction]
 #[pyo3(signature = (
@@ -11977,36 +13107,129 @@ fn smooth_lp<'py>(
     Ok(d)
 }
 
+/// A structural impact matrix argument: an ndarray, a pandas object or a
+/// rectangular nested list (rust-numpy's `PyArrayLike2` runs `numpy.asarray`
+/// on anything that is not already a float64 array).
+type ImpactArg<'py> = numpy::PyArrayLike2<'py, f64, numpy::AllowTypeChange>;
+
+/// `from_py_with` extractor for `impact=`: `None` stays `None`, and any
+/// conversion failure (a ragged nested list, a string, a 1-D or 3-D array) is
+/// refused naming `impact`: NumPy's own ragged-list `ValueError` does not
+/// name it, and PyO3 prefixes only `TypeError`s with the argument name.
+///
+/// The element kind is checked BEFORE the float64 cast, because
+/// `numpy.asarray(x, dtype=float64)` would silently drop a complex matrix's
+/// imaginary part (a mere `ComplexWarning`) and read datetimes or numeric
+/// strings as numbers. Only boolean, integer and real floating matrices pass,
+/// which is what an ndarray-only `impact` accepted before — the shared
+/// real-numeric gate ([`real_numeric::non_real_reason`]) without its
+/// object-array allowance.
+fn impact_matrix_arg<'py>(obj: &Bound<'py, PyAny>) -> PyResult<Option<ImpactArg<'py>>> {
+    if obj.is_none() {
+        return Ok(None);
+    }
+    let named = |e: PyErr| {
+        PyValueError::new_err(format!(
+            "impact must be an (n, n) numeric matrix (an ndarray, a pandas object or a \
+             rectangular nested list such as long_run_svar(...)[\"impact\"]); converting \
+             it failed: {e}"
+        ))
+    };
+    let arr = obj
+        .py()
+        .import("numpy")?
+        .call_method1("asarray", (obj,))
+        .map_err(named)?;
+    if let Some(why) = real_numeric::non_real_reason(&arr, "impact", false)? {
+        return Err(PyValueError::new_err(format!(
+            "impact must be a real numeric (n, n) matrix, {why}"
+        )));
+    }
+    let ndim: usize = arr.getattr("ndim")?.extract()?;
+    if ndim != 2 {
+        return Err(PyValueError::new_err(format!(
+            "impact must be a 2-D (n, n) matrix, got a {ndim}-D array of shape {}",
+            arr.getattr("shape")?.str()?
+        )));
+    }
+    arr.extract::<ImpactArg<'py>>().map(Some).map_err(named)
+}
+
 /// Structural forecast-error variance decomposition for an arbitrary structural
 /// impact matrix `A0` — the gap `var_fevd` (recursive-Cholesky only) leaves.
 ///
 /// `impact` is an optional (n x n) structural impact matrix A0 (columns =
 /// one-standard-deviation structural shocks, A0 A0' = Sigma; from any
-/// identification — sign, zero, proxy, max-share, long-run). If None, A0 is the
+/// identification — sign, zero, proxy, max-share, long-run). An ndarray, a
+/// pandas object or a rectangular nested list is accepted, so another
+/// callable's `impact` (e.g. `long_run_svar(...)["impact"]`) passes straight
+/// in. If None, A0 is the
 /// lower Cholesky of the innovation covariance and the result equals `var_fevd`
-/// exactly. `sigma` ('dfadj'|'mle') selects the default Cholesky's df scaling;
-/// the FEVD shares are INVARIANT to it (numerator and denominator scale
-/// together) — it only rescales the reported `impact`.
+/// exactly. `sigma` ('dfadj'|'mle'; None, the default, means 'dfadj') selects
+/// the default Cholesky's df scaling; the FEVD shares are INVARIANT to it
+/// (numerator and denominator scale together) — it only rescales the reported
+/// `impact`.
 ///
 /// Returns `fevd` [horizon+1][variable][shock] (each row sums to 1) and the
 /// `impact` [n][n] A0 used.
 ///
+/// `sigma` is validated first and is refused, naming it, whenever it is passed
+/// together with `impact` (even as 'dfadj') -- it only scales the default
+/// Cholesky, so it cannot act there. `lags=0` is refused naming lags (unlike `var_fevd`,
+/// which returns the static Cholesky shares of a VAR(0)). Sizes are checked
+/// before anything is allocated: the working set (padded matrices and the
+/// returned lists, counted as real storage) is budgeted at 2^28 values (2 GiB),
+/// and a `horizon` past it is refused by name with the largest value that fits.
+/// The shares are computed on row-scaled responses, so an impact of any finite
+/// scale gives the scale-1 shares.
+///
 /// Further arguments, with defaults: `lags` (2), `trend` ("c").
 #[pyfunction]
-#[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c", impact = None, sigma = "dfadj"))]
+#[pyo3(signature = (data, lags = 2, horizon = 10, trend = "c", impact = None, sigma = None))]
 fn structural_fevd<'py>(
     py: Python<'py>,
     data: numpy::PyReadonlyArray2<'py, f64>,
     lags: usize,
     horizon: usize,
     trend: &str,
-    impact: Option<numpy::PyReadonlyArray2<'py, f64>>,
-    sigma: &str,
+    #[pyo3(from_py_with = impact_matrix_arg)] impact: Option<ImpactArg<'py>>,
+    sigma: Option<&str>,
 ) -> PyResult<Bound<'py, PyDict>> {
     use tsecon_bayes::cholesky_irf;
     use tsecon_var::tsecon_linalg::faer::Mat;
 
+    // `sigma` is validated before it is used or refused, so a typo is named
+    // as such whichever path the call takes.
+    let use_mle = match sigma {
+        None | Some("dfadj") => false,
+        Some("mle") => true,
+        Some(other) => {
+            return Err(PyValueError::new_err(format!(
+                "unknown sigma {other:?}; expected \"dfadj\" or \"mle\""
+            )))
+        }
+    };
+    // `sigma` only sets the df scaling of the DEFAULT Cholesky impact; with
+    // `impact` given it cannot act (the shares are invariant to it anyway),
+    // so passing it there -- even spelled as the default -- is refused, the
+    // None-sentinel house rule for an inert keyword.
+    if let (Some(_), Some(sg)) = (&impact, sigma) {
+        return Err(PyValueError::new_err(format!(
+            "sigma={sg:?} is only read when impact=None (it sets the df scaling of the \
+             default Cholesky impact matrix); with impact given that matrix is used as \
+             passed, so sigma would be ignored. Drop sigma, or drop impact to use the \
+             default Cholesky identification."
+        )));
+    }
+    if lags == 0 {
+        return Err(PyValueError::new_err(
+            "lags = 0: the FEVD needs a VAR with at least one lag; pass lags >= 1",
+        ));
+    }
     let n_vars = data.as_array().ncols();
+    // The structural MA path, the shares and the nested lists returned for
+    // them, sized before anything is allocated.
+    tsecon_ident::check_irf_horizon(n_vars, horizon).map_err(to_py)?;
     let r = var_results(&data, lags, trend)?;
 
     let (a0, fevd) = match impact {
@@ -12033,14 +13256,10 @@ fn structural_fevd<'py>(
             // Default recursive impact A0 = chol_lower(Sigma). cholesky_irf returns
             // Theta_0 = A0, so we lift A0 straight from theta[0] (no extra factor).
             // Shares are scale-invariant; `sigma` only rescales the reported A0.
-            let sig = match sigma {
-                "dfadj" => r.sigma_u.clone(),
-                "mle" => r.sigma_u_mle.clone(),
-                other => {
-                    return Err(PyValueError::new_err(format!(
-                        "unknown sigma {other:?}; expected \"dfadj\" or \"mle\""
-                    )))
-                }
+            let sig = if use_mle {
+                r.sigma_u_mle.clone()
+            } else {
+                r.sigma_u.clone()
             };
             let theta =
                 cholesky_irf(r.params.as_ref(), sig.as_ref(), lags, horizon).map_err(to_py)?;
@@ -12056,6 +13275,19 @@ fn structural_fevd<'py>(
     d.set_item("fevd", out)?;
     d.set_item("impact", mat_to_vec2(&a0))?;
     Ok(d)
+}
+
+/// `n_weight_draws` sizes the importance weight P(N | S), which exists only
+/// under narrative restrictions; without them every weight is 1 and the
+/// count is never read. Refused when passed (compared to its default), the
+/// house rule for an inert keyword.
+fn inert_n_weight_draws(callable: &str) -> PyErr {
+    PyValueError::new_err(format!(
+        "{callable}: n_weight_draws is only read under narrative_restrictions (it sets \
+         how many sign-satisfying rotations estimate each draw's narrative weight); \
+         with no narrative restrictions every weight is 1 and it would be ignored. Pass \
+         narrative_restrictions, or drop n_weight_draws."
+    ))
 }
 
 /// Parse a list of narrative-restriction dicts into a NarrativeRestrictionSet.
@@ -12140,6 +13372,27 @@ fn parse_narrative_restrictions(
 /// identification="cholesky" (default): a point decomposition at the OLS VAR with
 /// Q=I; returns `times`, `baseline` [T_eff][n], `hd` [T_eff][n][n] indexed
 /// [time][variable][shock], and the structural `shocks` [T_eff][n].
+/// identification="impact": a point decomposition under an ARBITRARY invertible
+/// structural impact matrix passed as `impact` (n x n; columns are
+/// one-standard-deviation structural shocks, u_t = impact @ eps_t; any
+/// invertible matrix — `impact @ impact.T == Sigma` is NOT required). The
+/// drop-in for any point-identified scheme, e.g.
+/// `historical_decomposition(X, lags=8, identification="impact",
+/// impact=long_run_svar(X, lags=8, impact_signs=[(0, 1)])["impact"])`.
+/// Returns the cholesky keys `times`, `baseline`, `hd`, `shocks` (so it is a
+/// drop-in replacement) plus `impact` [n][n] (the matrix used, echoed) and
+/// `shock_covariance` [n][n] = E'E/T_eff of the structural shocks — a
+/// diagnostic: the identity for chol(Sigma_mle), (T_eff-m)/T_eff times the
+/// identity for a `long_run_svar` impact (built from the df-adjusted Sigma,
+/// m = 1 + n*lags). The reduced form is ALWAYS a VAR with a constant at
+/// `lags`: an impact estimated with trend="n" or other lags is silently
+/// inconsistent with these residuals (the adding-up identity still holds; the
+/// shocks are not the ones that model identified), so estimate it at the same
+/// `lags` with trend="c". `impact` is refused, naming it, when missing, of the
+/// wrong shape, non-finite, or singular by the numpy.linalg.matrix_rank
+/// convention (smallest singular value <= largest * n * machine epsilon).
+/// `horizon` (None = T_eff-1) below T_eff-1 is refused; above it is inert
+/// (only Theta_0..Theta_{T_eff-1} are ever built).
 /// identification="sign": the importance-weighted SET decomposition over sign- (and
 /// optionally narrative-) restricted rotations; returns `times`, `baseline`
 /// (posterior-mean), `probs`, `hd_quantiles` [T_eff][n][n][len(probs)] (weighted
@@ -12154,16 +13407,35 @@ fn parse_narrative_restrictions(
 ///   {"type":"contribution_sign","variable":int,"shock":int,"start":int,"end":int,
 ///    "sign":"+"|"-"}
 ///
+/// An unknown `identification` is refused as such before any keyword that
+/// depends on it. Under "sign", `n_weight_draws` is only read with
+/// narrative_restrictions and is refused as inert without them; the working set
+/// (padded matrices, one RNG substream and T_eff contribution matrices per draw
+/// and the returned lists, counted as real storage) is budgeted at 2^28 values
+/// (2 GiB) before anything is allocated, refusing a `horizon` or `n_draws` past
+/// it by name with the largest value that fits; and the narrative weight loop
+/// is capped at 2^35 multiply-adds (naming n_weight_draws). Under "impact", an
+/// invertible impact whose shocks overflow, or whose `shock_covariance` leaves
+/// the double range (entries many orders of magnitude below or above the
+/// residuals), is refused naming impact with a rescale hint; the singularity
+/// test is scale-invariant.
+///
 /// Further arguments, with defaults: `horizon` (None), `n_draws` (500),
-/// `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
+/// `max_tries` (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200),
+/// `impact` (None).
 ///
 /// `restrictions` (None = no restrictions; used under identification="sign")
 /// is the `sign_restricted_svar` list of `(variable, shock, horizon, sign)`
 /// tuples with `sign` in {"+", "-"}.
+///
+/// Inert keywords are refused, not ignored: the sampling controls (`n_draws`,
+/// `max_tries`, `seed`, `lambda1`, `n_weight_draws`, compared to their
+/// defaults) and non-empty `restrictions` / `narrative_restrictions` under
+/// "cholesky" and "impact"; `impact` under any identification but "impact".
 #[pyfunction]
 #[pyo3(signature = (data, restrictions = None, lags = 2, horizon = None, identification = "cholesky",
                     n_draws = 500, max_tries = 400, seed = 0, lambda1 = 0.2,
-                    narrative_restrictions = None, n_weight_draws = 200))]
+                    narrative_restrictions = None, n_weight_draws = 200, impact = None))]
 #[allow(clippy::too_many_arguments)]
 fn historical_decomposition<'py>(
     py: Python<'py>,
@@ -12178,18 +13450,61 @@ fn historical_decomposition<'py>(
     lambda1: f64,
     narrative_restrictions: Option<Vec<Bound<'py, PyDict>>>,
     n_weight_draws: usize,
+    #[pyo3(from_py_with = impact_matrix_arg)] impact: Option<ImpactArg<'py>>,
 ) -> PyResult<Bound<'py, PyDict>> {
-    // The cholesky path is a single point decomposition: it draws nothing, so
-    // none of these are read. Accepting them silently lets a caller believe a
-    // seeded posterior draw was taken when it was not -- the same class as an
-    // ignored seed anywhere else.
-    if identification == "cholesky" {
-        let inert: [(&str, bool); 5] = [
+    // The mode is validated before any keyword that depends on it, so a
+    // mistyped identification is refused as unknown -- never described as a
+    // mode that "identifies its own shocks" because impact was also passed.
+    if !matches!(identification, "cholesky" | "impact" | "sign") {
+        let hint = if impact.is_some() {
+            " (impact was passed: did you mean identification=\"impact\"?)"
+        } else {
+            ""
+        };
+        return Err(PyValueError::new_err(format!(
+            "unknown identification {identification:?}; expected \"cholesky\"|\"impact\"|\"sign\"{hint}"
+        )));
+    }
+    // `impact` is read only by identification="impact", and that mode cannot
+    // run without it.
+    if identification != "impact" && impact.is_some() {
+        return Err(PyValueError::new_err(format!(
+            "impact is only read by identification=\"impact\" (an arbitrary structural \
+             impact matrix); identification={identification:?} identifies its own \
+             shocks and would ignore it. Pass identification=\"impact\" to decompose \
+             under that matrix, or drop impact."
+        )));
+    }
+    if identification == "impact" && impact.is_none() {
+        return Err(PyValueError::new_err(
+            "identification=\"impact\" needs impact: pass the (n, n) structural impact \
+             matrix whose columns are the one-standard-deviation shocks (for example \
+             long_run_svar(data, lags=lags)[\"impact\"])",
+        ));
+    }
+    // The point paths ("cholesky", "impact") draw nothing and impose no
+    // restrictions, so none of these are read. Accepting them silently lets a
+    // caller believe a seeded posterior draw was taken, or a restriction
+    // imposed, when it was not -- the same class as an ignored seed anywhere
+    // else. Empty restriction lists are accepted: a programmatic caller that
+    // always passes [] has asked for nothing.
+    if identification == "cholesky" || identification == "impact" {
+        let inert: [(&str, bool); 7] = [
             ("n_draws", n_draws != 500),
             ("max_tries", max_tries != 400),
             ("seed", seed != 0),
             ("lambda1", (lambda1 - 0.2).abs() > f64::EPSILON),
             ("n_weight_draws", n_weight_draws != 200),
+            (
+                "restrictions",
+                restrictions.as_ref().is_some_and(|r| !r.is_empty()),
+            ),
+            (
+                "narrative_restrictions",
+                narrative_restrictions
+                    .as_ref()
+                    .is_some_and(|r| !r.is_empty()),
+            ),
         ];
         let named: Vec<&str> = inert
             .iter()
@@ -12198,10 +13513,12 @@ fn historical_decomposition<'py>(
             .collect();
         if !named.is_empty() {
             return Err(PyValueError::new_err(format!(
-                "identification=\"cholesky\" ignores {named:?}: it is a single point \
-                 decomposition with no sampling step, so there is nothing for a seed or \
-                 a draw count to control. Use identification=\"sign\" (or \"narrative\") \
-                 if you want a set-identified posterior, or drop these arguments."
+                "identification={identification:?} ignores {named:?}: it is a single point \
+                 decomposition with no sampling step and no restrictions to impose, so \
+                 there is nothing for a seed, a draw count or a restriction to control. \
+                 Use identification=\"sign\" (sign restrictions, optionally with \
+                 narrative_restrictions) if you want a set-identified posterior, or drop \
+                 these arguments."
             )));
         }
     }
@@ -12210,6 +13527,11 @@ fn historical_decomposition<'py>(
     let a = data.as_array();
     let m = Mat::from_fn(a.nrows(), a.ncols(), |i, j| a[(i, j)]);
     let n = a.ncols();
+    if lags == 0 {
+        return Err(PyValueError::new_err(
+            "lags = 0: the decomposition needs a VAR with at least one lag; pass lags >= 1",
+        ));
+    }
     if a.nrows() <= lags {
         return Err(PyValueError::new_err("need more than `lags` observations"));
     }
@@ -12222,7 +13544,11 @@ fn historical_decomposition<'py>(
             let vr = var_results(&data, lags, "c")?;
             let sigma = vr.sigma_u_mle.clone();
             let eye = Mat::<f64>::identity(n, n);
-            let h = horizon.unwrap_or(t_eff - 1);
+            // The decomposition never reads Theta past T_eff - 1, so a larger
+            // horizon is inert; capping it keeps a mistyped horizon=10**10
+            // from reaching the allocator (the output is unchanged). A
+            // horizon below T_eff - 1 is still refused by `decompose`.
+            let h = horizon.unwrap_or(t_eff - 1).min(t_eff - 1);
             let hd = tsecon_ident::decompose(
                 m.as_ref(),
                 vr.params.as_ref(),
@@ -12251,6 +13577,71 @@ fn historical_decomposition<'py>(
             d.set_item("hd", hd_tensor)?;
             d.set_item("shocks", ref_to_vec2(hd.shocks()))?;
         }
+        "impact" => {
+            let vr = var_results(&data, lags, "c")?;
+            let arr = impact
+                .as_ref()
+                .ok_or_else(|| PyValueError::new_err("identification=\"impact\" needs impact"))?
+                .as_array();
+            if arr.nrows() != n || arr.ncols() != n {
+                return Err(PyValueError::new_err(format!(
+                    "impact must be {n}x{n} (one row per variable, one column per \
+                     structural shock), got {}x{}",
+                    arr.nrows(),
+                    arr.ncols()
+                )));
+            }
+            let a0 = Mat::from_fn(n, n, |i, j| arr[(i, j)]);
+            if (0..n).any(|j| (0..n).any(|i| !a0[(i, j)].is_finite())) {
+                return Err(PyValueError::new_err(
+                    "impact contains a NaN or infinite entry; the structural impact matrix \
+                     must be finite",
+                ));
+            }
+            // horizon < T_eff - 1 is refused by the core; anything above it is
+            // inert there (Theta is built only to T_eff - 1).
+            let h = horizon.unwrap_or(t_eff - 1);
+            let hd = tsecon_ident::decompose_with_impact(
+                m.as_ref(),
+                vr.params.as_ref(),
+                a0.as_ref(),
+                lags,
+                h,
+            )
+            .map_err(to_py)?;
+            let ref_to_vec2 =
+                |r: tsecon_var::tsecon_linalg::faer::MatRef<'_, f64>| -> Vec<Vec<f64>> {
+                    (0..r.nrows())
+                        .map(|i| (0..r.ncols()).map(|j| r[(i, j)]).collect())
+                        .collect()
+                };
+            // The diagnostic is computed on unit-scaled shocks, so it leaves
+            // the double range only when its TRUE value does: a diagonal entry
+            // beyond about 1.8e308 (an impact many orders of magnitude below
+            // the residuals) or below the smallest subnormal (far above them)
+            // while that shock is not identically zero.
+            let shock_cov = hd.shock_covariance();
+            let shocks = hd.shocks();
+            let out_of_range = (0..n).any(|j| {
+                (0..n).any(|i| !shock_cov[(i, j)].is_finite())
+                    || (shock_cov[(j, j)] == 0.0 && (0..t_eff).any(|r| shocks[(r, j)] != 0.0))
+            });
+            if out_of_range {
+                return Err(PyValueError::new_err(
+                    "the structural shocks' covariance E'E/T_eff is outside the double \
+                     range (it overflows past about 1.8e308 or underflows to zero): impact \
+                     is invertible, but its scale is extreme relative to the residuals, \
+                     many orders of magnitude below or above them; rescale impact to the \
+                     units of the residuals, e.g. long_run_svar(...)[\"impact\"]",
+                ));
+            }
+            let hd_tensor: Vec<Vec<Vec<f64>>> = hd.hd().iter().map(mat_to_vec2).collect();
+            d.set_item("baseline", ref_to_vec2(hd.baseline()))?;
+            d.set_item("hd", hd_tensor)?;
+            d.set_item("shocks", ref_to_vec2(hd.shocks()))?;
+            d.set_item("impact", mat_to_vec2(&a0))?;
+            d.set_item("shock_covariance", mat_to_vec2(&shock_cov))?;
+        }
         "sign" => {
             use tsecon_ident::{NarrativeSampler, Sign, SignRestriction, SignRestrictionSet};
             let prior =
@@ -12277,8 +13668,15 @@ fn historical_decomposition<'py>(
                 Some(l) if !l.is_empty() => Some(parse_narrative_restrictions(l, n, t_eff)?),
                 _ => None,
             };
+            if narrative.is_none() && n_weight_draws != 200 {
+                return Err(inert_n_weight_draws("historical_decomposition"));
+            }
+            // The decomposition keeps every accepted draw's T_eff historical
+            // contributions (n x n each); the sampler counts them with its own
+            // draws in one budget, before any substream is spawned.
             let result = NarrativeSampler::new(sign_h, n_draws, max_tries, n_weight_draws)
                 .map_err(to_py)?
+                .sized_for_hd()
                 .run(
                     &posterior,
                     m.as_ref(),
@@ -12326,7 +13724,7 @@ fn historical_decomposition<'py>(
         }
         o => {
             return Err(PyValueError::new_err(format!(
-                "unknown identification {o:?}; expected \"cholesky\"|\"sign\""
+                "unknown identification {o:?}; expected \"cholesky\"|\"impact\"|\"sign\""
             )))
         }
     }
@@ -12344,6 +13742,16 @@ fn historical_decomposition<'py>(
 /// `set_min`/`set_max`, per-draw `weights` (mean 1), and `diagnostics` (with `ess`,
 /// `narrative_acceptance_rate`, `min_ptilde`). With no narrative restrictions every
 /// weight is 1 and it reproduces `sign_restricted_svar` bit-for-bit.
+///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices, one RNG substream per draw and the returned lists, counted as real
+/// storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or `n_draws`
+/// past it is refused by name with the largest value that fits. The narrative
+/// weight loop, n_draws * n_weight_draws * (T_eff*n^2 + (h + 3)*n^3)
+/// multiply-adds, is capped at 2^35 (at most about a minute), refused naming
+/// n_weight_draws (or n_draws) with the largest value that fits.
+/// `n_weight_draws` is only read under narrative_restrictions: passed
+/// (non-default) without them it is refused as inert.
 ///
 /// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
 /// (400), `seed` (0), `lambda1` (0.2), `n_weight_draws` (200).
@@ -12399,6 +13807,9 @@ fn narrative_svar<'py>(
         Some(l) if !l.is_empty() => Some(parse_narrative_restrictions(l, n, t_eff)?),
         _ => None,
     };
+    if narrative.is_none() && n_weight_draws != 200 {
+        return Err(inert_n_weight_draws("narrative_svar"));
+    }
     let result = NarrativeSampler::new(horizon, n_draws, max_tries, n_weight_draws)
         .map_err(to_py)?
         .run(
@@ -12465,6 +13876,11 @@ fn narrative_svar<'py>(
 /// contract). The selected draw is a descriptive summary -- one interior point
 /// of the identified set, dependent on the informative Haar prior -- not a
 /// prior-free point estimate.
+///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices, one RNG substream per draw and the returned lists, counted as real
+/// storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or `n_draws`
+/// past it is refused by name with the largest value that fits.
 ///
 /// Further arguments, with defaults: `lags` (2), `n_draws` (500), `max_tries`
 /// (400), `lambda1` (0.2).
@@ -12580,6 +13996,11 @@ fn fry_pagan_svar<'py>(
 /// jointly-restricted shocks each bound is that shock's marginal identified
 /// set — a conservative outer approximation of the joint set, since the
 /// cross-shock orthogonality coupling is not imposed.
+///
+/// Sizes are checked before anything is allocated: the working set (padded
+/// matrices, one RNG substream per draw and the returned lists, counted as real
+/// storage) is budgeted at 2^28 values (2 GiB), and a `horizon` or `n_draws`
+/// past it is refused by name with the largest value that fits.
 ///
 /// Further arguments, with defaults: `lags` (2), `n_draws` (500), `seed` (0),
 /// `lambda1` (0.2).
@@ -13125,12 +14546,21 @@ fn _core(m: &Bound<'_, PyModule>) -> PyResult<()> {
     regime_ci::register(m)?;
     ssm_uc::register(m)?;
     panel_dl::register(m)?;
+    panel_static::register(m)?;
     termstructure_jsz::register(m)?;
     ml_neural::register(m)?;
     girf::register(m)?;
     coint_fmols::register(m)?;
+    coint_ardl::register(m)?;
     var_cf::register(m)?;
     forecast_mcs::register(m)?;
     ets::register(m)?;
+    diag_vr::register(m)?;
+    spectest_serial::register(m)?;
+    ewc::register(m)?;
+    svar_lr::register(m)?;
+    var_normality::register(m)?;
+    nowcast_smooth::register(m)?;
+    midas_adl::register(m)?;
     Ok(())
 }

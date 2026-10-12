@@ -1,0 +1,6 @@
+lags=2 H=500: 0.03s  work=9.693e+06  ns/unit=3.511
+lags=2 H=1000: 0.08s  work=3.739e+07  ns/unit=2.181
+lags=2 H=2000: 0.76s  work=1.468e+08  ns/unit=5.152
+lags=4 H=500: 0.03s  work=2.101e+07  ns/unit=1.636
+lags=4 H=1000: 0.20s  work=7.801e+07  ns/unit=2.581
+lags=4 H=2000: 1.67s  work=3.000e+08  ns/unit=5.572

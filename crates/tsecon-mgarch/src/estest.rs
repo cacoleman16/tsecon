@@ -36,6 +36,59 @@ use crate::error::MgarchError;
 use crate::stage::UnivariateStage;
 use crate::util::{corr_from_cov, moment_matrix};
 
+/// Memory budget of the pooled regression's normal equations: the
+/// `(lags + 1) x (lags + 1)` matrix `X'X` may hold at most `2^26` entries
+/// (512 MiB), the design budget `breusch_godfrey_test` uses.
+pub const DCC_TEST_MAX_XTX_CELLS: usize = 1 << 26;
+
+/// Work budget of the pooled regression, in multiply-adds: accumulating
+/// `X'X` costs `(lags + 1)^2` per stacked row, at most
+/// `T * k(k-1)/2 * (lags + 1)^2` in all, capped at `2^34` (the
+/// `breusch_godfrey_test` work budget).
+pub const DCC_TEST_WORK_BUDGET: u128 = 1 << 34;
+
+/// The largest lag length the data alone admit: the pooled regression
+/// stacks `(nobs - lags) * k(k-1)/2` outer-product rows on `lags + 1`
+/// coefficients and needs one residual degree of freedom (a zero residual
+/// variance has no Wald statistic), `(nobs - lags) * P >= lags + 2` with
+/// `P = k(k-1)/2`, i.e. `lags <= (nobs * P - 2) / (P + 1)`.
+fn dcc_test_data_max_lags(nobs: usize, k: usize) -> usize {
+    let n_pairs = (k as u128) * (k.saturating_sub(1) as u128) / 2;
+    let max = (nobs as u128 * n_pairs).saturating_sub(2) / (n_pairs + 1);
+    usize::try_from(max).unwrap_or(usize::MAX)
+}
+
+/// The largest lag length [`constant_correlation_test`] admits for `nobs`
+/// time observations of `k` series: the most the data identify (the
+/// `(nobs - lags) * k(k-1)/2` stacked rows must exceed the `lags + 1`
+/// coefficients by one residual degree of freedom), or less when the
+/// normal equations would pass [`DCC_TEST_MAX_XTX_CELLS`] or the
+/// accumulation the (monotone) work bound [`DCC_TEST_WORK_BUDGET`]. `0`
+/// when no lag fits.
+pub fn dcc_test_max_lags(nobs: usize, k: usize) -> usize {
+    let n_pairs = (k as u128) * (k.saturating_sub(1) as u128) / 2;
+    let fits = |lags: usize| -> bool {
+        let m = lags as u128 + 1;
+        m * m <= DCC_TEST_MAX_XTX_CELLS as u128
+            && (nobs as u128) * n_pairs.max(1) * m * m <= DCC_TEST_WORK_BUDGET
+    };
+    let data_max = dcc_test_data_max_lags(nobs, k);
+    if data_max == 0 || !fits(1) {
+        return 0;
+    }
+    // Both budgets grow with lags: bisect on the largest admissible one.
+    let (mut lo, mut hi) = (1usize, data_max);
+    while lo < hi {
+        let mid = lo + (hi - lo).div_ceil(2);
+        if fits(mid) {
+            lo = mid;
+        } else {
+            hi = mid - 1;
+        }
+    }
+    lo
+}
+
 /// Result of the Engle-Sheppard constant-correlation test.
 #[derive(Debug, Clone, PartialEq)]
 pub struct DccTestResult {
@@ -69,7 +122,12 @@ pub struct DccTestResult {
 ///
 /// * every [`MgarchError`] from the univariate stage;
 /// * [`MgarchError::InvalidParameter`] if `lags == 0`;
-/// * [`MgarchError::InsufficientData`] if `T <= lags + 1`;
+/// * [`MgarchError::LagsTooLong`] (naming `lags` and the largest lag length
+///   that fits) if the `(T - lags) * k(k-1)/2` stacked rows leave no
+///   residual degree of freedom for the `lags + 1` coefficients, or if the
+///   pooled regression would pass
+///   [`DCC_TEST_MAX_XTX_CELLS`] or [`DCC_TEST_WORK_BUDGET`] (see
+///   [`dcc_test_max_lags`]) — checked before the regression is built;
 /// * [`MgarchError::Linalg`] if `R` is not positive-definite (its symmetric
 ///   inverse square root does not exist) or the pooled regression's normal
 ///   equations cannot be solved.
@@ -88,10 +146,22 @@ pub fn constant_correlation_test(
     let stage = UnivariateStage::fit(series, spec)?;
     let k = stage.k;
     let t_obs = stage.nobs;
-    if t_obs <= lags + 1 {
-        return Err(MgarchError::InsufficientData {
-            needed: lags + 2,
-            got: t_obs,
+    let max_lags = dcc_test_max_lags(t_obs, k);
+    if lags > max_lags {
+        return Err(MgarchError::LagsTooLong {
+            lags,
+            nobs: t_obs,
+            max_lags,
+            why: if max_lags == dcc_test_data_max_lags(t_obs, k) {
+                "the pooled regression stacks (T - lags) * k(k-1)/2 outer-product rows on \
+                 lags + 1 coefficients (a constant and the lags) and needs at least one \
+                 residual degree of freedom, (T - lags) * k(k-1)/2 >= lags + 2"
+            } else {
+                "the pooled regression's (lags + 1) x (lags + 1) normal equations, \
+                 accumulated over every stacked row, would pass the 2^26-entry (512 MiB) \
+                 memory budget or the 2^34 multiply-add work budget, checked before the \
+                 regression is built"
+            },
         });
     }
 

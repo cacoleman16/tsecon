@@ -72,10 +72,13 @@ pub enum PanelRootError {
     /// The kernel long-run variance of a unit's first differences came out
     /// non-positive, so the long-run/short-run ratio
     /// `s_i = sigma_y_i / sigma_eps_i` has no real square root and the
-    /// Levin-Lin-Chu bias adjustment is undefined. Only a
-    /// non-positive-semi-definite kernel (the truncated one) can produce a
-    /// negative estimate; on persistent panels that is the normal outcome,
-    /// not a rare edge case.
+    /// Levin-Lin-Chu bias adjustment is undefined. A
+    /// non-positive-semi-definite kernel (the truncated one) produces a
+    /// negative estimate routinely on persistent panels; a positive
+    /// semi-definite one only by rounding an estimate that is essentially
+    /// zero — a unit without variation in its differences, or a bandwidth
+    /// reaching the sample (the demeaned autocovariances sum to zero), which
+    /// the message names as `lrv_bandwidth`.
     NonPsdLongRunVariance {
         /// The offending unit (0-indexed).
         unit: usize,
@@ -83,6 +86,11 @@ pub enum PanelRootError {
         kernel: &'static str,
         /// The offending long-run variance estimate.
         value: f64,
+        /// The bandwidth the kernel was evaluated at (`lrv_bandwidth`, or
+        /// the Levin-Lin-Chu rule's).
+        bandwidth: f64,
+        /// The number of first differences the estimate was computed from.
+        nobs: usize,
     },
     /// The pooled Levin-Lin-Chu regression degenerated: the projected
     /// lagged level has zero variation across the whole panel, so its
@@ -147,22 +155,63 @@ impl fmt::Display for PanelRootError {
                 unit,
                 kernel,
                 value,
-            } => write!(
-                f,
-                "the Levin-Lin-Chu long-run variance of unit {unit}'s first \
-                 differences came out non-positive ({value:.6e}) under the \
-                 {kernel} kernel, so the long-run/short-run ratio \
-                 s_i = sigma_y_i / sigma_eps_i has no real square root and the \
-                 mu*/sigma* bias adjustment is undefined. The truncated kernel \
-                 is not positive semi-definite — it sums raw autocovariances \
-                 with unit weights, and on a persistent panel the sum is \
-                 routinely negative, so this is the usual outcome rather than \
-                 an edge case. Use lrv_kernel = \"bartlett\" (the Levin-Lin-Chu \
-                 default), \"parzen\", or \"qs\": all three are guaranteed \
-                 non-negative. A negative estimate is never silently clamped, \
-                 because clamping would report a bias adjustment the data does \
-                 not support"
-            ),
+                bandwidth,
+                nobs,
+            } => {
+                write!(
+                    f,
+                    "the Levin-Lin-Chu long-run variance of unit {unit}'s first \
+                     differences came out non-positive ({value:.6e}) under the \
+                     {kernel} kernel, so the long-run/short-run ratio \
+                     s_i = sigma_y_i / sigma_eps_i has no real square root and the \
+                     mu*/sigma* bias adjustment is undefined. "
+                )?;
+                if *kernel == "truncated" {
+                    write!(
+                        f,
+                        "The truncated kernel is not positive semi-definite — it sums \
+                         raw autocovariances with unit weights, and on a persistent \
+                         panel the sum is routinely negative, so this is the usual \
+                         outcome rather than an edge case. Use lrv_kernel = \
+                         \"bartlett\" (the Levin-Lin-Chu default), \"parzen\", or \
+                         \"qs\": all three are guaranteed non-negative"
+                    )?;
+                } else if *bandwidth + 1.0 >= *nobs as f64 {
+                    // A PSD kernel at a bandwidth reaching the sample weights
+                    // (nearly) every autocovariance of the demeaned
+                    // differences, and those sum to zero.
+                    let bw = if bandwidth.abs() >= 1e15 {
+                        format!("{bandwidth:e}")
+                    } else {
+                        format!("{bandwidth}")
+                    };
+                    write!(
+                        f,
+                        "The {kernel} kernel is positive semi-definite, so its estimate \
+                         is non-positive only by rounding when it is essentially zero: \
+                         lrv_bandwidth = {bw} reaches the {nobs} first \
+                         differences, so the kernel weights (nearly) every \
+                         autocovariance of the demeaned differences, and those sum to \
+                         zero. Pass lrv_bandwidth < {} (None uses the Levin-Lin-Chu \
+                         rule round(3.21 T^(1/3)))",
+                        nobs.saturating_sub(1)
+                    )?;
+                } else {
+                    write!(
+                        f,
+                        "The {kernel} kernel is positive semi-definite, so its estimate \
+                         is non-positive only by rounding when it is essentially zero: \
+                         the unit's demeaned first differences carry (almost) no \
+                         variation — drop or replace that unit"
+                    )?;
+                }
+                write!(
+                    f,
+                    ". A negative estimate is never silently clamped, because \
+                     clamping would report a bias adjustment the data does not \
+                     support"
+                )
+            }
             Self::DegeneratePool => write!(
                 f,
                 "the pooled Levin-Lin-Chu regression is degenerate: the \

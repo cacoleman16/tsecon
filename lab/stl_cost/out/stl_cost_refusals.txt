@@ -1,0 +1,6 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+stl(inner_iter=2**31, outer_iter=0): refused in 0.58 ms, quoting inner_iter <= 770397
+stl(inner_iter=2, outer_iter=2**31): refused in 0.05 ms, quoting outer_iter <= 385197
+mstl(periods=[12], inner_iter=2**31, outer_iter=0): refused in 0.05 ms, quoting inner_iter <= 770397
+mstl(periods=[7, 30], iterate=2**31): refused in 0.02 ms, quoting iterate <= 23628

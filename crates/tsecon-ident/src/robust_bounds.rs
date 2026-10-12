@@ -82,6 +82,9 @@
 //! independent substream, so the per-draw bounds are a deterministic function
 //! of `(seed, draw index)` and the posterior summary is reproducible.
 
+use tsecon_bayes::budget::{
+    self, irf_path_values, mat_values, SizeArg, STREAM_VALUES, SUMMARY_CELL_VALUES,
+};
 use tsecon_bayes::NiwPosterior;
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
@@ -675,6 +678,10 @@ fn summarize_bound_cell(
 /// * [`IdentError::InvalidArgument`] if `n_draws == 0`, the restriction
 ///   horizon differs from `horizon`, `alpha` is not in `(0, 1)`, or `probs` is
 ///   empty or contains a value outside `[0, 1]`;
+/// * [`IdentError::Bayes`] ([`tsecon_bayes::BayesError::TooLarge`]), naming
+///   `horizon` or `n_draws`, when the per-draw bounds and per-cell summaries
+///   exceed [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`], checked before
+///   any substream is spawned;
 /// * [`IdentError::Rng`] if substream spawning fails;
 /// * [`IdentError::Bayes`] on a posterior-draw failure;
 /// * [`IdentError::Linalg`] if a draw's covariance has no Cholesky factor.
@@ -726,6 +733,36 @@ pub fn robust_svar_bounds(
 
     let p = posterior.lag_order();
     let restricted = restrictions.restricted_shocks().to_vec();
+    // Size the run before any substream is spawned: per draw one RNG
+    // substream and a lower and an upper bound for every (horizon,
+    // variable) cell of each restricted shock; per cell two accumulators and
+    // the summarized point; plus one draw's moving-average cube.
+    let n_restricted = restricted.len() as u128;
+    let n2 = (n as u128).saturating_mul(n as u128);
+    budget::check_memory(
+        "the identified-set bounds (per draw one RNG substream and a lower and an \
+         upper bound for each of the (horizon + 1) n cells of every restricted \
+         shock, plus per-cell accumulators and summaries)",
+        &[
+            SizeArg::new("horizon", horizon, 0),
+            SizeArg::new("n_draws", n_draws, 1),
+        ],
+        |v| {
+            let hs = (v[0] as u128).saturating_add(1);
+            let per_draw = STREAM_VALUES.saturating_add(
+                hs.saturating_mul(n as u128)
+                    .saturating_mul(n_restricted)
+                    .saturating_mul(2),
+            );
+            (v[1] as u128)
+                .saturating_mul(per_draw)
+                .saturating_add(
+                    hs.saturating_mul(n2)
+                        .saturating_mul(SUMMARY_CELL_VALUES.saturating_mul(2)),
+                )
+                .saturating_add(irf_path_values(n, v[0], mat_values(n)))
+        },
+    )?;
     // Per-shock expanded constraint lists, indexed by shock (empty for
     // unrestricted shocks).
     let mut per_shock: Vec<Vec<(usize, usize, f64)>> = vec![Vec::new(); n];

@@ -18,7 +18,10 @@
 //!   variances are pure sums and are asserted bit-identical).
 //!   `stepm_test_with_indices` reproduces `arch.bootstrap.StepM`'s superior
 //!   set, including the cases where arch itself raises (documented in the
-//!   generator).
+//!   generator) and two multi-step paths arch completes without raising
+//!   (`arch_multistep`), with the steps and step critical values pinned and
+//!   every step decision certified > 1e-9 from its critical value
+//!   (`stepm_margin`).
 //! * DOCUMENTED-FORMULA golden — the studentized path (Hansen 2005) against
 //!   the generator's NumPy transcription on the same resamples: statistics,
 //!   replicates and critical values at 1e-12 relative, p-values exact.
@@ -185,8 +188,18 @@ fn fixture_records_the_arch_findings_and_certifies_its_gaps() {
         );
         assert_eq!(c.resamples.len(), 200);
         assert!(c.resamples.iter().all(|r| r.len() == c.n));
+        // Every StepM decision is certified away from its critical value.
+        for key in ["0.05", "0.1"] {
+            for block in [&c.case["stepm"][key], &c.case["studentized"]["stepm"][key]] {
+                assert!(
+                    block["stepm_margin"].as_f64().unwrap() > 1e-9,
+                    "{}: stepm_margin at {key}",
+                    c.name
+                );
+            }
+        }
     }
-    assert!(cases().len() >= 7);
+    assert!(cases().len() >= 9);
 }
 
 #[test]
@@ -427,6 +440,8 @@ fn studentized_spa_reproduces_the_hansen_transcription() {
 #[test]
 fn stepm_reproduces_arch_superior_sets_and_the_transcription() {
     let mut arch_raised = 0;
+    let mut arch_multistep = 0;
+    let mut studentized_multistep = 0;
     for c in cases() {
         for (studentize, block) in [(false, "stepm"), (true, "studentized")] {
             let table = if studentize {
@@ -483,6 +498,17 @@ fn stepm_reproduces_arch_superior_sets_and_the_transcription() {
                     assert_eq!(r.superior_models.len(), c.m);
                     assert!(r.steps.len() >= 2);
                 }
+                if !studentize && want["arch_multistep"].as_bool().unwrap() {
+                    // arch completed this run (no raise) and a LATER step
+                    // added a model: the step-down path itself is pinned.
+                    arch_multistep += 1;
+                    assert!(!want["arch_raises"].as_bool().unwrap());
+                    assert!(r.steps.iter().filter(|s| !s.is_empty()).count() >= 2);
+                    assert!(r.superior_models.len() < c.m);
+                }
+                if studentize && r.steps.iter().filter(|s| !s.is_empty()).count() >= 2 {
+                    studentized_multistep += 1;
+                }
                 // Every superior model beats the benchmark on average.
                 for &k in &r.superior_models {
                     assert!(r.spa.mean_loss_diff[k] > 0.0);
@@ -492,6 +518,13 @@ fn stepm_reproduces_arch_superior_sets_and_the_transcription() {
     }
     // The fixture exercises the divergence at least once.
     assert!(arch_raised >= 1, "no case exercised arch's StepM crash");
+    // ... and at least one multi-step path arch completes without raising,
+    // and one multi-step studentized path.
+    assert!(
+        arch_multistep >= 1,
+        "no case pins a StepM run arch completes with a later step adding a model"
+    );
+    assert!(studentized_multistep >= 1);
 }
 
 #[test]

@@ -68,6 +68,10 @@ impl fmt::Display for IdentError {
             Self::Linalg(e) => write!(f, "linear algebra failure: {e}"),
             Self::Stats(e) => write!(f, "special-function failure: {e}"),
             Self::Rng(e) => write!(f, "random-stream failure: {e}"),
+            // A size refusal names the caller's own keyword and its largest
+            // admissible value; it is not a failure of the Bayesian layer, so
+            // it is shown as is.
+            Self::Bayes(e @ BayesError::TooLarge { .. }) => write!(f, "{e}"),
             Self::Bayes(e) => write!(f, "Bayesian foundations failure: {e}"),
             Self::Dimension {
                 what,

@@ -50,13 +50,13 @@ method fits your problem and how to trust its output.
 | Family | Functions |
 |---|---|
 | [Diagnostics](model-cards/diagnostics.md) | `acf`, `pacf`, `ljung_box`, `jarque_bera`, `arch_lm`, `adf`, `kpss`, `check_stationarity` |
-| [Phillips-Perron & Ouliaris tests](model-cards/unit-root-cointegration-tests.md) | `phillips_perron`, `phillips_ouliaris` |
+| [Unit-root, cointegration & variance-ratio tests](model-cards/unit-root-cointegration-tests.md) | `dfgls`, `ng_perron`, `phillips_perron`, `phillips_ouliaris`, `zivot_andrews`, `variance_ratio` |
 | [Check series (one-call battery)](model-cards/check-series.md) | `check_series` (plus the `tsecon.results.check_series` facade with `.summary()` / `.plot_diagnostics()`) |
-| [ARIMA](model-cards/arima.md) | `arima_fit`, `ar_loglik` |
+| [ARIMA](model-cards/arima.md) | `arima_fit` (exact MLE, or CSS with `method="css"`), `ar_loglik` |
 | [Spectral analysis](model-cards/spectral.md) | `periodogram`, `welch`, `coherence` |
 | [Volatility](model-cards/volatility.md) | `garch_fit`, `gas_volatility`, `dcs_local_level`, `ccc_garch`, `dcc_garch` |
 | [VAR / SVAR](model-cards/var-svar.md) | `var_fit`, `var_irf`, `var_irf_bands`, `var_fevd`, `var_granger`, `var_forecast`, `sign_restricted_svar`, `zero_sign_svar`, `favar`, `connectedness`, `var_girf` |
-| [Structural identification (advanced)](model-cards/structural-identification.md) | `long_run_svar`, `max_share_svar`, `proxy_svar`, `hetero_svar` |
+| [Structural identification (advanced)](model-cards/structural-identification.md) | `long_run_svar`, `long_run_svar_bands`, `max_share_svar`, `proxy_svar`, `hetero_svar` |
 | [Local projections](model-cards/local-projections.md) | `lp`, `lp_iv`, `lp_multiplier`, `lp_state`, `smooth_lp` |
 | [Bayesian](model-cards/bayesian.md) | `bvar_fit`, `bvar_hierarchical`, `bvar_ssvs`, `bvar_irf_draws`, `mcmc_diagnostics` |
 | [GMM](model-cards/gmm.md) | `iv_gmm`, `gmm_nonlinear` |
@@ -68,16 +68,17 @@ method fits your problem and how to trust its output.
 | [Regression trees & random forests](model-cards/ml-trees.md) | `regression_tree`, `random_forest` |
 | [L1 trend filtering & boosting](model-cards/ml-convex.md) | `l1_trend_filter`, `boosting` |
 | [Neural regressors](model-cards/ml-neural.md) | `mlp_regression`, `echo_state_network` |
-| [Panel](model-cards/panel.md) | `panel_fe`, `panel_distributed_lag`, `panel_lp`, `mean_group_var`, `panel_mean_group`, `panel_pmg` |
+| [Panel](model-cards/panel.md) | `panel_fe`, `panel_re`, `panel_between`, `panel_fd`, `panel_fama_macbeth`, `panel_distributed_lag`, `panel_lp`, `mean_group_var`, `panel_mean_group`, `panel_pmg` |
 | [Panel unit-root tests](model-cards/panel-unit-root.md) | `panel_unit_root` (LLC, IPS, Fisher/Maddala-Wu-Choi) |
-| [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_news`, `midas_weights`, `umidas`, `weighted_midas` |
+| [Nowcasting & MIDAS](model-cards/nowcasting-midas.md) | `dfm_nowcast`, `dfm_smooth`, `dfm_news`, `midas_weights`, `umidas`, `adl_midas`, `weighted_midas` |
 | [Term structure](model-cards/term-structure.md) | `nelson_siegel`, `svensson`, `dynamic_ns`, `acm_term_premium`, `jsz_fit`, `jsz_loadings` |
 | [Realized volatility](model-cards/realized-vol.md) | `realized_measures`, `har_rv`, `realized_quarticity`, `tripower_quarticity`, `bns_jump_test`, `realized_range` |
 | [Predictive regressions & IVX](model-cards/predictive-regressions.md) | `predictive_regression`, `ivx_test` |
 | [Recession probability](model-cards/recession.md) | `recession_probit` |
 | [Survey expectations](model-cards/expectations.md) | `cg_regression`, `forecast_efficiency`, `forecast_disagreement` |
 | [Long memory](model-cards/long-memory.md) | `frac_diff`, `frac_integrate`, `long_memory_d` |
-| [Specification & diagnostic tests](model-cards/specification-tests.md) | `heteroskedasticity_test`, `reset_test`, `chow_test`, `cusum_test` |
+| [Specification & diagnostic tests](model-cards/specification-tests.md) | `heteroskedasticity_test`, `reset_test`, `chow_test`, `cusum_test`, `breusch_godfrey_test`, `durbin_watson_test` |
+| [Robust inference: HC, HAC and EWC](model-cards/robust-inference.md) | `ols` (nonrobust / HC0-HC3 / HAC / EWC), `ewc_lrv`, `ewc_default_b`, `long_run_variance` |
 | [Arbitrage-free Nelson-Siegel](model-cards/afns.md) | `afns_adjustment` |
 | [DSGE (linear RE solver)](model-cards/dsge.md) | `dsge_solve` |
 | [Quantile regression & growth-at-risk](model-cards/quantile.md) | `quantile_regression`, `quantile_lp`, `growth_at_risk` |
@@ -85,7 +86,8 @@ method fits your problem and how to trust its output.
 | [Structural breaks](model-cards/structural-breaks.md) | `bai_perron`, `sup_f_test` |
 | [Static copulas](model-cards/copulas.md) | `pseudo_obs`, `copula_fit`, `copula_select` |
 | [Cointegrating regressions (FM-OLS / DOLS / CCR)](model-cards/cointegration-regime.md#fmols-dols-ccr-single-equation-cointegrating-regressions) | `fmols`, `dols`, `ccr` |
-| [VAR conditional forecasts & residual diagnostics](model-cards/var-svar.md#conditional-hard-path-forecasts-var_conditional_forecast) | `var_conditional_forecast`, `var_diagnostics`, `var_select_order` |
+| [ARDL bounds test (Pesaran-Shin-Smith)](model-cards/cointegration-regime.md#ardl_bounds_test-ardl-and-the-pesaran-shin-smith-bounds-test) | `ardl_bounds_test` |
+| [VAR conditional forecasts & residual diagnostics](model-cards/var-svar.md#conditional-hard-path-forecasts-var_conditional_forecast) | `var_conditional_forecast`, `var_diagnostics`, `var_select_order`, `multivariate_normality` |
 | [Multiple forecast comparisons](model-cards/forecasting.md#many-models-at-once-spa_test-stepm_test-model_confidence_set) | `spa_test`, `stepm_test`, `model_confidence_set` |
 | [Exponential smoothing (ETS)](model-cards/ets.md) | `ets_fit`, `auto_ets` |
 | [Structural time-series models (unobserved components) & TVP regression](model-cards/unobserved-components.md) | `unobserved_components`, `tvp_regression` |

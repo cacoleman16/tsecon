@@ -1,8 +1,12 @@
 //! Input-validation tests ("errors that teach"): every guard on the
-//! smooth-LP entry point returns a typed [`LpError`] whose Display names
-//! what happened and what to try, never a panic.
+//! smooth-LP entry point (and the horizon pre-scan every LP entry point
+//! shares) returns a typed [`LpError`] whose Display names what happened
+//! and what to try, never a panic or an abort.
 
-use tsecon_lp::{smooth_lp, LpError, SmoothLpSpec};
+use tsecon_lp::{
+    lp, lp_band, lp_irf_cov, lp_iv, lp_multiplier, lp_state, smooth_lp, BandSpec, LpError, LpSpec,
+    SmoothLpSpec,
+};
 
 /// A small well-formed pair of series.
 fn series(n: usize) -> (Vec<f64>, Vec<f64>) {
@@ -153,4 +157,101 @@ fn constant_shock_is_a_singular_design_that_teaches() {
     let err = smooth_lp(&y, &e, &SmoothLpSpec::new(6, 2).with_lambda(1.0)).unwrap_err();
     assert!(matches!(err, LpError::Hac(_)), "got {err:?}");
     assert!(err.to_string().contains("collinear"), "{err}");
+}
+
+/// A maximum horizon far beyond the sample (`2^40`, `usize::MAX`) is refused
+/// by the arithmetic pre-scan before any output is sized by it — it used to
+/// reserve `horizons + 1` slots first and abort the process — at the first
+/// infeasible horizon, and the message names `horizons` with the largest
+/// value the sample admits. Hand-computed for `n = 60`, `p = 2`:
+/// lag-augmented `lp` keeps `60 - h - max(2, h)` rows for `4 + h`
+/// regressors (first failure `h = 19`); HAC `lp` and `lp_iv` keep `58 - h`
+/// rows for 4 (`h = 54`); `lp_multiplier` keeps `58 - h` for `2 + 2p = 6`
+/// (`h = 52`); HAC `lp_state` keeps `58 - h` for `2 (2 + p) = 8` (`h = 50`).
+#[test]
+fn unreachable_maximum_horizons_are_refused_before_sizing() {
+    // Aperiodic draws, so that up to 18 impulse lags stay linearly
+    // independent at the largest admissible horizon.
+    let scramble = |mut s: u64| -> Vec<f64> {
+        (0..60)
+            .map(|_| {
+                s = s
+                    .wrapping_mul(6364136223846793005)
+                    .wrapping_add(1442695040888963407);
+                (s >> 11) as f64 / (1u64 << 53) as f64 - 0.5
+            })
+            .collect()
+    };
+    let e = scramble(1);
+    let mut y = scramble(2);
+    for t in 1..60 {
+        y[t] += 0.5 * y[t - 1] + 0.8 * e[t];
+    }
+    let z: Vec<f64> = e
+        .iter()
+        .zip(scramble(3))
+        .map(|(v, u)| v + 0.3 * u)
+        .collect();
+    let state: Vec<f64> = (0..60).map(|t| ((t / 3) % 2) as f64).collect();
+    for horizons in [1usize << 40, usize::MAX] {
+        let la = LpSpec::new(horizons, 2);
+        let hac = la.with_hac(None);
+        let cases: [(&str, LpError, usize); 8] = [
+            ("lp", lp(&y, &e, la).unwrap_err(), 19),
+            ("lp hac", lp(&y, &e, hac).unwrap_err(), 54),
+            ("lp_iv", lp_iv(&y, &e, &z, la).unwrap_err(), 54),
+            (
+                "lp_multiplier",
+                lp_multiplier(&y, &e, &z, la).unwrap_err(),
+                52,
+            ),
+            ("lp_state", lp_state(&y, &e, &state, hac).unwrap_err(), 50),
+            ("lp_irf_cov", lp_irf_cov(&y, &e, la).unwrap_err(), 19),
+            (
+                "lp_band sup-t",
+                lp_band(&y, &e, la, BandSpec::sup_t(0.1)).unwrap_err(),
+                19,
+            ),
+            (
+                "smooth_lp",
+                smooth_lp(&y, &e, &SmoothLpSpec::new(horizons, 2)).unwrap_err(),
+                54,
+            ),
+        ];
+        for (name, err, first) in cases {
+            assert!(
+                matches!(err, LpError::HorizonTooLong { horizon, .. } if horizon == first),
+                "{name}: {err:?}"
+            );
+            let msg = err.to_string();
+            let max = format!("horizons can be at most {}", first - 1);
+            assert!(msg.contains(&max), "{name}: {msg}");
+        }
+    }
+    // The largest admissible value really is admissible.
+    assert_eq!(lp(&y, &e, LpSpec::new(18, 2)).unwrap().irf.len(), 19);
+    assert_eq!(lp_iv(&y, &e, &z, LpSpec::new(53, 2)).unwrap().irf.len(), 54);
+    assert_eq!(
+        lp_multiplier(&y, &e, &z, LpSpec::new(51, 2))
+            .unwrap()
+            .multiplier
+            .len(),
+        52
+    );
+}
+
+/// When even horizon 0 has too few rows the refusal says no horizon is
+/// estimable and points at `n_lag_controls`, not at the horizon.
+#[test]
+fn infeasible_horizon_zero_points_at_the_lag_controls() {
+    let (y, e) = series(10);
+    // p = 4: horizon 0 keeps 10 - 4 = 6 rows for 2 + 4 = 6 regressors.
+    let err = lp(&y, &e, LpSpec::new(3, 4).with_hac(None)).unwrap_err();
+    assert!(
+        matches!(err, LpError::HorizonTooLong { horizon: 0, .. }),
+        "{err:?}"
+    );
+    let msg = err.to_string();
+    assert!(msg.contains("not even horizons = 0"), "{msg}");
+    assert!(msg.contains("reduce n_lag_controls"), "{msg}");
 }

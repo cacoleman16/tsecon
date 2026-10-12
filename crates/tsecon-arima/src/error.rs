@@ -65,6 +65,28 @@ pub enum ArimaError {
         nobs: usize,
         /// What those usable observations are needed for.
         what: &'static str,
+        /// The remedy, naming the orders that set the requirement (the
+        /// seasonal ones when they contribute), as a full sentence.
+        remedy: &'static str,
+    },
+    /// The specification is too large to estimate within the crate's work
+    /// and memory budgets ([`crate::spec::ARIMA_WORK_BUDGET`],
+    /// [`crate::spec::ARIMA_BUDGET_VALUES`]; see
+    /// [`ArimaSpec::estimation_cost`](crate::ArimaSpec::estimation_cost)),
+    /// refused before anything is allocated.
+    TooLarge {
+        /// The state dimension `max(p + s*P, q + s*Q + 1)` of the exact
+        /// likelihood's Kalman filter.
+        state_dim: usize,
+        /// The number of free parameters `k`.
+        k_params: usize,
+        /// The usable observations after differencing.
+        n_eff: usize,
+        /// Which budget (or both) the specification passes.
+        exceeded: &'static str,
+        /// The largest state dimension that fits both budgets at this
+        /// sample size and parameter count (`0` when none does).
+        max_state_dim: usize,
     },
     /// No optimization run produced a usable (finite) solution; the
     /// likelihood was non-finite at every point visited from every start.
@@ -124,21 +146,42 @@ impl fmt::Display for ArimaError {
                 got,
                 nobs,
                 what,
+                remedy,
             } if got == nobs => write!(
                 f,
                 "ARIMA needs at least {needed} observations for {what}, but got {nobs}. \
-                 Lower p, d, or q, or supply a longer series."
+                 {remedy}"
             ),
             Self::InsufficientObservations {
                 needed,
                 got,
                 nobs,
                 what,
+                remedy,
             } => write!(
                 f,
                 "ARIMA needs at least {needed} usable observations for {what}, but only \
-                 {got} of the {nobs} supplied survive differencing. Lower p, d, or q, or \
-                 supply a longer series."
+                 {got} of the {nobs} supplied survive differencing. {remedy}"
+            ),
+            Self::TooLarge {
+                state_dim,
+                k_params,
+                n_eff,
+                exceeded,
+                max_state_dim,
+            } => write!(
+                f,
+                "the ARIMA orders (p, q and seasonal=(P, D, Q, s)) are too large to \
+                 estimate: the exact likelihood runs a Kalman filter on a state of dimension \
+                 max(p + s*P, q + s*Q + 1) = {state_dim}, whose cost grows with the cube of \
+                 that dimension, and with {k_params} free parameters on {n_eff} usable \
+                 observations even the work every fit is guaranteed to do (one gradient and \
+                 the observed-information Hessian behind bse, 2k(k + 2) + 1 likelihood \
+                 evaluations) would pass {exceeded}, checked before anything is allocated. At \
+                 this sample size and parameter count the state dimension can be at most \
+                 {max_state_dim}: lower p or q, or the seasonal orders P, Q or the period s; a \
+                 long seasonal period is usually better handled by seasonal adjustment (stl) \
+                 than by seasonal ARMA lags."
             ),
             Self::EstimationFailed { what } => write!(f, "ARIMA estimation failed: {what}"),
             Self::CovarianceFailed { what } => write!(

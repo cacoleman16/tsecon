@@ -1,0 +1,15 @@
+# tsecon 0.10.0, Python 3.13.16, x86_64
+#      n      P    K      L         units  x cap   seconds  ns/unit
+     160      2    6      4      7.68e+04   0.00     0.000    4.096
+   20000      1    6     12      1.79e+07   0.00     0.027    1.524
+  100000      1   50     18      5.41e+09   0.63     6.831    1.263
+   20000      1    6   2000      2.56e+09   0.30     3.124    1.219
+    5000      1    6   4998      1.60e+09   0.19     1.068    0.668
+   20000    150    6     12      6.85e+09   0.80     8.303    1.212
+    4000    600    6      0      2.51e+09   0.29     0.713    0.285
+    4000    400    6      8      5.96e+09   0.69     9.843    1.651
+  100000      1    6   1340      8.59e+09   1.00    11.318    1.318
+# refused past the caps (time to the refusal):
+  100000  49000    1       None   0.001s  adl_midas: ar_lags = 49000 with K = 1 high-frequency column(s) builds an nobs x (1 + ar_lags + K) = 51000 x 49
+  100000      1    6 1000000000   0.002s  adl_midas: maxlags = 1000000000 over nobs = 99999 fitted rows and k = 8 coefficients costs about nobs * k^2 * 
+   20000   2000    6       None   0.000s  adl_midas: ar_lags = 2000 with K = 6 high-frequency column(s) gives k = 1 + ar_lags + K = 2007 coefficients ov

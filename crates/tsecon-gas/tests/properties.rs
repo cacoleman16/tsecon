@@ -164,3 +164,35 @@ fn ml_recovers_student_t() {
         ll_perturbed
     );
 }
+
+/// The variance-forecast horizon is capped at `MAX_FORECAST_HORIZON`
+/// (1,000,000 steps), refused by name before the path is allocated (audit
+/// round 16: `horizon=2**31` used to request 16 GiB and abort the process).
+/// At the cap the projection still follows its closed form
+/// `f_{N+k} = omega/(1-b) + b^(k-1) (f_{N+1} - omega/(1-b))`.
+#[test]
+fn forecast_horizon_is_capped_before_allocating() {
+    use tsecon_gas::{check_forecast_horizon, forecast_from, GasError, MAX_FORECAST_HORIZON};
+    assert_eq!(MAX_FORECAST_HORIZON, 1_000_000);
+    for h in [MAX_FORECAST_HORIZON + 1, 1 << 31, 1 << 40, usize::MAX] {
+        let err = forecast_from(2.0, 0.1, 0.9, h).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                GasError::InvalidParameter {
+                    name: "horizon",
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        assert!(err.to_string().contains("horizon <= 1000000"), "{err}");
+        assert!(check_forecast_horizon(h).is_err());
+    }
+    let f = forecast_from(2.0, 0.1, 0.9, MAX_FORECAST_HORIZON).unwrap();
+    assert_eq!(f.len(), MAX_FORECAST_HORIZON);
+    assert_eq!(f[0], 2.0);
+    assert!((f[1] - 1.9).abs() < 1e-15);
+    // b^(k-1) has long since underflowed: the stationary mean omega/(1-b).
+    assert!((f[MAX_FORECAST_HORIZON - 1] - 1.0).abs() < 1e-12);
+}

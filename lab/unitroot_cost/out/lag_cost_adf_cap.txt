@@ -1,0 +1,4 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+adf(n = 20000, regression 'ct', AIC search): largest admissible maxlag = 168
+  work 3.39e+10 multiply-adds, ran in 36.1 s (1.06 ns/madd)

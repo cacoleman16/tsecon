@@ -66,6 +66,30 @@ pub enum QuantileError {
         /// Parameters the design at this horizon carries.
         k: usize,
     },
+    /// Quantile local projections: `n_lag_controls` leaves even horizon 0
+    /// with no more usable observations (`n - n_lag_controls`) than design
+    /// parameters (`2 + 2 n_lag_controls`).
+    LagControlsExhaustSample {
+        /// The requested lag controls.
+        n_lag_controls: usize,
+        /// The series length.
+        n: usize,
+    },
+    /// Quantile local projections: the maximum horizon `horizons` leaves no
+    /// more usable observations (`n - n_lag_controls - horizons`) than
+    /// design parameters. Checked before anything is sized by `horizons`.
+    HorizonsExhaustSample {
+        /// The requested maximum horizon.
+        horizons: usize,
+        /// The series length.
+        n: usize,
+        /// The requested lag controls.
+        n_lag_controls: usize,
+        /// Parameters of every horizon's design (`2 + 2 n_lag_controls`).
+        k: usize,
+        /// The largest admissible `horizons`, `n - n_lag_controls - k - 1`.
+        max_horizons: usize,
+    },
     /// Growth-at-risk needs `horizon >= 1`: at `horizon = 0` the "h-ahead
     /// outcome" is the regressand itself.
     ZeroHorizon,
@@ -154,6 +178,43 @@ impl fmt::Display for QuantileError {
                  from a series of length {n}, but the design carries k = {k} \
                  parameters (requires nobs > k); lower the maximum horizon, \
                  reduce the lag controls, or supply a longer series"
+            ),
+            Self::LagControlsExhaustSample { n_lag_controls, n } => {
+                write!(
+                    f,
+                    "n_lag_controls = {n_lag_controls} leaves no estimable horizon in a \
+                     series of length {n}: horizon 0 keeps n - n_lag_controls usable \
+                     observations for k = 2 + 2 * n_lag_controls parameters and \
+                     requires nobs > k, "
+                )?;
+                match n.checked_sub(3) {
+                    Some(m) => write!(
+                        f,
+                        "so n_lag_controls can be at most {} here; reduce the lag \
+                         controls or supply a longer series",
+                        m / 3
+                    ),
+                    None => write!(
+                        f,
+                        "which no n_lag_controls meets with fewer than 3 \
+                         observations; supply a longer series"
+                    ),
+                }
+            }
+            Self::HorizonsExhaustSample {
+                horizons,
+                n,
+                n_lag_controls,
+                k,
+                max_horizons,
+            } => write!(
+                f,
+                "horizons = {horizons} reaches past the sample: with n_lag_controls \
+                 = {n_lag_controls} every horizon h carries k = {k} parameters and \
+                 keeps nobs = {n} - {n_lag_controls} - h usable observations, which \
+                 must exceed k, so horizons can be at most {max_horizons} for this \
+                 series; lower the maximum horizon, reduce the lag controls, or \
+                 supply a longer series"
             ),
             Self::ZeroHorizon => write!(
                 f,

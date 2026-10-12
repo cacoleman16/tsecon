@@ -6,7 +6,8 @@ use core::fmt;
 ///
 /// The generators themselves are infallible (counter arithmetic wraps by
 /// design); errors only arise from resource-limit violations in the seeding
-/// hierarchy.
+/// hierarchy: the 32-bit spawn-key space, and the memory budget on how many
+/// children or streams one call materializes at once.
 #[derive(Debug, Clone, PartialEq, Eq)]
 #[non_exhaustive]
 pub enum RngError {
@@ -18,6 +19,19 @@ pub enum RngError {
         requested: usize,
         /// Number of children that can still be spawned from this sequence.
         available: u64,
+    },
+    /// A [`crate::SeedSequence::spawn`] or [`crate::Stream::substreams`]
+    /// call asked to materialize more children (streams) at once than the
+    /// memory budget [`crate::MAX_MATERIALIZED_STREAMS`] allows, or the
+    /// allocator refused the vector. Checked before anything is allocated,
+    /// so the refusal is an error rather than an aborted process; a caller
+    /// that needs more streams derives them one at a time with
+    /// [`crate::Stream::substream`] / [`crate::SeedSequence::child`].
+    StreamBudgetExceeded {
+        /// Number of children (streams) requested by this call.
+        requested: usize,
+        /// The most one call materializes.
+        max: usize,
     },
 }
 
@@ -31,6 +45,12 @@ impl fmt::Display for RngError {
                 f,
                 "cannot spawn {requested} children: only {available} spawn-key \
                  indices remain (u32 limit)"
+            ),
+            RngError::StreamBudgetExceeded { requested, max } => write!(
+                f,
+                "cannot hold {requested} random substreams at once: one call materializes \
+                 at most {max} (2^24, a budget of about 2 GiB of generator state), checked \
+                 before anything is allocated; request fewer draws or replications"
             ),
         }
     }

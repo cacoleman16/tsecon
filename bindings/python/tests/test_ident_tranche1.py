@@ -95,6 +95,36 @@ def test_long_run_svar_matches_numpy_closed_form():
     assert np.allclose(np.asarray(r["long_run_multiplier"]), c1, atol=1e-8)
 
 
+def test_long_run_svar_impact_signs_anchor():
+    """`impact_signs` negates exactly the anchored shock's column when its
+    impact cell is negative, after `normalize`; an anchor that already holds
+    is a bit-for-bit no-op; `fevd` is sign-invariant; bad anchors are refused
+    by name."""
+    base = tsecon.long_run_svar(DATA, lags=2, horizon=6)
+    b = np.asarray(base["impact"])
+    # anchor every shock on variable 0: column j flips iff b[0, j] < 0
+    anchors = [(0, j) for j in range(3)]
+    r = tsecon.long_run_svar(DATA, lags=2, horizon=6, impact_signs=anchors)
+    flip = np.where(b[0] < 0.0, -1.0, 1.0)
+    assert np.any(flip < 0.0)                        # the case exercises a flip
+    assert np.array_equal(np.asarray(r["impact"]), b * flip)
+    assert np.array_equal(np.asarray(r["long_run"]), np.asarray(base["long_run"]) * flip)
+    assert np.array_equal(np.asarray(r["irf"]), np.asarray(base["irf"]) * flip)
+    assert np.array_equal(np.asarray(r["cumulative_irf"]), np.asarray(base["cumulative_irf"]) * flip)
+    assert np.array_equal(np.asarray(r["fevd"]), np.asarray(base["fevd"]))
+    assert np.all(np.asarray(r["impact"])[0] >= 0.0)
+    # already-positive anchors change nothing
+    keep = [(j, j) for j in range(3) if b[j, j] > 0.0]
+    same = tsecon.long_run_svar(DATA, lags=2, horizon=6, impact_signs=keep)
+    assert np.array_equal(np.asarray(same["impact"]), b)
+    # out of range, a shock anchored twice, and the malformed pairs PyO3 alone
+    # would refuse without naming the argument (wrong arity, a negative or a
+    # beyond-64-bit index nested in a pair)
+    for bad in ([(3, 0)], [(0, 3)], [(0, 1), (2, 1)], [(0,)], [(0, 1, 2)], [(0, -1)], [(0, 2**64)]):
+        with pytest.raises(ValueError, match=r"\bimpact_signs\b"):
+            tsecon.long_run_svar(DATA, lags=2, impact_signs=bad)
+
+
 # --------------------------------------------------------------------------- #
 # max-share — spectral properties
 # --------------------------------------------------------------------------- #

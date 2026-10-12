@@ -2,8 +2,8 @@
 //! error-path coverage.
 
 use tsecon_hac::{
-    andrews_bandwidth_ar1, ewc_default_b, ewc_lrv, lrv, lrv_prewhitened_ar1, newey_west_bandwidth,
-    newey_west_maxlags, ols, HacError, Kernel, SeType,
+    andrews_bandwidth_ar1, ewc_default_b, ewc_lrv, ewc_lrv_matrix, lrv, lrv_prewhitened_ar1,
+    newey_west_bandwidth, newey_west_maxlags, ols, HacError, Kernel, SeType,
 };
 
 const KERNELS: [Kernel; 4] = [
@@ -179,6 +179,44 @@ fn ewc_default_b_follows_the_llsw_rule() {
     assert_eq!(ewc_default_b(3), 1);
 }
 
+/// `B = round(0.4 n^(2/3))` exactly: `r` is the rounding iff
+/// `125 (2r - 1)^3 <= 64 n^2 < 125 (2r + 1)^3`. Checked in `u128` for every
+/// `n` up to 2e5 and on a geometric sweep to 2^48 (the largest count the
+/// Python layer passes), and the extreme `usize` values return without a
+/// panic or an overflow.
+#[test]
+fn ewc_default_b_brackets_exactly_and_never_overflows() {
+    let bracket = |n: usize| {
+        let r = ewc_default_b(n) as u128;
+        let m = 64 * (n as u128) * (n as u128);
+        let cube = |t: u128| 125 * t * t * t;
+        (cube(2 * r - 1) <= m, m < cube(2 * r + 1))
+    };
+    let mut n = 4_usize;
+    let mut sweep: Vec<usize> = (4..200_000).collect();
+    while n < (1 << 48) {
+        sweep.extend([n, n + 1, n + 7]);
+        n = n + n / 3 + 1;
+    }
+    for n in sweep {
+        assert_eq!(
+            bracket(n),
+            (true, true),
+            "n = {n}: B = {}",
+            ewc_default_b(n)
+        );
+    }
+    for n in [0, 1, 2, usize::MAX - 1, usize::MAX] {
+        let b = ewc_default_b(n);
+        assert!(b >= 1 && b < n.max(2), "n = {n}: B = {b}");
+    }
+    // 0.4 (2^64 - 1)^(2/3) = 2792585463332.62... (60-digit Decimal), on a
+    // 64-bit target.
+    if usize::BITS == 64 {
+        assert_eq!(ewc_default_b(usize::MAX) as u64, 2_792_585_463_333);
+    }
+}
+
 #[test]
 fn ewc_of_white_noise_is_close_to_its_variance() {
     let z = demean(&lcg_series(4000, 5));
@@ -188,6 +226,141 @@ fn ewc_of_white_noise_is_close_to_its_variance() {
         (omega / gamma0 - 1.0).abs() < 0.25,
         "EWC white-noise LRV {omega} should be near the variance {gamma0}"
     );
+}
+
+/// The matrix form shares the scalar form's cosine evaluation and its
+/// accumulation order, so at `k = 1` the two are the same bits.
+#[test]
+fn ewc_matrix_at_k1_is_bitwise_the_scalar_estimator() {
+    for (n, seed) in [(37_usize, 1_u64), (100, 2), (250, 3), (1001, 4)] {
+        let z = demean(&ar1_series(n, 0.5, seed));
+        for b in [1, 2, ewc_default_b(n), n / 2, n - 1] {
+            let scalar = ewc_lrv(&z, b).unwrap();
+            let matrix = ewc_lrv_matrix(std::slice::from_ref(&z), b).unwrap();
+            assert_eq!(matrix.len(), 1);
+            assert_eq!(
+                matrix[0].to_bits(),
+                scalar.to_bits(),
+                "n={n} b={b}: matrix {} vs scalar {scalar}",
+                matrix[0]
+            );
+        }
+    }
+}
+
+/// No `j = 0` (mean) term: adding a constant to a column changes nothing in
+/// exact arithmetic; in floating point the shift is roundoff.
+#[test]
+fn ewc_is_mean_invariant() {
+    let z = demean(&ar1_series(300, 0.7, 21));
+    let b = ewc_default_b(z.len());
+    let base = ewc_lrv(&z, b).unwrap();
+    for shift in [1.0, -3.5, 250.0] {
+        let shifted: Vec<f64> = z.iter().map(|v| v + shift).collect();
+        let got = ewc_lrv(&shifted, b).unwrap();
+        assert!(
+            ((got - base) / base).abs() < 1e-11,
+            "shift {shift}: {got} vs {base}"
+        );
+    }
+    let w = demean(&lcg_series(300, 22));
+    let base_m = ewc_lrv_matrix(&[z.clone(), w.clone()], b).unwrap();
+    let moved: Vec<Vec<f64>> = vec![
+        z.iter().map(|v| v + 7.0).collect(),
+        w.iter().map(|v| v - 2.0).collect(),
+    ];
+    let got_m = ewc_lrv_matrix(&moved, b).unwrap();
+    for (g, e) in got_m.iter().zip(&base_m) {
+        assert!((g - e).abs() <= 1e-11 * base_m[0].abs().max(base_m[3].abs()));
+    }
+}
+
+/// `Omega_hat(c z) = c^2 Omega_hat(z)`; with `c` a power of two the scaling is
+/// exact in floating point, so the identity holds bitwise.
+#[test]
+fn ewc_scales_quadratically() {
+    let z = demean(&ar1_series(180, 0.4, 5));
+    let b = 9;
+    let base = ewc_lrv(&z, b).unwrap();
+    for c in [2.0_f64, 0.25, -8.0] {
+        let scaled: Vec<f64> = z.iter().map(|v| c * v).collect();
+        assert_eq!(ewc_lrv(&scaled, b).unwrap(), c * c * base, "c = {c}");
+    }
+    let c = 3.7_f64;
+    let scaled: Vec<f64> = z.iter().map(|v| c * v).collect();
+    let got = ewc_lrv(&scaled, b).unwrap();
+    assert!(((got - c * c * base) / base).abs() < 1e-13);
+}
+
+/// The k x k estimate is symmetric and positive semi-definite (a sum of
+/// outer products), and its diagonal is the scalar estimator per column.
+#[test]
+fn ewc_matrix_is_symmetric_psd_with_scalar_diagonal() {
+    let n = 160;
+    let cols = vec![
+        demean(&ar1_series(n, 0.6, 31)),
+        demean(&ar1_series(n, 0.2, 32)),
+        demean(&lcg_series(n, 33)),
+    ];
+    for b in [1, 3, ewc_default_b(n), n - 1] {
+        let m = ewc_lrv_matrix(&cols, b).unwrap();
+        for i in 0..3 {
+            assert_eq!(
+                m[i * 3 + i].to_bits(),
+                ewc_lrv(&cols[i], b).unwrap().to_bits()
+            );
+            for j in 0..3 {
+                assert_eq!(m[i * 3 + j].to_bits(), m[j * 3 + i].to_bits());
+            }
+        }
+        // PSD: every 2x2 principal minor and the determinant are >= 0, and a
+        // few fixed directions give non-negative quadratic forms.
+        for v in [[1.0, -1.0, 0.5], [0.3, 2.0, -1.0], [1.0, 1.0, 1.0]] {
+            let mut q = 0.0;
+            for i in 0..3 {
+                for j in 0..3 {
+                    q += v[i] * m[i * 3 + j] * v[j];
+                }
+            }
+            assert!(q >= -1e-12 * m[0].abs(), "b={b}: v'Mv = {q}");
+        }
+        if b == 1 {
+            // Rank one: every 2x2 minor vanishes to roundoff.
+            let minor = m[0] * m[4] - m[1] * m[3];
+            assert!(minor.abs() <= 1e-12 * m[0] * m[4]);
+        }
+    }
+}
+
+#[test]
+fn ewc_matrix_error_paths_name_the_problem() {
+    let a = demean(&ar1_series(40, 0.5, 1));
+    assert!(matches!(ewc_lrv_matrix(&[], 3), Err(HacError::EmptyDesign)));
+    assert!(matches!(
+        ewc_lrv_matrix(&[a.clone(), vec![0.0; 39]], 3),
+        Err(HacError::DimensionMismatch {
+            column: 1,
+            expected: 40,
+            got: 39,
+            ..
+        })
+    ));
+    assert!(matches!(
+        ewc_lrv_matrix(&[vec![1.0]], 1),
+        Err(HacError::SeriesTooShort { n: 1, .. })
+    ));
+    let mut bad = a.clone();
+    bad[5] = f64::INFINITY;
+    assert!(matches!(
+        ewc_lrv_matrix(&[a.clone(), bad], 3),
+        Err(HacError::NonFinite { index: 5, .. })
+    ));
+    for b in [0, 40, 41] {
+        assert!(matches!(
+            ewc_lrv_matrix(std::slice::from_ref(&a), b),
+            Err(HacError::InvalidDof { .. })
+        ));
+    }
 }
 
 // ------------------------------------------------------ automatic bandwidth
@@ -505,6 +678,85 @@ fn full_leverage_observation_is_named_not_silently_infinite() {
     }
 }
 
+/// OLS scores sum to zero column by column (`X'u = 0`), so with the cosine
+/// basis complete (`b = n - 1`) the EWC meat is `n/(n - 1) sum_t s_t s_t'` —
+/// the HC0 meat times `n/(n - 1)` — and the EWC covariance is exactly HC0's
+/// scaled by `n/(n - 1)`.
+#[test]
+fn ewc_at_full_b_is_hc0_scaled_by_n_over_n_minus_one() {
+    let (y, x) = regression_data(140, 9);
+    let n = 140.0_f64;
+    let fit = ols(&y, &x).unwrap();
+    let hc0 = fit.inference(SeType::Hc0).unwrap();
+    let ewc = fit.inference(SeType::Ewc { b: 139 }).unwrap();
+    for i in 0..9 {
+        let want = hc0.cov[i] * n / (n - 1.0);
+        assert!(
+            (ewc.cov[i] - want).abs() <= 1e-10 * hc0.cov[0].abs(),
+            "cov[{i}]: {} vs {want}",
+            ewc.cov[i]
+        );
+    }
+}
+
+/// Every standard-error flavor, EWC included, yields finite positive bse and
+/// t = params / bse on a well-posed persistent design.
+#[test]
+fn every_se_type_gives_finite_bse_and_consistent_tvalues() {
+    let (y, x) = regression_data(260, 12);
+    let fit = ols(&y, &x).unwrap();
+    let b0 = ewc_default_b(260);
+    for se_type in [
+        SeType::NonRobust,
+        SeType::Hc0,
+        SeType::Hc1,
+        SeType::Hc2,
+        SeType::Hc3,
+        SeType::Hac {
+            kernel: Kernel::Bartlett,
+            bandwidth: 5.0,
+            use_correction: true,
+        },
+        SeType::Ewc { b: b0 },
+        SeType::Ewc { b: 1 },
+        SeType::Ewc { b: 259 },
+    ] {
+        let inf = fit.inference(se_type).unwrap();
+        for i in 0..3 {
+            assert!(inf.bse[i].is_finite() && inf.bse[i] > 0.0, "{se_type:?}");
+            assert_eq!(
+                inf.tvalues[i].to_bits(),
+                (fit.params[i] / inf.bse[i]).to_bits(),
+                "{se_type:?}"
+            );
+            assert_eq!(inf.cov[i * 3 + i].sqrt().to_bits(), inf.bse[i].to_bits());
+        }
+    }
+}
+
+/// The EWC variance estimate is `Omega chi^2_B / B`, so on a long
+/// white-noise regression (where HC0 is consistent too) the bse at the
+/// default B land within a few `chi^2_B` standard deviations of the HC0 bse.
+#[test]
+fn ewc_bse_track_hc0_on_white_noise_at_large_n() {
+    let n = 4000;
+    let x1 = lcg_series(n, 71);
+    let u = lcg_series(n, 72);
+    let y: Vec<f64> = (0..n).map(|t| 0.5 + 0.8 * x1[t] + u[t]).collect();
+    let fit = ols(&y, &[vec![1.0; n], x1]).unwrap();
+    let hc0 = fit.inference(SeType::Hc0).unwrap();
+    let ewc = fit
+        .inference(SeType::Ewc {
+            b: ewc_default_b(n),
+        })
+        .unwrap();
+    for i in 0..2 {
+        let ratio = ewc.bse[i] / hc0.bse[i];
+        // sd of sqrt(chi2_B / B) at B = 101 is about 0.07.
+        assert!((ratio - 1.0).abs() < 0.25, "param {i}: ratio {ratio}");
+    }
+}
+
 #[test]
 fn tvalues_are_params_over_bse() {
     let (y, x) = regression_data(180, 23);
@@ -591,4 +843,128 @@ fn error_paths_teach() {
     // Errors display a teaching message, not a bare code.
     let msg = lrv(&z, Kernel::Bartlett, -1.0).unwrap_err().to_string();
     assert!(msg.contains("maxlags"), "unexpected message: {msg}");
+}
+
+// ------------------------------------------------- equilibration and scale
+
+/// Every standard-error flavor, for the scale tests below.
+fn all_se_types() -> Vec<SeType> {
+    vec![
+        SeType::NonRobust,
+        SeType::Hc0,
+        SeType::Hc1,
+        SeType::Hc2,
+        SeType::Hc3,
+        SeType::Hac {
+            kernel: Kernel::Bartlett,
+            bandwidth: 5.0,
+            use_correction: true,
+        },
+        SeType::Ewc { b: 8 },
+    ]
+}
+
+/// **Power-of-two rescaling is exact.** Multiplying `y` by `2^a` and column
+/// `j` by `2^{b_j}` multiplies coefficient `j` and its standard error by
+/// exactly `2^{a - b_j}` and leaves every t-statistic untouched — to the
+/// bit, because the solve equilibrates by powers of two and Householder QR
+/// is equivariant under them. The sweep runs from `2^-1000` to `2^1000`,
+/// where the sums of squares of the raw data overflow or underflow: before
+/// the equilibration, scales near `1e77` returned NaN HAC standard errors
+/// and near `1e154` NaN coefficients or a false "collinear columns"
+/// refusal.
+#[test]
+fn power_of_two_rescaling_is_exact_at_every_scale() {
+    let (y, x) = regression_data(120, 21);
+    let base = ols(&y, &x).unwrap();
+    // Each (a, b) keeps every rescaled answer in the normal range: the
+    // claim is about representable answers.
+    for (a, bs) in [
+        (-1000, [-30, -100, -20]),
+        (1000, [5, 100, 20]),
+        (500, [0, 0, 0]),
+        (-500, [0, 0, 0]),
+        (40, [-900, 900, 0]),
+    ] {
+        let sy = 2f64.powi(a);
+        let ys: Vec<f64> = y.iter().map(|v| v * sy).collect();
+        let xs: Vec<Vec<f64>> = x
+            .iter()
+            .zip(bs)
+            .map(|(c, b)| c.iter().map(|v| v * 2f64.powi(b)).collect())
+            .collect();
+        let fit = ols(&ys, &xs).unwrap_or_else(|e| panic!("a = {a}, b = {bs:?}: {e}"));
+        for (j, b) in bs.iter().enumerate() {
+            let f = 2f64.powi(a - b);
+            assert_eq!(
+                fit.params[j],
+                base.params[j] * f,
+                "a = {a}, b = {bs:?}: params[{j}]"
+            );
+        }
+        for (u, v) in fit.residuals.iter().zip(&base.residuals) {
+            assert_eq!(*u, v * sy, "a = {a}: residuals");
+        }
+        for se in all_se_types() {
+            let got = fit.inference(se).unwrap();
+            let want = base.inference(se).unwrap();
+            for (j, b) in bs.iter().enumerate() {
+                let f = 2f64.powi(a - b);
+                assert_eq!(got.bse[j], want.bse[j] * f, "a = {a}, {se:?}: bse[{j}]");
+                assert_eq!(got.tvalues[j], want.tvalues[j], "a = {a}, {se:?}: t[{j}]");
+            }
+        }
+    }
+}
+
+/// **Finite inputs give finite answers.** At decimal scales that overflow
+/// the raw sums of squares (`1e77`: the HAC meat, of order `y^4`; `1e155`:
+/// `X'X` itself) the fit equals the rescaled unit-scale fit to roundoff,
+/// for every standard-error flavor.
+#[test]
+fn extreme_decimal_scales_give_finite_rescaled_answers() {
+    let (y, x) = regression_data(150, 33);
+    let base = ols(&y, &x).unwrap();
+    for (sy, sx) in [
+        (1e77, 1.0),
+        (1e155, 1.0),
+        (1.0, 1e155),
+        (1e300, 1.0),
+        (1e-300, 1e-300),
+    ] {
+        let ys: Vec<f64> = y.iter().map(|v| v * sy).collect();
+        let xs: Vec<Vec<f64>> = x
+            .iter()
+            .enumerate()
+            .map(|(j, c)| {
+                if j == 0 {
+                    c.clone()
+                } else {
+                    c.iter().map(|v| v * sx).collect()
+                }
+            })
+            .collect();
+        let fit = ols(&ys, &xs).unwrap_or_else(|e| panic!("sy = {sy:e}, sx = {sx:e}: {e}"));
+        let factor = |j: usize| if j == 0 { sy } else { sy / sx };
+        for j in 0..3 {
+            let want = base.params[j] * factor(j);
+            assert!(
+                (fit.params[j] - want).abs() <= 1e-12 * want.abs(),
+                "sy = {sy:e}, sx = {sx:e}: params[{j}] {} vs {want}",
+                fit.params[j]
+            );
+        }
+        for se in all_se_types() {
+            let got = fit.inference(se).unwrap();
+            let want = base.inference(se).unwrap();
+            for j in 0..3 {
+                let w = want.bse[j] * factor(j);
+                assert!(
+                    got.bse[j].is_finite() && (got.bse[j] - w).abs() <= 1e-12 * w,
+                    "sy = {sy:e}, sx = {sx:e}, {se:?}: bse[{j}] {} vs {w}",
+                    got.bse[j]
+                );
+            }
+        }
+    }
 }

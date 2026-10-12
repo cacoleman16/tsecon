@@ -558,14 +558,43 @@ pub(crate) fn check_tree_inputs(
             what: "min_samples_split must be at least 2",
         });
     }
-    let needed = 2usize
-        .max(opts.min_samples_split)
-        .max(2 * opts.min_samples_leaf);
-    if n < needed {
+    // A split needs min_samples_split rows in the node and min_samples_leaf
+    // on each side. Too few rows for any tree stays the house insufficiency
+    // error; a keyword that alone asks for more rows than x has is refused
+    // by name, with its largest admissible value (the counts are checked,
+    // so 2 * min_samples_leaf cannot wrap).
+    if n < 2 {
         return Err(MlError::InsufficientData {
             got: n,
-            needed,
+            needed: 2,
             what: "tree fit",
+        });
+    }
+    if opts.min_samples_leaf > n / 2 {
+        let needed = opts
+            .min_samples_leaf
+            .checked_mul(2)
+            .map_or_else(|| "more than 2^64".to_string(), |v| v.to_string());
+        return Err(MlError::InvalidValue {
+            what: format!(
+                "min_samples_leaf = {leaf} leaves no split possible: a split keeps at least \
+                 min_samples_leaf rows on each side, so a tree needs 2 * min_samples_leaf = \
+                 {needed} rows (insufficient data: {n} observations, at least {needed} \
+                 required); min_samples_leaf can be at most {max} for these {n} rows",
+                leaf = opts.min_samples_leaf,
+                max = n / 2,
+            ),
+        });
+    }
+    if opts.min_samples_split > n {
+        let split = opts.min_samples_split;
+        return Err(MlError::InvalidValue {
+            what: format!(
+                "min_samples_split = {split} leaves no split possible: a node needs \
+                 min_samples_split rows to be split and the root has the {n} rows of x \
+                 (insufficient data: {n} observations, at least {split} required); \
+                 min_samples_split can be at most {n} for these rows"
+            ),
         });
     }
     Ok((n, p))
@@ -603,8 +632,11 @@ pub struct TreeFit {
 ///   columns and be finite);
 /// * [`MlError::InvalidArgument`] if `min_samples_leaf < 1` or
 ///   `min_samples_split < 2`;
-/// * [`MlError::InsufficientData`] if `n < max(2, min_samples_split,
-///   2 * min_samples_leaf)` — a tree that could never split.
+/// * [`MlError::InsufficientData`] if `n < 2`, and [`MlError::InvalidValue`]
+///   naming the keyword and its largest admissible value if
+///   `2 * min_samples_leaf > n` or `min_samples_split > n` — a tree that
+///   could never split (the message keeps the house wording
+///   `insufficient data: {n} observations, at least {needed} required`).
 pub fn regression_tree(
     x: MatRef<'_, f64>,
     y: &[f64],
@@ -672,7 +704,10 @@ mod tests {
         let err = regression_tree(x.as_ref(), &y, opts, None).unwrap_err();
         assert_eq!(
             err.to_string(),
-            "insufficient data: 3 observations, at least 4 required (tree fit)"
+            "invalid argument: min_samples_leaf = 2 leaves no split possible: a split keeps \
+             at least min_samples_leaf rows on each side, so a tree needs 2 * \
+             min_samples_leaf = 4 rows (insufficient data: 3 observations, at least 4 \
+             required); min_samples_leaf can be at most 1 for these 3 rows"
         );
     }
 

@@ -1,0 +1,13 @@
+lab/audit/wave11/unbound_default_bits.py, run under the reference test venv
+(Python 3.13, NumPy 2.5.3):
+
+  parent build (the integrated 0.11.0 batch-1 wheel, claude/wave-0.11 1c2a710,
+  which contains base 03de810):  sha256 f245d11a38b0cc6cbc0a071ba47b9a9f5410ae032d3a3b394cfc7130be33d175
+  this branch (dfm_smooth / adl_midas / arima_fit(method="css")):
+                                  sha256 f245d11a38b0cc6cbc0a071ba47b9a9f5410ae032d3a3b394cfc7130be33d175
+
+cmp: identical (69180 bytes). Every pre-0.11 number of arima_fit (ARMA(1,1)+c,
+SARIMA(1,0,0)(1,0,0)_4+c, MA(1), ARIMA(1,1,1), a drift fit with
+drift_uncertainty bands), auto_arima, dfm_nowcast (two_step and mle, ragged
+edge), dfm_news and umidas (hac, nonrobust) is bit-identical; arima_fit's two
+new keys (method, nobs) are additions and excluded from the dump.

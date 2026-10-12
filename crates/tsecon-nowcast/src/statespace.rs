@@ -214,6 +214,12 @@ pub struct DfmSmoothing {
     /// Smoothed factor vectors `F_hat_{t|T}` (length `T`, each of length
     /// `r`): the first `r` entries of each smoothed state.
     pub smoothed_factors: Vec<Vec<f64>>,
+    /// Smoothed state covariances `Var[alpha_t | y_1..y_T]` (length `T`, each
+    /// `m x m` with `m = r p`) — statsmodels' `smoothed_state_cov`. The
+    /// leading `r x r` block of entry `t` is the posterior covariance of the
+    /// factor vector `F_t`. Moved out of the smoother's output rather than
+    /// copied, so carrying it costs nothing in the MLE objective loop.
+    pub smoothed_state_cov: Vec<Mat<f64>>,
 }
 
 /// Runs the Kalman filter/smoother at the fixed [`DfmParams`] over the panel
@@ -263,7 +269,9 @@ pub fn smooth_fixed(
     let model = params.state_space()?;
     let out = smooth_univariate(&model, data)?;
 
-    let smoothed_state = out.smoothed_state.clone();
+    // Move the smoothed moments out of the smoother's output (no copies:
+    // this runs inside the MLE objective loop and the news impulses).
+    let smoothed_state = out.smoothed_state;
     let smoothed_factors = smoothed_state
         .iter()
         .map(|s| s.iter().take(r).copied().collect::<Vec<f64>>())
@@ -273,6 +281,7 @@ pub fn smooth_fixed(
         loglik: out.filter.loglik,
         smoothed_state,
         smoothed_factors,
+        smoothed_state_cov: out.smoothed_state_cov,
     })
 }
 

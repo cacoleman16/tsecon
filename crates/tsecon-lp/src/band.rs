@@ -182,10 +182,12 @@ use tsecon_hac::{ols, HacError, Kernel};
 use tsecon_rng::Stream;
 use tsecon_stats::simultaneous::{
     band as assemble_band, bonferroni_critical_value, pointwise_critical_value, required_uniforms,
-    sidak_critical_value, sup_t_from_cov,
+    sidak_critical_value, sup_t_from_cov, sup_t_max_n_sim, sup_t_n_sim_fits,
 };
 
-use crate::design::{check_finite, horizon_sample, outcome_column, single_impulse_design};
+use crate::design::{
+    check_finite, check_horizons, horizon_sample, outcome_column, single_impulse_design,
+};
 use crate::error::LpError;
 use crate::level::lp;
 use crate::smooth::{smooth_lp, SmoothLpResult, SmoothLpSpec};
@@ -472,14 +474,19 @@ pub struct SmoothLpBandResult {
 /// # Errors
 ///
 /// Everything [`lp`] can return, plus [`LpError::Band`] for an invalid `alpha`
-/// or `n_sim`, or if the assembled covariance is rejected by the shared sup-t
-/// routine.
+/// or an `n_sim` below 2, or if the assembled covariance is rejected by the
+/// shared sup-t routine, and [`LpError::BandSimulationBudget`] for an `n_sim`
+/// beyond the shared sup-t budget (checked before estimating).
 pub fn lp_band(
     y: &[f64],
     shock: &[f64],
     spec: LpSpec,
     band: BandSpec,
 ) -> Result<LpBandResult, LpError> {
+    // A horizon past the sample is the estimator's refusal (naming
+    // `horizons`), not the simulation budget's: size the family by the
+    // horizons the sample can reach at all.
+    check_sup_t_simulation(&band, spec.horizons.min(y.len()).saturating_add(1))?;
     let res = lp(y, shock, spec)?;
     let cov = match band.method {
         BandMethod::SupT => Some(lp_irf_cov(y, shock, spec)?),
@@ -505,14 +512,16 @@ pub fn lp_band(
 ///
 /// # Errors
 ///
-/// Everything [`smooth_lp`] can return, plus [`LpError::Band`] as in
-/// [`lp_band`].
+/// Everything [`smooth_lp`] can return, plus [`LpError::Band`] and
+/// [`LpError::BandSimulationBudget`] as in [`lp_band`].
 pub fn smooth_lp_band(
     y: &[f64],
     shock: &[f64],
     spec: &SmoothLpSpec,
     band: BandSpec,
 ) -> Result<SmoothLpBandResult, LpError> {
+    // As in `lp_band`: an unreachable horizon is `smooth_lp`'s refusal.
+    check_sup_t_simulation(&band, spec.horizons.min(y.len()).saturating_add(1))?;
     let res = smooth_lp(y, shock, spec)?;
     let cov = match band.method {
         BandMethod::SupT => Some(LpIrfCov {
@@ -604,6 +613,16 @@ pub fn lp_irf_cov(y: &[f64], shock: &[f64], spec: LpSpec) -> Result<LpIrfCov, Lp
             n_lag_controls: p,
         });
     }
+
+    // Refuse an unreachable maximum horizon before the (horizons + 1) x n
+    // influence matrix is sized by it (the same rows and regressors as lp).
+    check_horizons(spec.horizons, |h| {
+        let q = match spec.se {
+            SeSpec::LagAugmented => h,
+            SeSpec::Hac { .. } => 0,
+        };
+        (horizon_sample(n, h, p, q).1, 2 + p + q)
+    })?;
 
     let k_cells = spec.horizons + 1;
     // psi[h] lives on the *original* time index and is zero outside horizon
@@ -776,13 +795,7 @@ fn build_band(
                     what: "sup-t needs the cross-horizon covariance and none was built",
                 });
             };
-            if spec.n_sim < 2 {
-                return Err(LpError::Band {
-                    what: "sup-t needs n_sim >= 2 Gaussian simulations, and at least ~50,000 \
-                           in production: the critical value is a quantile in the tail of a \
-                           maximum",
-                });
-            }
+            check_sup_t_simulation(&spec, k)?;
             let mut uniforms = vec![0.0_f64; required_uniforms(k, spec.n_sim)];
             Stream::new(spec.seed).fill_uniform_f64(&mut uniforms);
             let cv = sup_t_from_cov(&c.cov, k, spec.alpha, &uniforms).map_err(band_err)?;
@@ -818,6 +831,34 @@ fn build_band(
     })
 }
 
+/// Refuses a sup-t simulation of `band.n_sim` draws over one family of `k`
+/// cells that is too small (`band_n_sim < 2`) or too large for the shared
+/// sup-t budgets, before the uniforms are allocated. `lp_band` and
+/// `smooth_lp_band` also call it before estimating, so a refusal costs no
+/// estimation; a non-sup-t band passes.
+fn check_sup_t_simulation(band: &BandSpec, k: usize) -> Result<(), LpError> {
+    if band.method != BandMethod::SupT {
+        return Ok(());
+    }
+    if band.n_sim < 2 {
+        return Err(LpError::Band {
+            what: "band_n_sim must be at least 2 to simulate a sup-t critical value, and \
+                   about 50,000 or more in production (100000 is the default): the \
+                   critical value is a quantile in the tail of a maximum",
+        });
+    }
+    // One family of K = k cells (the shared sup-t budget).
+    if !sup_t_n_sim_fits(1, k, band.n_sim) {
+        let max = sup_t_max_n_sim(1, k);
+        return Err(LpError::BandSimulationBudget {
+            n_sim: band.n_sim,
+            n_cells: k,
+            max_n_sim: (max >= 2).then_some(max),
+        });
+    }
+    Ok(())
+}
+
 /// Map a `tsecon-stats` rejection into the crate's error type. The shared
 /// routine's own message is not carried through because [`LpError`] is
 /// `'static`-message-shaped; the variants it can raise here are all
@@ -834,8 +875,9 @@ fn band_err(e: tsecon_stats::StatsError) -> LpError {
                    at least one must be strictly positive",
         },
         _ => LpError::Band {
-            what: "the simultaneous-band routine rejected its arguments; check alpha \
-                   (0 < alpha < 1), n_sim (>= 2), and that the response path is non-empty",
+            what: "the simultaneous-band routine rejected its arguments; check band_alpha \
+                   (0 < band_alpha < 1), band_n_sim (>= 2), and that the response path is \
+                   non-empty",
         },
     }
 }

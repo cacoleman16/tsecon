@@ -2,7 +2,7 @@
 //! consistency, spawn discipline, output conventions, and statistical
 //! smoke tests.
 
-use tsecon_rng::{RngError, SeedSequence, Stream};
+use tsecon_rng::{RngError, SeedSequence, Stream, MAX_MATERIALIZED_STREAMS};
 
 // ---------------------------------------------------------------- advance
 
@@ -220,7 +220,90 @@ fn substream_spawn_limit_is_an_error() {
     );
 }
 
+/// `child(i)` is element `i` of `spawn(n)` on a fresh copy, for a root and
+/// for a non-root sequence (whose children extend its spawn key), and
+/// deriving a child records nothing: a later `spawn` still hands out the
+/// children it would have.
+#[test]
+fn child_matches_spawn_and_records_nothing() {
+    let mut root = SeedSequence::new(987_654_321);
+    let mut nonroot = root.clone().spawn(3).unwrap().remove(2);
+    for parent in [&mut root, &mut nonroot] {
+        let fresh = parent.clone();
+        let derived: Vec<SeedSequence> = (0..40).map(|i| fresh.child(i)).collect();
+        assert_eq!(fresh.children_spawned(), 0);
+        let spawned = parent.spawn(40).unwrap();
+        assert_eq!(derived, spawned);
+        // Indices are absolute: child(i) ignores how much has been spawned.
+        assert_eq!(parent.child(7), spawned[7]);
+        let more = parent.spawn(2).unwrap();
+        assert_eq!(more, vec![fresh.child(40), fresh.child(41)]);
+    }
+    assert_eq!(nonroot.child(5).spawn_key(), &[2, 5]);
+}
+
+/// A materialization request beyond the budget is a typed error raised
+/// before anything is allocated (it used to size a vector directly: 2^31
+/// children asked for 154 GB and aborted), and a refused spawn records no
+/// children. Requests past the 2^32 spawn-key space keep their own error.
+#[test]
+fn materialization_budget_is_a_typed_error() {
+    assert_eq!(MAX_MATERIALIZED_STREAMS, 1 << 24);
+    let mut root = SeedSequence::new(3);
+    for n in [MAX_MATERIALIZED_STREAMS + 1, 1 << 31, 1 << 32] {
+        let want = RngError::StreamBudgetExceeded {
+            requested: n,
+            max: MAX_MATERIALIZED_STREAMS,
+        };
+        assert_eq!(root.spawn(n).unwrap_err(), want);
+        assert_eq!(Stream::substreams(3, n).unwrap_err(), want);
+        let msg = want.to_string();
+        assert!(
+            msg.contains(&n.to_string()) && msg.contains("16777216"),
+            "{msg}"
+        );
+    }
+    assert_eq!(
+        root.children_spawned(),
+        0,
+        "a refused spawn records nothing"
+    );
+    let past = (1usize << 32) + 1;
+    let spawn_limit = RngError::SpawnLimitExceeded {
+        requested: past,
+        available: 1 << 32,
+    };
+    assert_eq!(root.spawn(past).unwrap_err(), spawn_limit);
+    assert_eq!(Stream::substreams(3, past).unwrap_err(), spawn_limit);
+    assert_eq!(
+        Stream::check_substream_count(past).unwrap_err(),
+        spawn_limit
+    );
+    assert!(Stream::check_substream_count(1 << 32).is_ok());
+    // The lazy form reaches the last admissible child with O(1) memory.
+    let mut last = Stream::substream(3, u32::MAX);
+    let mut via_seq = Stream::from_seed_sequence(&SeedSequence::new(3).child(u32::MAX));
+    assert_eq!(last.next_u64(), via_seq.next_u64());
+}
+
 // -------------------------------------------------------------- substreams
+
+/// `Stream::substream(seed, i)` is element `i` of `Stream::substreams(seed,
+/// n)`: the lazy and materialized forms hand replication `i` the same
+/// stream, so a driver may switch between them without changing a draw.
+#[test]
+fn lazy_substream_matches_materialized() {
+    for seed in [0, 7, u64::MAX] {
+        let mut all = Stream::substreams(seed, 70).unwrap();
+        for (i, s) in all.iter_mut().enumerate() {
+            let mut lazy = Stream::substream(seed, i as u32);
+            assert_eq!(lazy, *s, "seed {seed} substream {i}");
+            for _ in 0..9 {
+                assert_eq!(lazy.next_u64(), s.next_u64());
+            }
+        }
+    }
+}
 
 /// Substreams are deterministic and stable across calls (the parallel
 /// replication contract).

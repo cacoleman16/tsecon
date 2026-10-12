@@ -1,0 +1,13 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+valid fits, d = D = 0, constant included (one call per cell)
+
+method     n   p   q  P  Q    s    m    k         W    values  seconds  ns per W  outcome
+   mle   200   5   0  0  0    0    5    7  1.59e+07  1.51e+04     0.78    48.967  ok
+   mle   200  10   0  0  0    0   10   12  3.37e+08  6.03e+04     4.10    12.180  ok
+   mle   200  20   0  0  0    0   20   22  8.46e+09  2.41e+05    33.86     4.004  ok
+   mle   200  30   0  0  0    0   30   32  5.88e+10  5.43e+05   123.34     2.098  ok
+   mle   520   1   0  1  0   52   53    4  1.66e+10  4.39e+06    67.06     4.032  ok
+   mle   520   1   1  1  1   52   54    6  3.48e+10  4.56e+06   226.81     6.513  ok
+   mle   400   1   0  1  0  100  101    4  9.09e+10  1.23e+07   250.10     2.752  ok
+   css   200   0  50  0  0    0   51   52  1.90e+08  1.57e+06    11.81    62.163  ok

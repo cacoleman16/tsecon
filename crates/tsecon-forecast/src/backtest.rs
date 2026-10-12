@@ -165,6 +165,25 @@ impl Backtest {
         Ok(())
     }
 
+    /// Validate the seasonal period of the MASE/RMSSE scale
+    /// ([`BacktestResult::accuracy_table`]) against this scheme's first
+    /// training window before anything is run, so a bad `insample_period`
+    /// is refused without driving the forecaster over every origin first.
+    ///
+    /// # Errors
+    ///
+    /// [`ForecastError::InvalidBacktestParam`] for `insample_period = 0`;
+    /// [`ForecastError::TooLarge`] (naming `insample_period` and its largest
+    /// admissible value) when the first training window — `min_train` or
+    /// `width` observations — holds fewer than `insample_period + 1`.
+    pub fn check_insample_period(&self, insample_period: usize) -> Result<(), ForecastError> {
+        let first_train = match self.window {
+            Window::Expanding { min_train } => min_train,
+            Window::Rolling { width } => width,
+        };
+        check_insample_period(first_train, insample_period)
+    }
+
     /// Run the backtest over `y`, driving `forecaster` per the refit contract.
     ///
     /// `forecaster` is called as `forecaster(train, max_h)` and must return a
@@ -245,6 +264,36 @@ impl Backtest {
             first_train,
         })
     }
+}
+
+/// The scale-period check shared by [`Backtest::check_insample_period`] and
+/// [`BacktestResult::accuracy_table`]: the seasonal-naive scale of a first
+/// training window of `first_train` observations needs `insample_period +
+/// 1` of them.
+fn check_insample_period(first_train: usize, insample_period: usize) -> Result<(), ForecastError> {
+    if insample_period == 0 {
+        return Err(ForecastError::InvalidBacktestParam {
+            what: "insample_period",
+            value: 0,
+            requirement: "insample_period >= 1 (the seasonal period of the MASE/RMSSE scale; \
+                          1 for non-seasonal data)",
+        });
+    }
+    if insample_period >= first_train {
+        return Err(ForecastError::TooLarge {
+            what: "backtest",
+            name: "insample_period",
+            value: insample_period,
+            requirement: format!(
+                "the MASE/RMSSE scale is the in-sample seasonal-naive error of the first \
+                 training window, which needs insample_period + 1 = {} observations but holds \
+                 {first_train} (train = {first_train})",
+                insample_period as u128 + 1
+            ),
+            max: (first_train >= 2).then(|| first_train - 1),
+        });
+    }
+    Ok(())
 }
 
 /// The tidy output of a [`Backtest::run`]: per-horizon, origin-aligned
@@ -340,15 +389,17 @@ impl BacktestResult {
     ///
     /// # Errors
     ///
-    /// The validation errors of the scaled measures — in particular
-    /// [`ForecastError::InvalidPeriod`] or [`ForecastError::SeriesTooShort`]
-    /// if `insample_period` is too large for the first training window, and
+    /// [`ForecastError::InvalidBacktestParam`] for `insample_period = 0`
+    /// and [`ForecastError::TooLarge`] (naming `insample_period`) when it is
+    /// too large for the first training window (as
+    /// [`Backtest::check_insample_period`]), and
     /// [`ForecastError::ZeroScaleDenominator`] if that window is seasonally
     /// constant.
     pub fn accuracy_table(
         &self,
         insample_period: usize,
     ) -> Result<Vec<AccuracyRow>, ForecastError> {
+        check_insample_period(self.first_train.len(), insample_period)?;
         let mut rows = Vec::with_capacity(self.horizon);
         for h in 1..=self.horizon {
             let idx = h - 1;

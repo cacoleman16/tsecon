@@ -60,6 +60,7 @@ use tsecon_rng::Stream;
 use tsecon_stats::special::ln_gamma;
 use tsecon_stats::{ChiSquared, ContinuousDist};
 
+use crate::budget::{self, irf_path_values, mat_values, py_matrix_values, SizeArg};
 use crate::dense::{
     backward_solve_in_place, chol_inverse, chol_solve_mat, forward_solve_in_place,
     positive_uniform, std_normal, symmetrize_in_place,
@@ -101,15 +102,21 @@ fn check_data(data: MatRef<'_, f64>) -> Result<(), BayesError> {
 /// golden fixture; matches `numpy.linalg.lstsq` up to conditioning).
 fn ar_resid_var(y: &[f64], p: usize) -> Result<f64, BayesError> {
     let t = y.len();
-    let k = p + 1;
-    if t < p + k + 1 {
-        return Err(BayesError::InsufficientObservations {
-            needed: p + k + 1,
+    // `p` presample rows plus `p + 1` coefficients, checked so an absurd
+    // `scale_ar` is refused rather than wrapped.
+    let needed = p
+        .checked_mul(2)
+        .and_then(|v| v.checked_add(2))
+        .unwrap_or(usize::MAX);
+    if t < needed {
+        return Err(BayesError::ScaleArTooLong {
+            scale_ar: p,
+            needed,
             got: t,
-            what: "the AR(p) scale regression that calibrates the Minnesota prior \
-                   (p presample rows plus p + 1 coefficients)",
+            max: t.checked_sub(2).map(|v| v / 2).filter(|&m| m >= 1),
         });
     }
+    let k = p + 1;
     let t_eff = t - p;
     // Regressors: [1, y_{t-1}, ..., y_{t-p}] for t = p..t-1.
     let x = Mat::from_fn(t_eff, k, |i, j| if j == 0 { 1.0 } else { y[p + i - j] });
@@ -209,6 +216,9 @@ impl MinnesotaNiwPrior {
         lambda3: f64,
         delta: f64,
     ) -> Result<Self, BayesError> {
+        // The callers of `new` do not expose `scale_ar`, so a sample too
+        // short for the fixed AR(4) scale regressions is reported as a short
+        // sample, not as a `scale_ar` to lower.
         Self::with_scale_ar(
             data,
             p,
@@ -218,6 +228,17 @@ impl MinnesotaNiwPrior {
             delta,
             MINNESOTA_AR_ORDER,
         )
+        .map_err(|e| match e {
+            BayesError::ScaleArTooLong { needed, got, .. } => {
+                BayesError::InsufficientObservations {
+                    needed,
+                    got,
+                    what: "the AR(4) scale regressions that calibrate the Minnesota prior \
+                           (4 presample rows plus 5 coefficients)",
+                }
+            }
+            other => other,
+        })
     }
 
     /// Builds the prior like [`MinnesotaNiwPrior::new`], but with an
@@ -234,9 +255,10 @@ impl MinnesotaNiwPrior {
     /// # Errors
     ///
     /// As for [`MinnesotaNiwPrior::new`], plus
-    /// [`BayesError::InvalidArgument`] for `scale_ar = 0`;
-    /// [`BayesError::InsufficientObservations`] is judged against the
-    /// requested `scale_ar`.
+    /// [`BayesError::InvalidArgument`] for `scale_ar = 0`; a sample too short
+    /// for the requested AR(`scale_ar`) regressions is
+    /// [`BayesError::ScaleArTooLong`], naming `scale_ar` and the largest
+    /// order the sample supports.
     pub fn with_scale_ar(
         data: MatRef<'_, f64>,
         p: usize,
@@ -688,13 +710,31 @@ impl NiwPosterior {
     ///
     /// # Errors
     ///
-    /// As for [`NiwPosterior::draw`] and [`cholesky_irf`].
+    /// As for [`NiwPosterior::draw`] and [`cholesky_irf`], plus
+    /// [`BayesError::TooLarge`], naming `horizon` or `n_draws`, when the
+    /// kept draws — `n_draws * (horizon + 1)` matrices of `n x n`, each also
+    /// handed back to Python as a nested list — exceed
+    /// [`crate::budget::MEMORY_BUDGET_VALUES`], checked before anything is
+    /// allocated.
     pub fn irf_draws(
         &self,
         n_draws: usize,
         horizon: usize,
         stream: &mut Stream,
     ) -> Result<Vec<Vec<Mat<f64>>>, BayesError> {
+        let n = self.n_vars;
+        budget::check_memory(
+            "the kept posterior draws (n_draws * (horizon + 1) impulse-response matrices \
+             of n x n, each also returned as a nested list)",
+            &[
+                SizeArg::new("horizon", horizon, 0),
+                SizeArg::new("n_draws", n_draws, 1),
+            ],
+            |v| {
+                (v[1] as u128)
+                    .saturating_mul(irf_path_values(n, v[0], py_matrix_values(n)).saturating_add(3))
+            },
+        )?;
         let mut out = Vec::with_capacity(n_draws);
         for _ in 0..n_draws {
             let d = self.draw(stream)?;
@@ -733,7 +773,11 @@ impl NiwPosterior {
 ///   with `1 + sigma.nrows() * p` regressors;
 /// * [`BayesError::Linalg`] if `sigma` is not positive definite or the
 ///   companion construction fails;
-/// * [`BayesError::NonFinite`] on NaN/infinite entries.
+/// * [`BayesError::NonFinite`] on NaN/infinite entries;
+/// * [`BayesError::TooLarge`], naming `horizon`, when the `horizon + 1`
+///   response matrices (plus the companion powers) exceed
+///   [`crate::budget::MEMORY_BUDGET_VALUES`], checked before anything is
+///   allocated.
 pub fn cholesky_irf(
     b: MatRef<'_, f64>,
     sigma: MatRef<'_, f64>,
@@ -753,6 +797,14 @@ pub fn cholesky_irf(
             what: "lags = 0: a BVAR needs at least one lag; pass lags >= 1",
         });
     }
+    budget::check_memory(
+        "the (horizon + 1) n x n impulse-response matrices",
+        &[SizeArg::new("horizon", horizon, 0)],
+        |v| {
+            irf_path_values(n, v[0], 0)
+                .saturating_add(mat_values(n.saturating_mul(p)).saturating_mul(3))
+        },
+    )?;
     let k = 1 + n * p;
     if b.nrows() != k {
         return Err(BayesError::Dimension {

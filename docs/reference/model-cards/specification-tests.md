@@ -1,33 +1,41 @@
 # Model card — Specification & diagnostic tests
 
-`heteroskedasticity_test` · `reset_test` · `chow_test` · `cusum_test`
+`heteroskedasticity_test` · `reset_test` · `chow_test` · `cusum_test` ·
+`breusch_godfrey_test` · `durbin_watson_test`
 
 An ordinary-least-squares fit hands you coefficients and standard errors, but
 every one of those numbers is trustworthy only under a set of *maintained*
 assumptions the regression itself never checks: that the error variance is
-constant, that the conditional mean is genuinely linear in the regressors, and
-that the coefficients hold still across the whole sample. This family does not
-estimate anything new — it interrogates those three assumptions and tells you
-whether the inference you just ran deserves to be believed. Two of the tests ask
-about the error variance (White and Koenker-Breusch-Pagan), one asks about
-functional form (Ramsey's RESET), and two ask about parameter stability — Chow
-at a break date you already know, and CUSUM scanning the whole sample when you
-do not.
+constant, that the errors are serially uncorrelated, that the conditional mean
+is genuinely linear in the regressors, and that the coefficients hold still
+across the whole sample. This family does not estimate anything new — it
+interrogates those four assumptions and tells you whether the inference you
+just ran deserves to be believed. Two of the tests ask about the error variance
+(White and Koenker-Breusch-Pagan), two about serial correlation in the errors
+(Breusch-Godfrey up to any order, Durbin-Watson at first order with an exact
+p-value), one about functional form (Ramsey's RESET), and two about parameter
+stability — Chow at a break date you already know, and CUSUM scanning the
+whole sample when you do not.
 
 Every test here is built on a single OLS fit of `y` on `x`, and they all share
 one hard input contract: **`x` is a 2-D design of shape `(n, k)` whose columns
 are the regressors, and the intercept must be an explicit column of ones.** The
-crate does not silently add a constant — it raises `MissingConstant` if none is
-present (the White and Breusch-Pagan auxiliary regressions form a *centered*
-`R^2`, which is only the LM statistic when the auxiliary design carries an
-intercept) and `SingularDesign` if the columns are collinear. So every example
-below builds `x = np.column_stack([np.ones(n), x1, x2, ...])`. Read a rejection
-as a warning about the maintained model, not as a repair: a heteroskedasticity
-flag points you to robust standard errors, a RESET flag to a richer functional
-form, a break flag to a split-sample or time-varying model. Four of the five
-statistics come with a p-value you compare to a conventional level; CUSUM is the
-exception — it returns a path and a pair of boundary lines, and you read
-instability off whether the path crosses them.
+crate does not silently add a constant to *your* regression. The White and
+Breusch-Pagan tests raise `MissingConstant` if none is present (their auxiliary
+regressions form a *centered* `R^2`, which is only the LM statistic when the
+auxiliary design carries an intercept); the serial-correlation tests accept a
+regression through the origin and say what they do with it (Breusch-Godfrey
+adds the intercept to its *auxiliary* regression only, the statsmodels
+convention, and its LM form then over-rejects, so read its F-form there). A
+collinear design raises `SingularDesign` everywhere. So every
+example below builds `x = np.column_stack([np.ones(n), x1, x2, ...])`. Read a
+rejection as a warning about the maintained model, not as a repair: a
+heteroskedasticity flag points you to robust standard errors, a
+serial-correlation flag to HAC standard errors or a dynamic specification, a
+RESET flag to a richer functional form, a break flag to a split-sample or
+time-varying model. Every statistic but one comes with a p-value you compare
+to a conventional level; CUSUM is the exception — it returns a path and a pair
+of boundary lines, and you read instability off whether the path crosses them.
 
 ```text
 y_t = x_t' beta + u_t ,      x_t = [ 1 , x_{t,1} , ... , x_{t,k-1} ]
@@ -177,7 +185,16 @@ probability. A small p-value rejects correct specification.
 a linear combination of the columns, making `yhat^2` collinear with `X` and
 raising `SingularDesign`. Reading a large p-value as "correctly specified" rather
 than "no evidence of this kind of misspecification". Setting `max_power` below 2
-(`InvalidPower`). As with every test here, a missing constant column raises
+(`InvalidPower`). A `max_power` that leaves the augmented regression no
+residual degree of freedom (`n <= k + max_power - 1`), or whose augmented
+design exceeds the Breusch-Godfrey auxiliary-regression budgets (2^26
+entries, 2^34 multiply-adds), is refused before any power column is built,
+naming `max_power` and the largest that fits; `max_power = 2**31` used to
+build power columns until the allocator aborted the interpreter (about 50 s).
+High powers of large fitted values overflow: a power that reaches infinity is
+refused naming `max_power` and the largest finite power
+(`ResetPowerOverflow`); RESET is invariant to the scale of `y`, so rescaling
+`y` also avoids it. As with every test here, a missing constant column raises
 `MissingConstant`.
 
 **Validated against.** The `fixtures/tsecon-spectest.json` golden pins the RESET
@@ -399,3 +416,431 @@ The stable series keeps its cumulative sum comfortably inside the band
 intercept jump drives the recursive residuals in one direction, the cumulative
 sum runs far past the boundary (`max|path| = 128.11`), and the boolean crossing
 check reports instability — with no break date supplied.
+
+---
+
+## Serial correlation — why two functions
+
+Serial correlation in the errors is the common assumption failure of
+time-series regressions, and a costly one: under strict exogeneity the
+coefficients stay unbiased, but the conventional standard errors are wrong,
+often badly. Two classical tests interrogate it,
+and the library ships both as **separate callables**, `breusch_godfrey_test`
+and `durbin_watson_test`, rather than one `serial_correlation_test(test=...)`
+switch in the style of `heteroskedasticity_test`. The reason is the family's
+own rule: `heteroskedasticity_test` merges White and Breusch-Pagan because
+they take the same arguments and return the same record (an LM statistic, its
+F-form, nothing else). Breusch-Godfrey and Durbin-Watson share neither. The
+first takes an order `nlags` and returns an LM and an F test with their
+degrees of freedom; the second has no order, takes the direction of the
+alternative, returns one statistic with an exact p-value, and is subject to a
+sample-size cap. One switch would make `nlags` inert under
+`test="durbin_watson"` and `alternative` inert under `test="breusch_godfrey"`,
+and the house rule is to refuse inert arguments, not ignore them. Two functions
+read like their neighbours `reset_test`, `chow_test` and `cusum_test`: one
+test, one name, one signature. Both take the family's `(y, x)` pair, with `x`
+the `T x k` design including the constant, and both work on the OLS residuals
+of `y` on `x` — unlike `ljung_box` and `arch_lm`, which take a residual series
+you computed yourself and therefore cannot account for the regressors.
+
+---
+
+## `breusch_godfrey_test` — LM test for serial correlation up to order p
+
+**What it estimates.** Not a parameter — a verdict on whether the errors of
+`y = X b + u` are serially correlated at any order up to `p = nlags`. The
+Breusch (1978) / Godfrey (1978) Lagrange-multiplier test regresses the OLS
+residuals on the design and on `p` of their own lags,
+
+```text
+u_t = x_t' g + a_1 u_{t-1} + ... + a_p u_{t-p} + v_t ,     H0: a_1 = ... = a_p = 0
+LM  = T * R^2_aux                                          ~ chi2(p)
+F   = [(SSR_r - SSR_aux) / p] / [SSR_aux / (T - k_aux)]    ~ F(p, T - k_aux)
+```
+
+and returns both forms of the same test: the LM statistic with its chi-square
+p-value and the F-form (the lag coefficients jointly zero in the auxiliary
+regression) with its F p-value.
+
+**Assumptions.** Under the null, the errors are serially uncorrelated and the
+regression is correctly specified; the chi-square and F distributions are
+large-sample approximations (the F-form is the usual small-sample choice). The
+regressors need not be strictly exogenous: **a lagged dependent variable is
+allowed**, because the auxiliary regression includes `x` itself. That is the
+test's main advantage over Durbin-Watson. It is a test against AR(p) *and*
+MA(p) errors alike (the two give the same LM test), so a rejection says the
+errors are autocorrelated without saying which process generated them.
+Both forms assume homoskedastic errors. Under strong conditional
+heteroskedasticity their size can drift, and a heteroskedasticity-robust
+variant of the test (not provided here) would be needed.
+
+**When to use (and when not).** Use it as the default serial-correlation check
+after any time-series regression, and always when the regressors include a
+lagged `y` or anything else that is not strictly exogenous. Choose `nlags` to
+match the data frequency (4 or 8 for quarterly, 12 for monthly). A rejection
+is a cue to switch to HAC standard errors (`ols(..., se_type="hac")`) or to
+model the dynamics (add lags, or fit ARMA errors), not to discard the
+regression. Do not run it on residuals you computed elsewhere: it needs the
+design to form the auxiliary regression. For a series with no regressors,
+`ljung_box` is the natural test, and it is what `check_series` runs.
+
+**Key arguments and defaults (and why).** `nlags=None` uses
+`min(10, T // 5)`, the statsmodels default, so the numbers match
+`acorr_breusch_godfrey` with no argument. A data-dependent default needs
+care, and the measurements below show its cost: at `T = 50` it means
+`p = 10`, which makes the test conservative (2.7% size at a nominal 5%) and
+spends power on lags that are not there. Pass the order you mean. The lagged
+residuals are **zero-padded**: `u_{t-j}` is taken as 0 for `t - j < 1`, so all
+`T` observations stay in the auxiliary regression. This is the statsmodels
+convention, and the result echoes `nobs = T`. The other textbook convention
+drops the first `p` observations instead. It is asymptotically equivalent but
+gives different numbers in a finite sample, so the two must not be compared.
+If `x` spans no constant (no constant column and no implicit one, such as a
+set of complementary dummies), a column of ones is added to the **auxiliary**
+regression only, so the centered `R^2` is defined. The result says so
+(`constant_added`), and then `k_aux = k + nlags + 1` instead of `k + nlags`.
+`x` counts as spanning a constant when regressing a column of ones on it
+leaves a residual below `1e-10` of the constant's norm. The rule is invariant
+to rescaling a column; statsmodels' (numpy `matrix_rank` of `[1, x]`) is not.
+On `x = [z, 1e9 + t]` with no constant column, statsmodels calls the constant
+implicit and adds none (LM 2.1739 at `nlags = 1` on the fixture's case),
+while tsecon adds it (LM 2.2739, the exact value of that convention). The
+added constant enters as the part of it that `x` does not span, `M_X 1`
+(rescaled). That is the same column space as `[x, 1]`, but it stays well
+conditioned, so a design that comes close to a constant without passing the
+threshold, such as a column `1 + 1e-8 * noise`, is tested rather than
+refused as collinear.
+**When `constant_added` is `True`, read the F-form.** statsmodels' LM is `T`
+times the *centered* `R^2` of the auxiliary regression, and the added constant
+explains more of the residuals than their mean (their projection on `M_X 1`),
+so the LM form then counts the constant along with the lags. The F-form
+compares the auxiliary regression with the one on `[x, 1]` and tests the lags
+alone. In a seeded Monte Carlo with iid errors and a regressor of mean 2
+(`lab/serial_corr/no_constant_size.py`, output in
+`lab/serial_corr/out/no_constant_size.txt`, 2000 replications per cell), the
+LM form at `nlags = 1` rejected 12.7% (`T = 50`) and 12.0% (`T = 200`) of the
+time at a nominal 5% when the through-origin model was correct, and 37.6% and
+80.5% with an omitted intercept of 0.5. The F-form stayed between 3.7% and
+5.6% in every cell, and with a regressor of mean zero (`M_X 1` close to the
+constant) both forms held their size (3.7% to 6.1%).
+`nlags` must be at least 1 and leave `T > k_aux`. A sample shorter than five
+observations has a default order of 0, and the refusal says to pass `nlags`
+or a longer `y`.
+
+**COST, and the budgets on `nlags`.** The budget prices the auxiliary
+regression at `T k_aux^2 / 2 + 6 k_aux^3` multiply-adds, building its normal
+equations and then factoring and inverting them; since 0.11 the OLS engine
+solves it by a blocked Householder QR, which runs inside that price. That is
+linear in `T` at a fixed order but quadratic to cubic in `nlags`. Measured
+on the release wheel (`lab/serial_corr/bg_cost.py`, output in
+`lab/serial_corr/out/bg_cost.txt`, one call per cell on a shared 4-core
+machine, `x` a constant and two regressors): 0.05 s at `T = 10^5` and
+0.62 s at `T = 10^6` with `nlags = 10`, 0.70 s at `T = 20000` with
+`nlags = 250`, and 3.0 s at `T = 5000` with `nlags = 1000`.
+An order whose auxiliary design would hold more than 2^26 entries (512 MiB;
+the OLS engine keeps a second copy) or cost more than 2^34 multiply-adds
+(at most about half a minute: 14.5 s at `T = 10^5` with `nlags = 564` and
+4.5 s at `T = 3000` with `nlags = 1338`, the largest orders the budget admits
+there)
+is refused before anything is built. The refusal names `nlags` and the
+largest order that fits, and takes 3 ms. At `T = 10^5`, `nlags = 20000`
+would need a 16 GB design; before the budget it aborted the interpreter in
+the allocator instead of raising. At the default order of 10, the memory
+budget caps `T` at 5,162,220 when `x` is a constant and two regressors
+(4,793,490 when `x` spans no constant and one is added).
+
+**How to read the output.** A dict. `statistic` is `LM = T * R^2_aux`, `df`
+its chi-square degrees of freedom (`= nlags`), and `pvalue` the upper-tail
+probability. `fstat` is the F-form on `f_df_num = nlags` and
+`f_df_den = T - k_aux` degrees of freedom, with `f_pvalue`. A small p-value
+rejects "no serial correlation up to order `nlags`". The two forms agree
+closely beyond a few hundred observations. Under iid errors at `p = 1` and
+`p = 4` the F-form rejects 0 to 0.6 points less often than the LM form in the
+table below, so it is the more conservative of the two in small samples.
+`nlags` echoes the order used, with the default resolved; `nobs` is `T`; and
+`constant_added` is `True` when the auxiliary regression gained an intercept.
+
+**Failure modes.** An order much longer than the true dependence costs power,
+and the `min(10, T // 5)` default is too long at moderate `T`. A missing
+dynamic term shows up here as serial correlation: it is a specification
+signal, not only an inference one. Strong heteroskedasticity distorts both
+forms. With `constant_added` the LM form over-rejects (above). A design that
+is collinear (`x` rank deficient), an order that leaves no residual degrees of
+freedom (`nlags` too long), an order whose auxiliary design would pass the
+memory or work budget (`nlags`, with the largest order that fits), a `y`
+that `x` fits exactly (zero residuals), or, when `x` spans no constant, a
+`y` that `x` and a constant fit exactly are refused with the parameter
+named.
+
+**Validated against.** statsmodels `acorr_breusch_godfrey` on an OLS fit:
+`fixtures/serial_corr.json` (generator
+`fixtures/generate_serial_corr_fixtures.py`) holds 36 cells (LM statistic,
+p-value, F, F p-value, the degrees of freedom and `constant_added`) over 13
+cases. The cases are seeded regressions with AR(1) errors (`rho` = 0.5, 0.8,
+0.4, 0.3, 0.2, -0.6) and iid errors, constant-only designs and designs with
+up to three regressors, two designs without a constant (one with a large
+omitted intercept, the stress case for the F-form's restricted sum of
+squares), an implicit-constant design, `T = 15` and `T = 500`, and three US macro regressions built from
+statsmodels' macrodata by transformation (consumption growth on income growth,
+inflation on unemployment, investment growth on GDP growth and the change in
+the real rate). Every `nlags` is pinned, including the default. The match
+holds at `1e-10` in `crates/tsecon-spectest/tests/serial_golden.rs` (measured
+worst deviation `2.6e-12`) and again through Python in
+`bindings/python/tests/test_serial_corr.py`, which also runs statsmodels live
+on six fresh seeded regressions. Two more designs come close to spanning a
+constant without spanning one: a column `1 + 1e-8 * noise`, and
+`[z, 1e9 + t]` with no constant column. Their auxiliary designs `[x, 1, lags]`
+have condition numbers of about `2e8` and `6e16`. These are pinned
+(`conditioning_cases`) against the same convention evaluated in exact rational
+arithmetic. Moving every entry of `x` to its floating-point neighbour moves
+those exact values by up to `7.1e-9`, so no floating-point method can be held
+to `1e-10` there: the tolerance is `1e-8`, and the measured worst deviation is
+`1.0e-9`. statsmodels' F-form is `8.1e-8` off on the first design.
+
+Size and power by seeded Monte Carlo
+(`lab/serial_corr/size_power.py`,
+output in `lab/serial_corr/out/size_power.txt`). The DGP is
+`y = 1 + 0.5 x1 - 0.5 x2 + u`, with `x1` AR(1)(0.5) and `x2` iid, both fixed
+across 2000 replications per cell. The table gives rejection rates at 5%; the
+Monte Carlo standard error is 0.5 points.
+
+| T | test | iid N(0,1) | iid t(5) | AR(1) ρ = 0.2 | AR(1) ρ = 0.4 |
+|---|---|---|---|---|---|
+| 50 | LM, p = 1 | 0.043 | 0.053 | 0.192 | 0.656 |
+| 50 | F, p = 1 | 0.037 | 0.048 | 0.178 | 0.635 |
+| 50 | LM, p = 4 | 0.048 | 0.045 | 0.096 | 0.418 |
+| 50 | F, p = 4 | 0.044 | 0.040 | 0.088 | 0.407 |
+| 50 | LM, default p = 10 | 0.027 | 0.021 | 0.030 | 0.202 |
+| 100 | LM, p = 1 | 0.054 | 0.051 | 0.422 | 0.960 |
+| 100 | F, p = 1 | 0.050 | 0.049 | 0.411 | 0.959 |
+| 100 | LM, p = 4 | 0.056 | 0.054 | 0.245 | 0.859 |
+| 100 | F, p = 4 | 0.053 | 0.050 | 0.237 | 0.854 |
+| 100 | LM, default p = 10 | 0.038 | 0.029 | 0.132 | 0.683 |
+| 200 | LM, p = 1 | 0.052 | 0.043 | 0.777 | 1.000 |
+| 200 | F, p = 1 | 0.050 | 0.040 | 0.773 | 1.000 |
+| 200 | LM, p = 4 | 0.054 | 0.048 | 0.569 | 0.997 |
+| 200 | F, p = 4 | 0.053 | 0.048 | 0.568 | 0.997 |
+| 200 | LM, default p = 10 | 0.051 | 0.049 | 0.368 | 0.985 |
+
+At `p = 1` and `p = 4` both forms stay within 1.3 points of 5%, under normal
+and t(5) errors alike (the most conservative cell is the F-form at `T = 50`,
+0.037). The default `p = 10` is conservative below `T` of about 200 and gives up most of
+its power against an AR(1) at `T = 50`. With a lagged dependent variable in
+the regression (`y_t = 0.5 y_{t-1} + ...`), BG keeps its size: 0.051, 0.052
+and 0.054 for the LM form at `p = 1` and `T` = 50, 100, 200, where
+Durbin-Watson falls to about 0.02 (below).
+
+**References.** Breusch (1978, *Australian Economic Papers* 17:334-355);
+Godfrey (1978, *Econometrica* 46:1293-1301); Godfrey (1988, *Misspecification
+Tests in Econometrics*, Cambridge University Press).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(4)
+n = 200
+x1 = rng.normal(size=n)
+X = np.column_stack([np.ones(n), x1])              # explicit constant column
+
+u_iid = rng.normal(size=n)                          # no serial correlation
+u_ar = np.empty(n)                                  # AR(2) errors: 0.3, 0.3
+u_ar[:2] = rng.normal(size=2)
+for t in range(2, n):
+    u_ar[t] = 0.3 * u_ar[t - 1] + 0.3 * u_ar[t - 2] + rng.normal()
+
+for label, u in [("iid errors", u_iid), ("AR(2) errors", u_ar)]:
+    y = 1.0 + 0.8 * x1 + u
+    bg = tsecon.breusch_godfrey_test(y, X, nlags=4)
+    print(f"{label:>12}: LM={bg['statistic']:6.2f} (df={bg['df']}) p={bg['pvalue']:.4f}  |  "
+          f"F={bg['fstat']:5.2f} df=({bg['f_df_num']}, {bg['f_df_den']}) p={bg['f_pvalue']:.4f}")
+#   iid errors: LM=  6.85 (df=4) p=0.1442  |  F= 1.72 df=(4, 194) p=0.1473
+# AR(2) errors: LM= 55.86 (df=4) p=0.0000  |  F=18.80 df=(4, 194) p=0.0000
+```
+
+With white-noise errors neither form finds anything (`p = 0.14`). The AR(2)
+errors are flagged decisively by both.
+`f_df_den = 200 - 2 - 4 = 194`: the zero-padded auxiliary regression keeps all
+200 observations.
+
+---
+
+## `durbin_watson_test` — first-order serial correlation, exact p-value
+
+**What it estimates.** The Durbin-Watson (1950, 1951) statistic on the OLS
+residuals `e`,
+
+```text
+d = sum_{t=2}^T (e_t - e_{t-1})^2 / sum_{t=1}^T e_t^2   ≈   2 (1 - r_1)
+```
+
+where `r_1` is the first-order residual autocorrelation. `d` is near 2 under
+no autocorrelation, below 2 under positive and above 2 under negative
+autocorrelation. Together with `d`, the function returns its **exact p-value**
+under normal errors, not the inconclusive-region bounds tables. With
+`M = I - X (X'X)^{-1} X'` and `A` the first-difference matrix `D'D`,
+`d = u'MAMu / u'Mu`, so
+
+```text
+P(d <= c) = P( sum_i (nu_i - c) z_i^2 <= 0 ),    z_i iid N(0, 1),
+```
+
+where `nu_1..nu_{T-k}` are the eigenvalues of `M A M` on the complement of
+`col(X)`. The library computes them by one dense symmetric
+eigendecomposition and evaluates the probability by Imhof's (1961) numerical
+inversion of the characteristic function, with adaptive Gauss-Kronrod
+quadrature and a truncation point from Imhof's tail bound, to about `1e-13`
+absolute.
+
+**Assumptions.** The p-value is exact when the errors are Gaussian and iid
+under the null **and the regressors are fixed** (strictly exogenous): the
+distribution of `d` depends on `X`, which is why the classical tables could
+only give bounds `d_L`, `d_U`. With non-normal errors it is an approximation;
+the measured size is below. The test looks at first-order correlation only,
+so a pure second-order (or seasonal) process can pass unnoticed. It is
+**invalid with a lagged dependent variable** in `x`, because the regressors
+are then not fixed, and `d` is biased toward 2.
+
+**When to use (and when not).** Use it for a static regression with
+exogenous regressors when you want the classical first-order test with an
+exact verdict instead of an inconclusive region. In that setting it is the
+more powerful first-order test: on the Monte Carlo below it matches or beats
+BG at `p = 1` at every sample size and error correlation, by a wide margin at
+`T = 50`. Do **not** use it with a lagged dependent variable, for
+higher-order or seasonal dependence, or on a long sample: use
+`breusch_godfrey_test` there. Dynamic models are
+exactly where Durbin's `h` was once used, and BG has replaced it.
+
+**Key arguments and defaults (and why).** `alternative="positive"` is the
+classical one-sided test against `rho > 0`, `p = P(d <= d_obs)`, because
+positive autocorrelation is the usual failure in economic time series.
+`"negative"` gives `P(d >= d_obs)` and `"two_sided"` gives
+`min(1, 2 min(P(d <= d_obs), P(d >= d_obs)))`. Any other string is refused,
+naming `alternative`. `x` is the `(n, k)` design. A constant is not required,
+because the exact distribution uses `M` whatever `X` is; the bounds tables did
+need one, which is one more reason the tables are not used here. The sample
+must satisfy `T >= k + 2` (with `T = k + 1`, `d` is a constant).
+
+**COST and the sample cap.** The eigendecomposition is cubic in `T` and holds a
+`T x T` matrix, so the p-value is computed for `T` up to 4000 (128 MB). For a
+longer `y` the statistic, which costs time linear in `T`, is still returned,
+with `pvalue` set to `None`. For a test at that length use
+`breusch_godfrey_test`, whose cost is linear in `T` at a fixed `nlags` and
+whose chi-square approximation is accurate there. Measured on the release
+wheel (median of three calls, a 4-core machine shared with another job,
+`lab/serial_corr/dw_cost.py`):
+
+| T | 100 | 250 | 500 | 1000 | 2000 | 3000 | 4000 |
+|---|---|---|---|---|---|---|---|
+| `durbin_watson_test` | 0.002 s | 0.008 s | 0.023 s | 0.136 s | 1.35 s | 6.04 s | 14.7 s |
+| `breusch_godfrey_test` | 0.1 ms | 0.1 ms | 0.1 ms | 0.3 ms | 0.5 ms | 0.7 ms | 0.9 ms |
+
+**How to read the output.** A dict. `statistic` is `d`. `pvalue` is the exact
+probability for the chosen `alternative`, which is echoed, or `None` when
+`T > 4000`. `nobs` is `T` and
+`df_resid` is `T - k`, the number of `nu_i`. The p-value is computed to about
+`1e-13` absolute, so a printed `1e-14` or `0.0` means "below `1e-13`". The
+one-sided p-values are complementary, so a second call to read the other tail
+is unnecessary: `P(d >= d_obs) = 1 - P(d <= d_obs)`.
+
+**Failure modes.** Using it with a lagged dependent variable: under the null
+the test then rejects only about 2% of the time at a nominal 5% (measured
+below), and its p-value is no longer exact. Reading a non-rejection as "no
+serial correlation" when the dependence is not first order. Treating a long
+sample's `pvalue` as a number: above `T = 4000` the exact p-value is not
+computed (it would take minutes), so `pvalue` is `None` and only the statistic
+is returned. Test `pvalue is None` before comparing it, or use
+`breusch_godfrey_test` at that length. A collinear `x`, a `y` that `x` fits
+exactly, or a sample with `T < k + 2` are refused with the parameter named.
+
+**Validated against.** The statistic is checked against statsmodels
+`durbin_watson`, and the exact p-value against a documented-formula golden on
+the same 13 cases as Breusch-Godfrey (`fixtures/serial_corr.json`). The
+generator transcribes Imhof's formula itself, independently of the crate. Its
+eigenvalues come from NumPy's complete QR and LAPACK `eigvalsh` on the
+complement block, where the crate uses a shifted `faer` eigendecomposition,
+and its integral from QUADPACK by two routes that agree to `1e-12`, where the
+crate uses its own Gauss-Kronrod rule. All three alternatives match at
+`1e-10`; the measured worst deviations are `2.4e-15` on the statistic and
+`3.1e-15` on the p-values. No package in the fixture environment computes the
+exact Durbin-Watson p-value, so the *formula* is graded separately:
+
+* **The null CDF against simulation**
+  (`lab/serial_corr/dw_exact_mc.py`).
+  On three fixed designs (`T` = 20, 40, 80; constant-only to four
+  regressors), the exact `P(d <= c)` was compared with 200 000 simulated null
+  draws at the 1, 5, 10, 50, 90, 95 and 99% points. The largest deviation is
+  1.6 Monte Carlo standard errors.
+* **Closed forms and theorems** (unit tests in
+  `crates/tsecon-spectest/src/durbin_watson.rs` and `imhof.rs`). With a
+  constant-only design, the `nu_i` equal the closed-form eigenvalues
+  `2 - 2 cos(pi j / T)` to `1e-12`. They obey the Durbin-Watson bounds
+  theorem `lambda_{i+1} <= nu_i <= lambda_{i+k}`, and the exact CDF lies
+  between the `d_L` and `d_U` distributions. The `T = 3` mean model matches
+  its closed form `(2/pi) arctan(sqrt((d-1)/(3-d)))` to `1e-12`, and the
+  quadrature reproduces the closed forms of two-term and chi-square-difference
+  quadratic forms.
+* **Uniformity under the null**
+  (`crates/tsecon-spectest/tests/serial_properties.rs`). Over 3000 seeded
+  replications the empirical CDF of the p-values lies within 4 Monte Carlo
+  standard errors of the uniform at eight points.
+
+Size and power (same DGP and output file as the Breusch-Godfrey table, test
+`alternative="positive"`, rejection rates at 5%):
+
+| T | iid N(0,1) | iid t(5) | AR(1) ρ = 0.2 | AR(1) ρ = 0.4 | lagged `y`, iid errors | lagged `y`, ρ = 0.4 |
+|---|---|---|---|---|---|---|
+| 50 | 0.041 | 0.043 | 0.368 | 0.806 | 0.021 | 0.478 |
+| 100 | 0.059 | 0.051 | 0.610 | 0.987 | 0.022 | 0.739 |
+| 200 | 0.046 | 0.048 | 0.881 | 1.000 | 0.017 | 0.958 |
+
+Under normal errors the size is within two Monte Carlo standard errors of 5%,
+as it should be for an exact test. Under non-normal errors it stays close: in
+a separate run of 4000 replications per cell (`dw_exact_mc.py`, Monte Carlo
+standard error 0.0034), t(5) errors gave 0.0488 at `T = 30` and 0.0493 at
+`T = 100`, t(3) gave 0.0423 and 0.0490, and centered chi2(1) gave 0.0515 and
+0.0585 — the last 2.5 standard errors above 5%. In the static regression its
+power at `rho = 0.2` is about twice that of BG at `p = 1` when `T = 50`
+(0.368 against 0.192). With a lagged dependent variable its size collapses to
+about 2%. In that DGP it still detected
+`rho = 0.4` more often than BG did (0.478 against 0.387 at `T = 50`), but
+its p-value no longer means what it says.
+
+**References.** Durbin & Watson (1950, *Biometrika* 37:409-428; 1951,
+*Biometrika* 38:159-178); Imhof (1961, *Biometrika* 48:419-426); Savin &
+White (1977, *Econometrica* 45:1989-1996, the extended bounds tables this
+replaces).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(5)
+n = 60
+x1 = rng.normal(size=n)
+trend = np.arange(n) / n
+X = np.column_stack([np.ones(n), x1, trend])       # explicit constant column
+
+e = rng.normal(size=n)
+u = np.empty(n)
+u[0] = e[0] / np.sqrt(1 - 0.4**2)
+for t in range(1, n):
+    u[t] = 0.4 * u[t - 1] + e[t]                    # AR(1) errors, rho = 0.4
+
+for label, err in [("iid errors", e), ("AR(1) errors", u)]:
+    y = 1.0 + 0.5 * x1 - 1.0 * trend + err
+    dw = tsecon.durbin_watson_test(y, X)            # H1: rho > 0
+    two = tsecon.durbin_watson_test(y, X, alternative="two_sided")
+    print(f"{label:>12}: d={dw['statistic']:.3f}  exact p(rho>0)={dw['pvalue']:.4f}  "
+          f"two-sided p={two['pvalue']:.4f}  (T={dw['nobs']}, T-k={dw['df_resid']})")
+#   iid errors: d=2.051  exact p(rho>0)=0.5237  two-sided p=0.9527  (T=60, T-k=57)
+# AR(1) errors: d=1.300  exact p(rho>0)=0.0015  two-sided p=0.0030  (T=60, T-k=57)
+```
+
+With white-noise errors `d` sits at 2.05 and the exact p-value is 0.52. With
+AR(1) errors `d = 1.30`. For `T = 60` and two regressors besides the constant
+the 5% bounds are `d_L = 1.514` and `d_U = 1.652` (the 5% quantiles of the
+`d_L` and `d_U` distributions, which is what the Savin-White tables
+tabulate, computed from their definition in
+`lab/serial_corr/dw_bounds.py`), so
+the bounds test would also reject here. The exact p-value says by how much
+(`p = 0.0015`), and it still gives a verdict when `d` falls between `d_L` and
+`d_U`, where the tables cannot.

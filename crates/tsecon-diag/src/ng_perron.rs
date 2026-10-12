@@ -60,7 +60,7 @@
 //! bitwise cross-pin to the shared `dfgls` detrending engine. See
 //! `tests/ng_perron_properties.rs` and the validation matrix.
 
-use crate::dfgls::{gls_detrend, DfglsTrend};
+use crate::dfgls::{check_gls_lag_order, gls_default_maxlag, gls_detrend, DfglsTrend};
 use crate::error::DiagError;
 use crate::mackinnon::AdfCriticalValues;
 use crate::ols::ols_detailed;
@@ -261,8 +261,16 @@ fn select_maic(y: &[f64], maxlag: usize, what: &'static str) -> Result<usize, Di
 ///
 /// * [`DiagError::NonFinite`] if the series contains NaN or infinities.
 /// * [`DiagError::ConstantSeries`] if the series is constant.
-/// * [`DiagError::SeriesTooShort`] if too few observations remain after
-///   differencing and trimming for the requested specification.
+/// * [`DiagError::SeriesTooShort`] if the series is shorter than the
+///   `3 + ntrend` minimum of a lag-free regression.
+/// * [`DiagError::LagOrderTooLong`] if the lag order — fixed, or the cap
+///   of the MAIC search, supplied or defaulted — leaves too few
+///   observations (as for [`crate::dfgls`]: `n >= 2 lags + 3`, and
+///   `n >= 3 + ntrend + lags` for a fixed lag), or when its lag design or
+///   lag search exceeds the size budgets ([`crate::LAG_DESIGN_MAX_CELLS`],
+///   [`crate::LAG_WORK_BUDGET`]); checked before any lag column is built,
+///   naming the order (`lags` when fixed, `maxlag` for the search cap) and
+///   the largest one that fits.
 /// * [`DiagError::SingularDesign`] / [`DiagError::NumericalBreakdown`] for
 ///   (near-)deterministic series — e.g. an exact linear trend — whose
 ///   detrending or lag design is collinear or fits exactly, and for the
@@ -275,14 +283,24 @@ pub fn ng_perron(
 ) -> Result<NgPerronResult, DiagError> {
     const WHAT: &str = "ng_perron";
     let ntrend = trend.ntrend();
-    let fixed = match lags {
-        NgPerronLagSelection::Fixed(l) => l,
-        NgPerronLagSelection::Maic(_) => 0,
-    };
     // Same floor as dfgls (whose engine this reuses), plus one residual
-    // degree of freedom in the k-lag regression.
-    let min_n = (3 + ntrend + fixed).max(2 * fixed + 3);
-    let n = check_series(y, min_n, WHAT)?;
+    // degree of freedom in the k-lag regression; the lag order is sized
+    // against the sample and the budgets before any column is built.
+    let n = check_series(y, 3 + ntrend, WHAT)?;
+    let maxlag = match lags {
+        NgPerronLagSelection::Fixed(l) => {
+            check_gls_lag_order(WHAT, "lags", l, false, n, ntrend, false)?;
+            l
+        }
+        NgPerronLagSelection::Maic(user) => {
+            let (m, defaulted) = match user {
+                Some(m) => (m, false),
+                None => (gls_default_maxlag(n), true),
+            };
+            check_gls_lag_order(WHAT, "maxlag", m, defaulted, n, 0, true)?;
+            m
+        }
+    };
     if y.iter().all(|&v| v == y[0]) {
         return Err(DiagError::ConstantSeries { what: WHAT });
     }
@@ -300,39 +318,15 @@ pub fn ng_perron(
     //    dfgls uses for its AIC/BIC selection).
     let used_lag = match lags {
         NgPerronLagSelection::Fixed(l) => l,
-        NgPerronLagSelection::Maic(user) => {
-            let maxlag = match user {
-                Some(m) => m,
-                None => {
-                    let max_max = ((n - 1) / 2).saturating_sub(1);
-                    let schwert = (12.0 * (n as f64 / 100.0).powf(0.25)).ceil() as usize;
-                    schwert.min(max_max)
-                }
-            };
-            // The common trimmed sample must keep a residual degree of
-            // freedom at k = maxlag.
-            let rows = n.saturating_sub(1 + maxlag);
-            if rows < maxlag + 2 {
-                return Err(DiagError::SeriesTooShort {
-                    what: WHAT,
-                    n,
-                    needed: 2 * maxlag + 3,
-                });
-            }
-            select_maic(&y_gls, maxlag, WHAT)?
-        }
+        // The common trimmed sample keeps a residual degree of freedom at
+        // k = maxlag (checked above).
+        NgPerronLagSelection::Maic(_) => select_maic(&y_gls, maxlag, WHAT)?,
     };
 
     // 3. Autoregressive spectral density at frequency zero: refit at the
-    //    chosen lag on the longest available sample.
+    //    chosen lag on the longest available sample (n - 1 - used_lag >=
+    //    used_lag + 2 by the lag check).
     let rows = n - 1 - used_lag;
-    if rows < used_lag + 2 {
-        return Err(DiagError::SeriesTooShort {
-            what: WHAT,
-            n,
-            needed: 2 * used_lag + 3,
-        });
-    }
     let (cols, dy) = adf_design(&y_gls, used_lag, 0, false);
     let fit = ols_detailed(&cols, &dy, WHAT)?;
     let sigma2_e = fit.ssr / rows as f64;

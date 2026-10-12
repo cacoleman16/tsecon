@@ -21,6 +21,33 @@ pub(crate) fn check_finite(x: &[f64], what: &'static str) -> Result<(), crate::L
     Ok(())
 }
 
+/// Refuses a maximum horizon the sample cannot reach, before anything is
+/// sized by `horizons`.
+///
+/// `rows_and_params(h)` is `(nobs, nparams)` of the horizon-`h` design: the
+/// usable observations and the regressor count the per-horizon loop checks.
+/// Every design in this crate loses rows and keeps or gains regressors as
+/// `h` grows, and `nobs` is zero from `h = n` on, so the scan is pure
+/// arithmetic over at most `min(horizons, n) + 1` horizons — never a
+/// regression per horizon, and never a `horizons + 1` allocation. It returns
+/// the [`crate::LpError::HorizonTooLong`] the loop would have hit first.
+pub(crate) fn check_horizons(
+    horizons: usize,
+    rows_and_params: impl Fn(usize) -> (usize, usize),
+) -> Result<(), crate::LpError> {
+    for h in 0..=horizons {
+        let (nobs, nparams) = rows_and_params(h);
+        if nobs <= nparams {
+            return Err(crate::LpError::HorizonTooLong {
+                horizon: h,
+                nobs,
+                nparams,
+            });
+        }
+    }
+    Ok(())
+}
+
 /// The first usable observation index and the sample length for horizon `h`.
 ///
 /// `start = max(n_lag_controls, n_shock_lags)` (need both blocks of lags),

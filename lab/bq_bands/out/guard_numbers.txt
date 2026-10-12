@@ -1,0 +1,22 @@
+tsecon 0.10.0; 200 replications; quantiles [h][variable][shock][5/16/84/95]
+seed 0:
+  demand -> unemployment 90% upper at h = 0, 4: -0.098, -0.365
+  demand -> output 90% lower at h = 0, 4: +0.453, +0.612
+  demand -> output 90% band at h = 40: [-0.055, +0.097]
+  supply -> output 90% lower at h = 40: +0.291
+  supply -> unemployment 68% lower at h = 0: +0.059
+  min over draws of output's impact response to demand: +0.173
+  sign_anchor_mismatches [0], n_unstable_draws 0
+seed 1:
+  demand -> unemployment 90% upper at h = 0, 4: -0.112, -0.354
+  demand -> output 90% lower at h = 0, 4: +0.434, +0.585
+  demand -> output 90% band at h = 40: [-0.058, +0.088]
+  supply -> output 90% lower at h = 40: +0.304
+  supply -> unemployment 68% lower at h = 0: +0.049
+  min over draws of output's impact response to demand: +0.155
+  sign_anchor_mismatches [0], n_unstable_draws 0
+max |quantile(seed 0) - quantile(seed 1)| = 0.152
+max |quantile(seed 0) - quantile(seed 7)| = 0.139
+max |quantile(seed 0) - quantile(seed 42)| = 0.078
+native irf_draws vs the hand-built construction (40 draws, seed 0, h <= 12): max |diff| = 2.4e-14
+native impact HD vs hand-built: max |diff| = 3.6e-15; baseline vs Cholesky 0.0e+00; total contribution vs Cholesky 6.2e-15

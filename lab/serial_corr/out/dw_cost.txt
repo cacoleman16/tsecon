@@ -1,0 +1,10 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+     T   durbin_watson_test   breusch_godfrey_test
+   100               0.002s                0.0001s
+   250               0.008s                0.0001s
+   500               0.023s                0.0001s
+  1000               0.136s                0.0003s
+  2000               1.350s                0.0005s
+  3000               6.041s                0.0007s
+  4000              14.738s                0.0009s

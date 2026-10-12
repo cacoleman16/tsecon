@@ -594,12 +594,53 @@ fn band_misconfiguration_is_rejected_with_an_error_that_teaches() {
     assert!(matches!(too_few, Err(LpError::Band { .. })));
     let msg = format!("{}", too_few.unwrap_err());
     assert!(
-        msg.contains("n_sim") && msg.contains("50,000"),
+        msg.contains("band_n_sim") && msg.contains("50,000"),
         "the n_sim error should say what a usable value looks like: {msg}"
     );
 
     let mismatched = closed_form_band(&[1.0, 2.0], &[0.1], BandSpec::sidak(0.10));
     assert!(matches!(mismatched, Err(LpError::LengthMismatch { .. })));
+}
+
+/// Audit round 16: an absurd `band_n_sim` used to request `K * n_sim`
+/// uniforms in one allocation (120 GB at `2^31`) and abort the process. It is
+/// refused before estimating, naming `band_n_sim` and the largest count that
+/// fits, which is then admitted by the budget; the default is untouched.
+#[test]
+fn an_absurd_sup_t_simulation_count_is_refused_by_name_before_allocating() {
+    use tsecon_stats::simultaneous::{sup_t_max_n_sim, sup_t_n_sim_fits};
+    let fx = load_fixture();
+    let y = f64s(&fx["y"]);
+    let e = f64s(&fx["e"]);
+    let spec = LpSpec::new(6, 4);
+    let max = sup_t_max_n_sim(1, 7);
+    assert!(sup_t_n_sim_fits(1, 7, max) && !sup_t_n_sim_fits(1, 7, max + 1));
+    for n_sim in [1usize << 31, 1 << 40, usize::MAX, max + 1] {
+        let bad = lp_band(&y, &e, spec, BandSpec::sup_t(0.10).with_n_sim(n_sim));
+        match &bad {
+            Err(LpError::BandSimulationBudget {
+                n_sim: got,
+                n_cells: 7,
+                max_n_sim: Some(m),
+            }) => {
+                assert_eq!((*got, *m), (n_sim, max));
+            }
+            other => panic!("expected a band_n_sim budget refusal, got {other:?}"),
+        }
+        let msg = bad.unwrap_err().to_string();
+        assert!(
+            msg.contains("band_n_sim") && msg.contains(&format!("fits is {max}")),
+            "{msg}"
+        );
+    }
+    let sspec = SmoothLpSpec::new(6, 4);
+    let bad = smooth_lp_band(&y, &e, &sspec, BandSpec::sup_t(0.10).with_n_sim(1 << 40));
+    assert!(
+        matches!(bad, Err(LpError::BandSimulationBudget { .. })),
+        "{bad:?}"
+    );
+    // The default simulation count is in budget and still runs.
+    assert!(lp_band(&y, &e, spec, BandSpec::sup_t(0.10).with_n_sim(2_000)).is_ok());
 }
 
 // ---------------------------------------------------------------------------

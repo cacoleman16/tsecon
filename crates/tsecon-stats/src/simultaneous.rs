@@ -433,11 +433,57 @@ pub fn sup_t_from_cov(
 }
 
 /// Number of uniforms [`sup_t_from_cov`] consumes for `n_sim` simulations over
-/// `k` cells: simply `k * n_sim`. Provided so callers do not have to rederive
-/// the layout.
+/// `k` cells: simply `k * n_sim` (saturating, so an absurd count cannot wrap
+/// to a small buffer). Provided so callers do not have to rederive the
+/// layout; check [`sup_t_n_sim_fits`] before allocating that many.
 #[must_use]
 pub fn required_uniforms(k: usize, n_sim: usize) -> usize {
-    k * n_sim
+    k.saturating_mul(n_sim)
+}
+
+/// Memory budget of one sup-t simulation, in `f64` values (`2^28`, 2 GiB):
+/// the `K * n_sim` uniforms [`sup_t_from_cov`] reads plus its `n_sim` maxima.
+pub const SUP_T_MAX_VALUES: usize = 1 << 28;
+
+/// Work budget of the sup-t simulations behind one band:
+/// `n_families * n_sim * K^2` multiply-adds (`2^36`, tens of seconds).
+/// Colouring each simulated vector by the lower-triangular factor of a
+/// family's covariance costs about `K^2 / 2` multiply-adds, so this is the
+/// count for every family of the band at once.
+pub const SUP_T_MAX_WORK: u128 = 1 << 36;
+
+/// Whether `n_sim` simulations for each of `n_families` families of
+/// `n_cells` cells fit both sup-t budgets ([`SUP_T_MAX_VALUES`] for one
+/// family's uniforms and maxima, [`SUP_T_MAX_WORK`] for all of them).
+///
+/// Every band builder that simulates a sup-t critical value checks this
+/// before allocating its uniforms, so an absurd `n_sim` is refused rather
+/// than aborting the process in the allocator. The counts are checked, so
+/// no argument can overflow the test meant to refuse it.
+#[must_use]
+pub fn sup_t_n_sim_fits(n_families: usize, n_cells: usize, n_sim: usize) -> bool {
+    let values = n_cells
+        .checked_add(1)
+        .and_then(|per_sim| per_sim.checked_mul(n_sim));
+    let work = (n_families as u128)
+        .checked_mul(n_sim as u128)
+        .and_then(|w| w.checked_mul(n_cells as u128))
+        .and_then(|w| w.checked_mul(n_cells as u128));
+    matches!(values, Some(v) if v <= SUP_T_MAX_VALUES)
+        && matches!(work, Some(w) if w <= SUP_T_MAX_WORK)
+}
+
+/// The largest `n_sim` for which [`sup_t_n_sim_fits`] holds, or `0` when not
+/// even one simulation fits (the family itself is too large).
+#[must_use]
+pub fn sup_t_max_n_sim(n_families: usize, n_cells: usize) -> usize {
+    let by_values = SUP_T_MAX_VALUES / n_cells.saturating_add(1);
+    let per_sim_work = (n_families.max(1) as u128)
+        .saturating_mul(n_cells as u128)
+        .saturating_mul(n_cells as u128)
+        .max(1);
+    let by_work = usize::try_from(SUP_T_MAX_WORK / per_sim_work).unwrap_or(usize::MAX);
+    by_values.min(by_work)
 }
 
 /// Pointwise standard errors `sqrt(diag(Sigma))` from a row-major `k * k`
@@ -711,6 +757,33 @@ mod tests {
     fn cholesky_rejects_an_asymmetric_matrix() {
         let sigma = vec![1.0, 0.4, 0.2, 1.0];
         assert!(cholesky_psd(&sigma, 2).is_err());
+    }
+
+    #[test]
+    fn sup_t_budget_is_exact_at_its_boundary_and_never_overflows() {
+        // One family of K = 13 cells: the uniforms and maxima bind first.
+        let m = sup_t_max_n_sim(1, 13);
+        assert_eq!(m, SUP_T_MAX_VALUES / 14);
+        assert!(sup_t_n_sim_fits(1, 13, m));
+        assert!(!sup_t_n_sim_fits(1, 13, m + 1));
+        // Many wide families: the work binds first.
+        let m = sup_t_max_n_sim(4, 909);
+        assert_eq!(m as u128, SUP_T_MAX_WORK / (4 * 909 * 909));
+        assert!(sup_t_n_sim_fits(4, 909, m));
+        assert!(!sup_t_n_sim_fits(4, 909, m + 1));
+        // Absurd counts are refused, not wrapped.
+        for (f, k, n) in [
+            (1, 13, usize::MAX),
+            (usize::MAX, 13, 2),
+            (1, usize::MAX, 2),
+            (1, 1 << 40, 1 << 40),
+        ] {
+            assert!(!sup_t_n_sim_fits(f, k, n), "{f} {k} {n}");
+        }
+        assert_eq!(sup_t_max_n_sim(1, usize::MAX), 0);
+        assert_eq!(required_uniforms(usize::MAX, 2), usize::MAX);
+        // The default 100000 draws fit an ordinary family.
+        assert!(sup_t_n_sim_fits(9, 13, 100_000));
     }
 
     #[test]

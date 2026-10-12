@@ -228,6 +228,21 @@ def test_the_guide_panel_bullets_are_calls_that_run():
     for name in ("panel_distributed_lag", "panel_lp"):
         sig = re.search(rf"`tsecon\.{name}\(([^`]*)\)`", guide).group(1)
         assert "mask=None" in sig, name
+    # 0.11.0: the static menu's bullets are runnable calls too — every
+    # keyword they show is passed as written, with bandwidth=None (it acts
+    # only under a kernel se_type) and mask=None.
+    rng = np.random.default_rng(14)
+    yr = rng.standard_normal((30, 8)) + rng.standard_normal((30, 1))
+    xr = rng.standard_normal((2, 30, 8))
+    for name in ("panel_re", "panel_between", "panel_fd", "panel_fama_macbeth"):
+        sig = re.search(rf"`tsecon\.{name}\(([^`]*)\)`", guide).group(1)
+        shown = dict(re.findall(r"(\w+)=(\"[a-z_0-9]+\"|None|True|False|[\d.]+)", sig))
+        assert shown.get("mask") == "None", name
+        if name != "panel_between":
+            assert shown.get("bandwidth") == "None", name
+        kwargs = {k: (None if v == "None" else True if v == "True" else False if v == "False" else v.strip('"'))
+                  for k, v in shown.items()}
+        getattr(tsecon, name)(yr, xr, **kwargs)
 
 
 # --------------------------------------------------------------- L7 (sweep S)

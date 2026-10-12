@@ -65,16 +65,27 @@ to leak the internal variable-major layout; statsmodels'
 `var_granger`: `statistic`, `p_value`, `df_num/df_den`. `var_forecast`:
 `point`, `lower`, `upper` (each steps×k) — **marginal** intervals, one cell at a
 time, which is not what a fan chart is read as; see
-[simultaneous forecast bands](#simultaneous-forecast-bands-var_forecast).
+[simultaneous forecast bands](#simultaneous-forecast-bands-var_forecast) — plus
+`cov` (`[h][i][j]`, the forecast-error covariance the bands come from) and the
+`param_uncertainty` echo; see
+[parameter uncertainty](#forecast-covariance-and-parameter-uncertainty-var_forecastparam_uncertaintytrue).
 
 **Failure modes.** A pointwise IRF median is not itself a model at long
 horizons; Cholesky ordering silently drives every "structural" reading;
 comparing ICs across different effective samples flips rankings; near-unit
-roots make long-horizon responses and bands unreliable.
+roots make long-horizon responses and bands unreliable. An absurd `horizon`
+(or `steps`) is refused, not allocated: every moving-average expansion is
+checked against one 2^28-value (2 GiB) budget, counted as real storage
+(padded matrices and the Python lists), and the refusal names the keyword
+and the largest value that fits (horizon 399456 on two variables, 262143 on
+three). `connectedness`, `fvar_scenario`, `mean_group_var` and the
+SVAR callables built on the same expansion inherit it.
 
 **Validated against.** statsmodels `VAR` — coefficients, `sigma_u`, IRF/FEVD,
 `test_causality`, and forecasts; Lütkepohl (2005) textbook conventions
-(`fixtures/var.json`).
+(`fixtures/var.json`); the forecast covariance with and without the
+parameter-uncertainty term against `mse` / `forecast_cov(method="auto")`
+(`fixtures/var_forecast_cov.json`).
 
 **References.** Sims (1980); Lütkepohl, *New Introduction to Multiple Time
 Series Analysis* (2005).
@@ -124,7 +135,14 @@ horizon of every series, $K = \text{steps} \times k$, because that is how a
 forecast figure is normally read. `band_scope="horizon"` gives one family per
 series ($K = \text{steps}$), the right scope for a single-series fan chart.
 `band_seed` and `band_n_sim` drive the sup-t Gaussian simulation and make that
-band a pure function of `band_seed`; the closed forms use neither.
+band a pure function of `band_seed`; the closed forms use neither. Both
+budgets are checked before anything is allocated: the joint covariance,
+$(\text{steps}\cdot k)^2$ values whose cross-horizon blocks cost about
+$\text{steps}^3/6$ products of $k\times k$ matrices, within 2^28 values and
+2^31 work (refused naming `steps`: at most 685 on two variables at lags 2),
+and the sup-t simulation, $(K+1)\cdot$`band_n_sim` uniforms and maxima within
+2^28 values and $n_\text{families}\cdot$`band_n_sim`$\cdot K^2$ multiply-adds
+within 2^36 (refused naming `band_n_sim`).
 
 **How to read the output.** **`lower`/`upper` stay marginal whatever you pass** —
 nothing that already reads them changes meaning. Asking for a simultaneous band
@@ -147,6 +165,132 @@ replications, both arms read off the **same** call: joint coverage
 **42.0% ± 1.1 → 90.5% ± 0.7** ([`forecast_intervals.py`](../../examples/coverage/forecast_intervals.py),
 which asserts it). A 48-point repair that still misses nominal by 4.5 points,
 all of it inherited from the marginal band.
+
+### Forecast covariance and parameter uncertainty — `var_forecast(param_uncertainty=True)`
+
+**What it estimates.** Every `var_forecast` call returns `cov` (`[h][i][j]`,
+`steps × k × k`, the layout of `var_conditional_forecast`): the forecast-error
+covariance the bands are built from. By default it is the plug-in
+$\mathrm{MSE}(h) = \sum_{i<h} \Psi_i \Sigma_u \Psi_i'$ (statsmodels
+`VARResults.mse`), so `sqrt(diag cov)` reproduces `lower`/`upper` exactly. With
+`param_uncertainty=True` it is
+
+$$
+\mathrm{cov}(h) = \mathrm{MSE}(h) + \frac{\Omega(h)}{T},\qquad
+\Omega(h) = \sum_{i,j<h} \operatorname{tr}\bigl[(B')^{h-1-i} G^{-1} B^{h-1-j} G\bigr]\,
+\Psi_i \Sigma_u \Psi_j',
+$$
+
+Lütkepohl's (2005, pp. 96-97) first-order term for having *estimated* the
+coefficients ($G = Z'Z$, $B$ the companion matrix extended by the deterministic
+term, $T$ the effective sample), and `lower`/`upper` widen to
+`point ± z sqrt(diag cov)`. At $h = 1$ the term is $m\Sigma_u$ (to rounding) with
+$m = n_\text{trend} + k\,p$, so $\mathrm{cov}(1) = (1 + m/T)\Sigma_u$.
+
+**Why it exists.** The plug-in band treats the coefficients as known, and the
+audit measured what that costs: pooled marginal coverage below nominal at
+$T = 100$ on a well-specified VAR. This is the textbook correction for that
+specific omission, and it is the one statsmodels ships as
+`forecast_cov(method="auto")`.
+
+**Assumptions.** A **stationary** VAR, correctly specified, estimated by OLS:
+the term is the delta-method variance of the forecast in the coefficient
+estimates under stationary asymptotics.
+
+**When to use (and when not).** For marginal forecast intervals from a VAR on
+stationary data in short samples, where the coefficient uncertainty is not
+negligible — it matters most with many regressors per observation (high `lags`,
+small `T`). Not on near-unit-root levels data: there the derivation does not
+apply and the term works through an ill-conditioned $Z'Z$. On a VAR(2) in
+100 × log levels of real GDP, consumption and investment (largest companion
+modulus 0.998, cond($Z'Z$) = 5.1e10) it inflates the 12-step variances by
+15-18%, against 1.0-1.5% on the growth-rate system of `var.json` (cond 476).
+That is not a unit-root correction; difference the data or use `vecm`.
+
+**Key arguments and defaults (and why).** `param_uncertainty=False` (the
+default) keeps `var_forecast` bit-for-bit what it was — statsmodels'
+`forecast_interval` — so no existing number moves. `True` applies the same
+formula under `trend="c"` **and** `trend="n"`; statsmodels' public
+`method="auto"` silently returns the plain MSE without a constant (a
+`k_exog == 1` gate), so for `trend="n"` the two libraries differ by exactly the
+term (the golden there is statsmodels' `mse + _omega_forc_cov / nobs`). The
+flag is refused with `band="sup-t"`/`"sidak"`/`"bonferroni"`, naming both
+keywords: a simultaneous band needs the cross-horizon blocks of the term, which
+are a follow-up.
+
+**How to read the output.** `cov` and the echo `param_uncertainty` are always
+present; `point` never changes; `lower`/`upper` widen at every cell. The
+difference `cov(h) − MSE(h) = Ω(h)/T` is symmetric positive semi-definite at
+every horizon and shrinks like $1/T$.
+
+**Failure modes.** **A partial repair, by construction.** On the
+interval-coverage audit's experiment-3 draws (VAR(1) with
+$A = [[.7,.15],[.1,.6]]$, $T = 100$, 12 horizons × 2 series, 6000
+replications, nominal 95%), the same draws scored both ways:
+
+| fitted lags | pooled marginal coverage | worst horizon | paired gain (se) |
+|---|---|---|---|
+| 1 (true order) | 0.931 → **0.937** | 0.925 → **0.932** (h = 11) | +0.62 pp (0.02) |
+| 4 (over-fitted) | 0.931 → **0.941** | 0.925 → **0.937** (h = 5) | +1.01 pp (0.03) |
+
+(`lab/audit/wave11/ewc_varcov_measurements.py`;
+its plug-in arm reproduces the audit's worst-horizon 0.925 on the identical
+draws.) The term recovers about a third of the shortfall at the true order and
+half of it over-fitted; the rest is the small-sample **bias** of the OLS
+coefficients, which no variance term can fix. **The cost is CUBIC in
+`steps`** on a small VAR — about $\text{steps}^3 (k^2 + 8)/3$ operations: on
+the $k = 3$ VAR(2) of `var.json` 0.1 ms at 12 steps, 4 ms at 200, 0.04 s at
+500 and 0.27 s at 1000. The full count adds $\text{steps}^2 k^3/2 +
+2\,\text{steps}\,m^3 + \text{steps}^2 m^2$, with $m = n_\text{trend} +
+k \cdot \text{lags}$ regressors per equation, and on a wide VAR the
+$2\,\text{steps}\,m^3$ term dominates — linear in `steps` but cubic in
+$k \cdot \text{lags}$: 30 series at `lags = 10` ($m = 301$) admit 197 steps,
+60 series at `lags = 20` ($m = 1201$) only 4, and 64 series at `lags = 32`
+($m = 2049$) not one. A work budget of $2^{34}$ refuses past it (1443 steps on
+the $k = 3$ VAR, measured 0.9 s; 0.9-2.0 s at the cap for $k = 1, 2, 3$). The
+refusal names `steps`, with the remedy for whichever terms dominate (a shorter
+horizon, or fewer lags or series), or names `lags` when not even one step fits
+(`lab/audit/wave11/var_param_uncertainty_wide.py`, output committed next to
+it). Without the flag nothing is budgeted beyond what `var_forecast` always
+did.
+
+**Validated against.** statsmodels 0.15.0 on the `var.json` system — `mse` for
+the default and `forecast_cov(method="auto")` for the flag under `trend="c"`,
+`mse + _omega_forc_cov/nobs` under `trend="n"` (a canary in the generator fails
+if statsmodels ever stops dropping the term) — on VAR(2)c, VAR(2)n, VAR(1)c and
+VAR(4)c at steps 1, 8 and 12: covariances, Ω(h) and both bands at 1e-10
+(achieved 1.2e-14), with every Ω(h) re-derived by an independent NumPy
+transcription of the formula at generation; the $h = 1$ identity at 1e-14
+([`var_forecast_cov.json`](../../../fixtures/var_forecast_cov.json),
+[`forecast_cov_golden.rs`](../../../crates/tsecon-var/tests/forecast_cov_golden.rs),
+[`forecast_cov_properties.rs`](../../../crates/tsecon-var/tests/forecast_cov_properties.rs),
+[`test_var_forecast_cov.py`](../../../bindings/python/tests/test_var_forecast_cov.py),
+which also runs statsmodels live on a fresh VAR).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(3)
+A = np.array([[0.70, 0.15], [0.10, 0.60]])     # the interval-coverage audit's VAR(1)
+L = np.linalg.cholesky(np.array([[1.0, 0.4], [0.4, 1.0]]))
+y = np.zeros((100, 2))
+for t in range(1, 100):
+    y[t] = A @ y[t - 1] + L @ rng.standard_normal(2)
+
+plain = tsecon.var_forecast(y, lags=1, steps=8)
+wide = tsecon.var_forecast(y, lags=1, steps=8, param_uncertainty=True)
+fit = tsecon.var_fit(y, lags=1)
+m, T = 1 + 2 * 1, fit["nobs"]                  # regressors per equation, effective sample
+ratio1 = np.asarray(wide["cov"])[0] / np.asarray(fit["sigma_u"])
+print("h=1: cov / sigma_u =", np.round(ratio1, 4).tolist(), " 1 + m/T =", round(1 + m / T, 4))
+ratio8 = np.diag(np.asarray(wide["cov"])[7]) / np.diag(np.asarray(plain["cov"])[7])
+print("h=8: variance inflation =", np.round(ratio8, 4).tolist())
+print("h=8, series 0: plug-in", np.round([plain["lower"][7][0], plain["upper"][7][0]], 3).tolist(),
+      " with Omega/T", np.round([wide["lower"][7][0], wide["upper"][7][0]], 3).tolist())
+# h=1: cov / sigma_u = [[1.0303, 1.0303], [1.0303, 1.0303]]  1 + m/T = 1.0303
+# h=8: variance inflation = [1.0598, 1.0475]
+# h=8, series 0: plug-in [-2.864, 3.133]  with Omega/T [-2.952, 3.221]
+```
 
 ### Conditional (hard-path) forecasts — `var_conditional_forecast`
 
@@ -175,7 +319,9 @@ The Waggoner-Zha *structural* version $\varepsilon^* = (I \otimes P^{-1})u^*$
 is reported for the Cholesky factor $P$ in the data's column order.
 
 **Assumptions.** Everything `var_forecast` assumes, plus: the conditions are
-*hard* (known with certainty) and the coefficients are treated as known. The
+*hard* (known with certainty) — or, with `condition_sd`, Gaussian with a
+stated standard deviation ([below](#soft-conditions-condition_sd-soft)) —
+and the coefficients are treated as known. The
 scenario is imposed on the reduced form; no identification is needed for the
 path or its covariance, and nothing about the ordering enters them — only the
 reported `orth_shocks` depend on it.
@@ -186,9 +332,11 @@ quarter, an announced rate path, a fiscal package with a known profile). Do
 not read it as a causal experiment: a pinned inflation path is delivered by
 *whatever* mix of reduced-form innovations is smallest, not by an identified
 shock — for "what does a monetary policy shock do?" you want an identified
-IRF. Do not use it for *soft* conditions (ranges, distributions) or with
-parameter uncertainty; those are the Bayesian per-draw extensions this
-function deliberately does not attempt.
+IRF. A condition known only up to a Gaussian spread — a scenario band, a
+noisy nowcast — is a *soft* condition:
+[`condition_sd` with `soft`](#soft-conditions-condition_sd-soft) below,
+which also lists what this function still does not do (interval conditions,
+parameter uncertainty).
 
 **Key arguments and defaults (and why).** `conditions` — a nested list, one
 row per horizon, one entry per series, `None`/`NaN` for a free cell; a NumPy
@@ -197,6 +345,8 @@ beyond `len(conditions)` up to `steps` are free, so a short list pins the near
 horizons only; `steps=None` means `len(conditions)`. At least one cell must be
 pinned (the all-free case *is* `var_forecast`, and is refused with that
 pointer). `lags=2`, `trend="c"`, `alpha=0.05` as in `var_forecast`.
+`condition_sd=None` and `soft=None` keep every condition hard; the soft
+conditions are below.
 
 **How to read the output.** `point` is the conditional path — pinned cells
 hold their conditions *exactly*, set bitwise rather than left to rounding.
@@ -265,7 +415,11 @@ independent references, both hit at roundoff.
 **References.** Doan, Litterman, and Sims (1984), *Econometric Reviews*;
 Waggoner and Zha (1999), *Review of Economics and Statistics*; Bańbura,
 Giannone, and Lenza (2015), *International Journal of Forecasting*;
-Lütkepohl (2005), section 2.2.
+Lütkepohl (2005), section 2.2; for the soft conditions below, Andersson,
+Palmqvist, and Waggoner (2010), "Density-conditional forecasts in dynamic
+multivariate models", Sveriges Riksbank Working Paper 247, and Monti
+(2010), "Combining judgment and models", *Journal of Money, Credit and
+Banking* 42(8).
 
 ```python
 import numpy as np, tsecon
@@ -309,6 +463,197 @@ conditions carry information about series 0 only through the dynamics, not
 through the covariance. (The lag order is 1 by every criterion because that is
 the DGP; `var_fit`'s default `lags=2` is a convention, not a verdict.)
 
+#### Soft conditions — `condition_sd`, `soft`
+
+**What it estimates.** A *soft* condition gives a conditioned cell a stated
+standard deviation instead of pinning it. `condition_sd` has the shape of
+`conditions` — exactly `len(conditions)` rows, as a nested list, a NaN array
+or a DataFrame — and at a conditioned cell holds a standard deviation (not a
+variance) `> 0`; `0`, `None` or `NaN` keeps the cell hard, and a free cell
+takes only `None`, `NaN` or `0`. "Inflation at 2%, give or take 0.5" has two
+readings that give different answers, so the caller names one:
+
+| `soft=` | The typed value is … | Say it as | Reference |
+|---|---|---|---|
+| `"density"` | the centre of the cell's forecast distribution: the cell's forecast **is** $N(\text{value}, sd^2)$ | "the scenario says inflation $\sim N(2, 0.5^2)$" | Andersson, Palmqvist, and Waggoner (2010) |
+| `"signal"` | a noisy reading of the cell: $\text{value} = y + e$, $e \sim N(0, sd^2)$, independent of the innovations | "a nowcast with known noise" | Monti (2010) |
+
+With $\Omega = \mathrm{diag}(sd_i^2)$ over the $m$ conditioned cells
+($sd_i = 0$ at a hard one), $O = B\Sigma B'$ and $G = R\Sigma B'$:
+
+$$
+\text{density:}\quad \tilde y = \hat y + G O^{-1} r, \qquad
+V = R\Sigma R' - G O^{-1} G' + G O^{-1}\,\Omega\,O^{-1} G',
+$$
+
+the mixture, over $c \sim N(\text{value}, \Omega)$, of the hard conditional
+forecast at $c$ (equivalently the APW structural form
+$\varepsilon \sim N(\tilde R^+ r,\ \tilde R^+\Omega\tilde R^{+\prime} + I - \tilde R^+\tilde R)$,
+$\tilde R = B(I \otimes P)$, which does not depend on $P$);
+
+$$
+\text{signal:}\quad M = O + \Omega, \qquad
+u^* = \Sigma B' M^{-1} r = E[u \mid \text{readings}], \qquad
+V = R\Sigma R' - G M^{-1} G',
+$$
+
+which is what a Kalman smoother returns with measurement-noise variance
+$sd_i^2$ on the read cells. Both are the hard closed form at $sd = 0$, and
+when no cell's sd is above 0 the function *is* the hard path (`mode="hard"`,
+the same numbers bit for bit).
+
+**Why `soft` is required.** There is no default reading. Under `"density"` a
+soft cell's `point` is its typed value; under `"signal"` it is not — the
+posterior shrinks the reading toward what the model expects. A silent default
+would hide that choice, so a `condition_sd` above 0 without `soft` is refused,
+naming both readings, and `soft` without any `condition_sd` above 0 is
+refused as inert.
+
+**How to read the output, per reading.**
+
+| Key | `soft="density"` | `soft="signal"` |
+|---|---|---|
+| `point` | the hard path at the central values; every conditioned cell holds its value exactly | the posterior mean given the readings; a soft cell is **not** pinned (hard cells are) |
+| `se` | exactly `sd` at a soft cell; at least the hard se everywhere | below both `sd` and the unconditional se at a soft cell; at least the hard se everywhere |
+| `cov` | the hard covariance plus the stated spread through the gain; the conditioned × conditioned block of a horizon is $\Omega$ exactly ($sd^2$ on the diagonal, 0 between distinct conditioned cells, as stated) | the posterior covariance; hard cells keep their zero row and column |
+| `shocks`, `orth_shocks` | the hard implied shocks at the central values | $E[u \mid \text{readings}]$ |
+| `constrained`, `n_constrained` | every conditioned cell, hard or soft | every conditioned cell — a soft one is constrained but not pinned: read it with `mode` and `condition_sd` |
+| `mahalanobis`, `mahalanobis_pvalue` | the hard statistic: it measures the **central path only** and ignores `sd` | $r'(O + \Omega)^{-1} r \sim \chi^2(m)$, the plausibility of the readings |
+
+`mode` echoes `"hard"`, `"density"` or `"signal"`; `condition_sd`
+(`steps × k`) is the standard deviation applied at each soft cell, 0.0 at
+hard and free cells; `n_soft` counts the soft cells. Density mode is a
+plug-in, coefficients-known conditioning. It coincides with two-moment
+exponential tilting of the plug-in Gaussian, but it is not the entropic
+tilting of posterior-predictive simulations that the Bayesian roadmap
+(`docs/roadmap/05-bayesian.md`) calls for — that roadmap row ("never tilt
+plug-in predictive densities") stays open.
+
+**Failure modes.** A soft cell whose sd is far below its forecast se is
+effectively hard; under `"signal"` its block is computed from the
+cancellation-free identity $\mathrm{Cov}(By \mid z) = \Omega M^{-1} O$, so
+its se stays right: the fixture's sd = 1e-9 cell has se 1.0e-9, where the
+subtraction $R\Sigma R' - GM^{-1}G'$ leaves the variance at roundoff —
+statsmodels' own smoother returns −9.6e-19 for it (`bgl_cov`), whose square
+root would not exist. Under `"density"` the covariance grows like $sd^2$, so an sd whose
+square overflows a double is refused by name, cell and value, as is a
+negative or infinite sd and an sd above 0 at a free cell. Large sds make the
+signal reading the unconditional forecast and the density reading
+correspondingly wide — both by construction.
+
+**Validated against.** Three legs in `fixtures/var_cf_soft.json`
+([generator](../../../fixtures/generate_var_cf_soft_fixtures.py), which never
+imports tsecon), ten cases over both readings: the seeded VAR(2) of
+`var_cf.json` (`trend` c/n, orders 1–3, hard and soft cells at the same
+horizon, every series soft at $h = 1$, two soft cells at one horizon, sd
+1e-9 and 1e6 beside a hard cell, a one-cell identity whose density forecast
+*is* the unconditional one) and the macro system with inflation held in a
+widening band (sd 0.5 → 1.25) and the T-bill hard. (a) Both closed forms in
+NumPy, every returned key at 1e-10. (b) statsmodels 0.15 `VARMAX` at the
+OLS parameters set by name: for `"signal"` a time-varying `obs_cov` (zero
+in-sample, $sd^2$ on the read cells — asserted on the *results* object,
+since `VARMAX.update` rewrites it only with `measurement_error=True`),
+agreeing with (a) at ≤ 8.9e-16 (path), 3.6e-15 (covariance) and 1.7e-16
+(shocks), its future log-likelihood equal to
+$-\tfrac12(m\ln 2\pi + \ln\det M + \text{mahalanobis})$ to ≤ 1.8e-15 — a
+statsmodels check on the returned statistic; for `"density"` the hard
+smoother plus the law of total variance, with the gain read off by unit
+perturbations of the conditioning values (exact, the smoother being affine),
+at ≤ 4.4e-16 / 1.8e-15 / 5.3e-16 — semi-independent, since NumPy assembles
+the total variance, and valid only for sd of order 1 (the differenced gain's
+roundoff is multiplied by $sd^2$), so the extreme-sd case is signal-only.
+(c) For `"density"` the APW structural form with the Moore-Penrose inverse,
+≤ 9.6e-16 / 6.6e-15. All are pinned at 1e-10 (closed form) and 1e-8
+(statsmodels, APW) in the crate and the binding tests, which also run the
+statsmodels legs live on `macrodata` in levels and on a fresh VAR(3) without
+constant. The hard path is unchanged: an all-`None`, all-zero or all-`NaN`
+`condition_sd` reproduces it bit for bit in the same run on every
+`var_cf.json` case, and the 0.10.0 pins above still hold at 1e-10. Seeded
+Monte Carlo
+([`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs)),
+on the VAR(1) above at $T = 4000$, 2000 replications (MC se 0.005), sd 0.3 /
+0.4 / 0.5 / 0.6 on series 0 at $h = 1..4$. *Signal*, with readings = the
+realised path plus $N(0, sd^2)$ noise: the 95% intervals covered the true
+value at the read cells **0.9500 / 0.9480 / 0.9500 / 0.9465** and at the free
+cells 0.9500 / 0.9515 / 0.9530 / 0.9410, with standardised-error variances
+0.974–1.045 and a mean Mahalanobis statistic of 3.983 (the $\chi^2(4)$ mean
+is 4). *Density*, by exact conditional simulation under the true DGP
+(Matheron's rule: $c \sim N(\text{value}, sd^2)$, an unconditional future
+$\tilde y$, then $y = \tilde y + G O^{-1}(c - B\tilde y)$ with the DGP's own
+$G$ and $O$, so the check is not circular): **0.9525 / 0.9550 / 0.9580 /
+0.9445** at the soft cells and 0.9565 / 0.9525 / 0.9520 / 0.9550 at the free
+ones; the free cells' standardised-error variances run 0.905–0.975 because
+the fitted $\Sigma_u$ makes their se 1.019–1.024 times the DGP's (the test
+prints both). Deterministic properties: a noisier reading never tightens any
+cell, a density spread never tightens one below the hard forecast,
+$sd \to 0$ is the hard forecast in both readings (1e-12), a signal reading
+with sd 1e8 is the unconditional forecast (1e-10), and scaling every sd by
+$c$ scales the density term by exactly $c^2$. Grade: **exact** — the closed
+form and an independent package in both readings (the density leg
+semi-independent), plus a third, structural transcription for density.
+
+**What it still does not do.**
+
+- *Interval (range) conditions* — Waggoner-Zha truncated conditions such as
+  "inflation between 1.5 and 2.5". Their conditional moments are exact only
+  for one or two cells; beyond that they need randomized quasi-Monte-Carlo
+  multivariate-normal box probabilities, and no reference sampler runs in
+  the fixture environment, so there is no golden to hit.
+- *Parameter uncertainty* — the per-draw version that integrates over the
+  coefficients. There is no cross-horizon reference for its covariance; it
+  belongs in `tsecon-bayes` and would be graded by Monte Carlo.
+- *A `log_density` key.* The predictive log density of the conditions is
+  not returned: it is a deterministic function of `mahalanobis`, $m$ and
+  $\ln\det M$; under `"density"` it equals the hard value whatever the sd;
+  and densities over different sets of conditioned cells are not
+  comparable, so "compare scenarios by it" would mislead.
+- *Correlated stated uncertainty.* $\Omega$ is diagonal. A full
+  `condition_cov` is exactly goldenable for `"density"`, but `"signal"` noise
+  correlated across horizons has no measurement-noise reference leg.
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+k, n = 3, 400
+A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+Y = np.zeros((n, k))
+for t in range(1, n):
+    Y[t] = A @ Y[t - 1] + 0.3 * rng.standard_normal(k)
+
+cond = np.full((8, k), np.nan)
+cond[:4, 1] = 0.5
+cond[1, 2] = 0.0
+sd = np.zeros((8, k))
+sd[:4, 1] = 0.2      # series 1 "at 0.5, give or take 0.2"; series 2 stays hard
+for soft in ("density", "signal"):
+    cf = tsecon.var_conditional_forecast(Y, cond, lags=2, steps=8, condition_sd=sd, soft=soft)
+    p, s = np.array(cf["point"]), np.array(cf["se"])
+    print("mode:", cf["mode"], " soft cells:", cf["n_soft"],
+          " plausibility p =", round(cf["mahalanobis_pvalue"], 3))
+    print("series 1, h=1..4  point:", np.round(p[:4, 1], 3), " se:", np.round(s[:4, 1], 3))
+    print("series 0, h=1..4  point:", np.round(p[:4, 0], 3), " se:", np.round(s[:4, 0], 3))
+```
+
+```text
+mode: density  soft cells: 4  plausibility p = 0.294
+series 1, h=1..4  point: [0.5 0.5 0.5 0.5]  se: [0.2 0.2 0.2 0.2]
+series 0, h=1..4  point: [-0.129 -0.015  0.012  0.006]  se: [0.294 0.333 0.342 0.344]
+mode: signal  soft cells: 4  plausibility p = 0.438
+series 1, h=1..4  point: [0.39  0.414 0.41  0.387]  se: [0.162 0.164 0.164 0.167]
+series 0, h=1..4  point: [-0.149 -0.044 -0.014 -0.016]  se: [0.294 0.332 0.341 0.344]
+```
+
+The scenario is the hard example's, with series 1 now held at 0.5 "give or
+take 0.2". Read as a **density**, series 1 sits at 0.5 with se 0.2 exactly —
+the scenario's own statement — while series 0 keeps the hard path
+(−0.129 … 0.006, as above) and the plausibility p is the hard one (0.294),
+because the central path is unchanged. Read as a **signal**, the four 0.5s
+are noisy readings: the posterior pulls series 1 back toward the model's own,
+lower forecast (0.39–0.41, se 0.162–0.167 — below the readings' 0.2),
+series 0 is pulled up less, and p rises to 0.438, because noisy readings are
+easier for the model to have produced than an exact path.
+
 ### Residual diagnostics and lag order — `var_diagnostics`, `var_select_order`
 
 **What they compute.** `var_diagnostics` bundles the three residual checks a
@@ -316,12 +661,15 @@ VAR write-up reports. **Portmanteau** (Hosking 1980; Lütkepohl 2005, section
 4.4.3): with $C_i$ the lag-$i$ autocovariances of the column-centred residuals,
 $Q_h = T\sum_{i=1}^{h}\operatorname{tr}(C_i' C_0^{-1} C_i C_0^{-1})$ and the
 small-sample adjusted $\bar Q_h = T^2 \sum_{i=1}^{h} \operatorname{tr}(\cdot)/(T-i)$,
-both $\chi^2(k^2(h-p))$ under white residuals. **Normality** (multivariate
-Jarque-Bera; Lütkepohl 2005, section 4.5): the centred residuals are
-orthogonalised by the *lower Cholesky factor* of their ML covariance — the
-statsmodels `test_normality` convention — and $\lambda_s = T\,b_1'b_1/6$,
-$\lambda_k = T\,b_2'b_2/24$ (each $\chi^2(k)$) add up to the omnibus statistic
-($\chi^2(2k)$). **Stability**: the reciprocal-root moduli (statsmodels
+both $\chi^2(k^2(h-p))$ under white residuals. **Normality**: three
+statistics on the same centred residuals — the multivariate Jarque-Bera with
+the *lower Cholesky factor* of the ML covariance (Lütkepohl 2005, section 4.5;
+the statsmodels `test_normality` convention, the long-standing `jarque_bera`
+keys), the same statistic with the *symmetric* root (what JMulTi prints under
+"Doornik & Hansen (1994)", the `*_symmetric` keys) and the transformed
+Doornik-Hansen (2008) omnibus test (the `doornik_hansen*` keys, the one to
+report) — set out in the next subsection, which also covers the residual-level
+entry point `multivariate_normality`. **Stability**: the reciprocal-root moduli (statsmodels
 `roots`, descending), the companion eigenvalue moduli (descending, the first
 being the spectral radius) and the `is_stable` verdict. `var_select_order`
 binds the crate's common-sample lag-order selection: every candidate $p$ is
@@ -339,12 +687,12 @@ than an allocator abort.
 
 **When to use (and when not).** Run `var_diagnostics` before any IRF, FEVD,
 forecast or Granger test is reported: residual autocorrelation invalidates
-all of them. Report the *adjusted* Portmanteau at macro sample sizes. The
-Cholesky orthogonalisation makes the skewness and kurtosis *components* depend
-on the column order (the omnibus statistic does too, as in statsmodels); the
-Doornik-Hansen variant, whose symmetric orthogonalisation is order-invariant,
-is **not** provided because no runnable reference exists in the fixture
-environment — JMulTi reports it, statsmodels does not.
+all of them. Report the *adjusted* Portmanteau at macro sample sizes. For
+normality report `doornik_hansen`: the Cholesky orthogonalisation makes the
+`jarque_bera` statistic and its components depend on the column order (as in
+statsmodels), the symmetric root makes `jarque_bera_symmetric` depend on the
+units of the series, and the Doornik-Hansen (2008) test depends on neither
+and is the best sized of the three in short samples (next subsection).
 
 **Key arguments and defaults (and why).** `nlags=10` (Lütkepohl's rule of
 thumb for quarterly data; larger than `lags`), `lags=2`, `trend="c"`;
@@ -361,7 +709,17 @@ $= 2k$, and the `skewness` / `kurtosis` components with their $\chi^2(k)$
 p-values and the per-series moments `skewness_components` (`b1`) and
 `kurtosis_components` (`b2`) — a rejection driven by `kurtosis` alone is fat
 tails, the usual macro finding, and argues for bootstrap rather than Gaussian
-bands; `roots` (stable iff the *last* exceeds 1), `eigenvalue_moduli`
+bands; the same layout for the symmetric-root block (`jarque_bera_symmetric`,
+`skewness_symmetric`, `kurtosis_symmetric`, their p-values and
+`*_symmetric_components`, df `jarque_bera_df`) and for the Doornik-Hansen
+block (`doornik_hansen` with `doornik_hansen_df` $= 2k$, the parts
+`doornik_hansen_skewness` $= z_1'z_1$ and `doornik_hansen_kurtosis`
+$= z_2'z_2$, each $\chi^2(k)$, and the per-component z-scores
+`doornik_hansen_z_skewness` / `doornik_hansen_z_kurtosis`, approximately
+$N(0, 1)$ each under the null; component $j$ is the orthogonalised residual
+closest to standardised series $j$ — the symmetric root rotates as little as
+possible — so a large $|z|$ points at that series without proving it alone is
+to blame); `roots` (stable iff the *last* exceeds 1), `eigenvalue_moduli`
 (stable iff the *first* is below 1), `is_stable`. `var_select_order` returns
 the selected order under each criterion (`aic`, `bic`, `hqic`, `fpe`), the
 `candidates`, and one `*_values` column per criterion; BIC/HQIC are consistent
@@ -378,7 +736,9 @@ VAR(2), and the transformed macro system at orders 2 and 4; statistics at
 probabilities of 1e-30 are pinned too; the skewness/kurtosis components
 against a transcription of statsmodels' own code with the sum asserted equal
 to the omnibus statistic; three `select_order` tables (picks and every
-criterion value at 1e-8). The Python suite reruns all of it live on
+criterion value at 1e-8). The two added normality blocks are pinned on the
+same six cases and on 16 more residual matrices from JMulTi itself (next
+subsection). The Python suite reruns all of it live on
 `macrodata` in levels. Seeded Monte Carlo
 ([`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs)):
 on a correctly specified Gaussian VAR(1) ($k = 2$, $T = 200$, `nlags=8`,
@@ -391,7 +751,206 @@ size and power measured.
 
 **References.** Hosking (1980), *JASA*; Lütkepohl (2005), sections 4.3–4.5;
 Kilian and Demiroglu (2000), *JBES*; Doornik and Hansen (2008), *Oxford
-Bulletin* (not implemented).
+Bulletin* (next subsection).
+
+#### Residual normality — three statistics, and `multivariate_normality`
+
+**What they compute.** All three start from the same place: the residuals
+centred column by column, $\tilde u_t = u_t - \bar u$, and their ML covariance
+$S = T^{-1}\sum_t \tilde u_t \tilde u_t'$ (divisor $T$, no degrees-of-freedom
+correction). They differ in how the $k$ series are made uncorrelated before
+the per-component skewness and kurtosis are read off.
+
+| Statistic | Orthogonalisation | Moments | Keys | Pinned against |
+|---|---|---|---|---|
+| Multivariate Jarque-Bera, Cholesky (Lütkepohl 2005, §4.5) | $w_t = P^{-1}\tilde u_t$, $P$ the lower Cholesky factor of $S$ | plain $b_{1i} = \overline{w_i^3}$, excess $b_{2i} = \overline{w_i^4} - 3$; $\lambda_s = T b_1'b_1/6$, $\lambda_k = T b_2'b_2/24$, each $\chi^2(k)$, sum $\chi^2(2k)$ | `jarque_bera`, `skewness`, `kurtosis`, … | statsmodels `test_normality` (1e-10) and JMulTi's "Lütkepohl (1993)" block (printed precision) |
+| Multivariate Jarque-Bera, symmetric root | $w_t = S^{-1/2}\tilde u_t$, $S^{-1/2} = H\Lambda^{-1/2}H'$ from $S = H\Lambda H'$ | the same plain moments and $\chi^2$ forms — **no further transforms** | `jarque_bera_symmetric`, `skewness_symmetric`, `kurtosis_symmetric`, … | JMulTi's "Doornik & Hansen (1994)" block (printed precision) |
+| Doornik-Hansen (2008) omnibus | $r_t = C^{-1/2} V^{-1/2}\tilde u_t$ with $V = \operatorname{diag}(S)$ and $C$ the correlation matrix | $\sqrt{b_1}$ and $b_2$ of each $r_j$ mapped to $z_1$ (D'Agostino's skewness transform) and $z_2$ (the Wilson-Hilferty cube root of Shenton-Bowman's gamma approximation to the kurtosis given the skewness); $E = z_1'z_1 + z_2'z_2 \sim \chi^2(2k)$ | `doornik_hansen`, `doornik_hansen_skewness`, `doornik_hansen_kurtosis`, `doornik_hansen_z_*` | documented formula (below) |
+
+**A finding about JMulTi's label.** The block JMulTi prints as "Doornik &
+Hansen (1994)" is *not* the transformed test of the published Doornik-Hansen
+(2008) paper. It is the second row of the table: the multivariate Jarque-Bera
+on the symmetric root of the residual **covariance**, with plain moments and
+no skewness or kurtosis transform. tsecon reproduces all 16 JMulTi outputs
+statsmodels 0.15.0 bundles (six VAR(4) specifications on `macrodata` in levels
+and ten VECM specifications on the e6 data, across the bundled deterministic
+and seasonal variants) to JMulTi's printed four decimals — the joint, skewness and kurtosis
+statistics and their three p-values, worst gap 4.807e-5 — while the
+transformed statistic misses every one of the 16 joint statistics by at least
+0.946 (on the `macrodata` VAR(4) with no deterministic term JMulTi prints
+78.5845 and the symmetric-root Jarque-Bera gives 78.58452; the Doornik-Hansen
+(2008) statistic on the same residuals is 62.3045). JMulTi's centring
+convention is pinned too: without the column centring the gap reaches 4.798
+on the specifications whose residuals have nonzero means. Because the root is of the covariance and not of the
+correlation matrix, **this statistic depends on the units of the series**;
+tsecon keeps it under its own name, `jarque_bera_symmetric`, so that a JMulTi
+number can be reproduced, and never calls it Doornik-Hansen.
+
+**Invariances** (asserted in the crate's property tests on a seeded skewed,
+correlated panel; "yes" means equal to 1e-10 relative):
+
+| Transformation of the residual matrix | Cholesky JB | Symmetric-root JB | Doornik-Hansen (2008) |
+|---|---|---|---|
+| reorder the columns | **no** | yes | yes |
+| rescale columns by (100, 0.01, 3) | yes | **no** (229.05 → 163.90) | yes |
+| flip the sign of a column | yes (that $b_{1j}$ flips sign) | yes (that $b_{1j}$ flips) | yes ($z_{1j}$ flips exactly, $z_{2j}$ unchanged) |
+| add a constant to a column | yes | yes | yes |
+
+**Measured size and power** (seeded Monte Carlo,
+[`var_cf_properties.rs`](../../../crates/tsecon-var/tests/var_cf_properties.rs);
+rejection at a nominal 5%):
+
+| Design | Cholesky JB | Symmetric-root JB | Doornik-Hansen (2008) |
+|---|---|---|---|
+| Gaussian VAR(1) residuals, $k = 2$, $T = 200$, 1000 reps | 4.20% | 4.50% | 4.80% |
+| Gaussian VAR(1) residuals, $k = 3$, $T = 40$, 2000 reps | 4.65% | 4.25% | 5.30% |
+| one Gaussian series, $n = 50$, 20 000 reps | 3.73% | 3.73% | 4.89% |
+| VAR(2), Student-t(4) innovations, $T = 300$, 300 reps | 100% | 100% | 100% |
+| VAR(2), centred $\chi^2(3)$ innovations, $T = 300$, 300 reps | 100% | — | 100% (the skewness part alone: 100%) |
+
+The asymptotic Jarque-Bera forms under-reject in short samples (3.73% at
+$n = 50$; at $k = 1$ all three Jarque-Bera forms are the same univariate
+statistic); the Doornik-Hansen transforms are built to fix exactly that and
+hold the nominal level on the same draws. The null moments of the transformed
+components at $n = 50$ (20 000 draws): mean $z_1$ −0.0026, variance 0.9987;
+mean $z_2$ 0.0087, variance 0.9138 — the gamma approximation's known
+small-sample undershoot of $\operatorname{var}(z_2)$, which the test bands.
+
+**When the keys are None.** `var_diagnostics` never refuses on account of the
+added tests, so every fit that worked before still works. Every
+`doornik_hansen*` key is `None` when `nobs < 8`: D'Agostino's skewness
+transform degenerates at $n = 7$, where $\beta = 3$ and $\omega^2 = 1$, and is
+undefined below (scipy's `skewtest` refuses below 8 too). The DH keys are also
+`None` if the residual correlation matrix is numerically singular, and the
+`*_symmetric` keys are `None` if the residual covariance's smallest eigenvalue
+is at or below $10^{-12}$ times its trace while the correlation matrix is fine
+— series on wildly different scales, past the floor of the unit-dependent
+root (the Cholesky and DH statistics are scale-invariant and still
+reported). Above the floor the root is computed to relative accuracy however
+graded the covariance: from its Cholesky factor by a one-sided Jacobi SVD,
+not by an eigensolver that is accurate only relative to the largest
+eigenvalue. Against a 60-digit reference on 44 skewed panels at column-scale
+ratios up to $10^{5.75}$ (`fixtures/var_normality_graded.json`) the
+statistic is pinned at $10^{-10}$; the eigensolver it replaced was off by
+$2.0 \times 10^{-10}$ at a ratio of $10^3$ and $7.0 \times 10^{-5}$ at
+$3 \times 10^5$.
+
+**`multivariate_normality(resid)`** computes the same three blocks (the same
+key names, bitwise equal to `var_diagnostics` on a VAR's residuals) on **any**
+residual matrix — a VECM's, a structural VAR's, a factor model's — plus `nobs`
+and `k`. It column-centres its input. A 1-D series is taken as $k = 1$, which
+gives the **univariate Doornik-Hansen omnibus test**: better sized than the
+asymptotic `jarque_bera` in short samples (the $n = 50$ row above), with
+`doornik_hansen_z_skewness[0]` equal to `scipy.stats.skewtest(x).statistic`
+and all three Jarque-Bera forms equal to `jarque_bera(x)["statistic"]` (both
+asserted live in CI). Unlike the bundle it refuses, each `ValueError` naming
+`resid`: fewer than 8 rows, $T \le k$, an input that is not 1-D or 2-D, zero
+columns, a NaN or infinity, entries so large or so small that their squares
+overflow or underflow (every statistic is invariant to a common rescaling, so
+rescale), a constant column, collinear columns (a
+correlation-matrix eigenvalue at or below $10^{-12}$ times its trace — a
+duplicated series), columns on scales too different for the symmetric
+root, and a matrix past its budget. The three statistics share one
+validation and cost about $5 T k^2 + 20 k^3$ nanoseconds — 0.06 s at
+$T = 1000, k = 100$, 2.3 s at $2000 \times 400$, 11 s at $1000 \times 800$
+(`lab/audit/round16/var_numerics/normality_cost.py`); past $2^{34}$ such
+units (about 17 s) or a working set of $3 T k + 6 k^2$ values above $2^{28}$
+(2 GiB) the call is refused before any work, with the largest admissible
+column count at that $T$ and row count at that $k$. $T = 1500, k = 1000$,
+which ran for 98 s before, is refused at once.
+
+**Validated against, and the honest grade.**
+
+1. **Independent program, printed precision** — JMulTi, whose output for 16
+   specifications ships with statsmodels 0.15.0 (`tsa/vector_ar/tests/JMulTi_results`).
+   The generator ([`generate_var_diag_fixtures.py`](../../../fixtures/generate_var_diag_fixtures.py))
+   refits each specification in statsmodels, stores the residual matrix and
+   JMulTi's printed numbers in `fixtures/var_diag.json` (`jmulti`), and asserts
+   three blocks at $|\Delta| \le 5\times10^{-5}$: the symmetric-root
+   Jarque-Bera against "Doornik & Hansen (1994)" (worst gap 4.807e-5), the
+   Cholesky form against "Lütkepohl (1993)" (4.956e-5 — which also certifies
+   the stored residuals are the ones JMulTi tested) and the $k = 1$ form
+   against JMulTi's per-variable Jarque-Bera rows (4.929e-5). The VECM seasonal
+   files follow statsmodels' own tag rule (`coslo`, `cisli`). The Rust and
+   Python goldens replay all 16 matrices through `normality_test_symmetric` /
+   `normality_test_cholesky` and `multivariate_normality`. A transcription of
+   each statistic at full precision is pinned at 1e-10 on the 16 matrices and
+   on the six statsmodels VAR cases.
+2. **Documented formula, with three independent legs** — Doornik-Hansen
+   (2008). No installable package computes the transformed statistic
+   (statsmodels, SciPy, `arch`, `linearmodels` and scikit-learn were searched;
+   R, gretl and Stata are absent from the build environment), so the generator
+   transcribes the paper's formulas and the crate is pinned to it at 1e-10 on
+   all 22 residual matrices. The legs that make it more than a transcription:
+   (a) $z_1$ equals `scipy.stats.skewtest` on the transformed columns (asserted
+   at 1e-10 in the generator and live in the Python suite at $k = 1$);
+   (b) the kurtosis coefficients $(a, c, \kappa)$ satisfy the exact
+   mean-matching identity of the gamma approximation,
+   $2\kappa(\mathrm{E}\,b_2 - 1 - \mathrm{E}\,b_1) = 2(a + c\,\mathrm{E}\,b_1)$
+   with $\mathrm{E}\,b_1 = 6(n-2)/((n+1)(n+3))$ and
+   $\mathrm{E}\,b_2 = 3(n-1)/(n+1)$, checked in rational arithmetic for
+   $n \in \{8, 9, 10, 20, 50, 200, 1000\}$ by the generator and at 1e-13 in the
+   crate, which catches a typo in any of the three; (c) the common denominator
+   $d$ cancels from that identity, so it is guarded by the null Monte Carlo of
+   $z_2$ above. Grade: **documented formula**, plus the scipy leg, the exact
+   identity and Monte Carlo — not an independent-package golden.
+
+**References.** Doornik, J. A. and H. Hansen (2008), "An Omnibus Test for
+Univariate and Multivariate Normality," *Oxford Bulletin of Economics and
+Statistics* 70(s1), 927–939 (circulated as a 1994 Nuffield College working
+paper, the date JMulTi's label carries); D'Agostino, R. B. (1970),
+"Transformation to Normality of the Null Distribution of $g_1$," *Biometrika*
+57, 679–681; Shenton, L. R. and K. O. Bowman (1977), "A Bivariate Model for the
+Distribution of $\sqrt{b_1}$ and $b_2$," *JASA* 72, 206–211; Lütkepohl (2005),
+section 4.5; Lütkepohl and Krätzig (2004), *Applied Time Series Econometrics*
+(JMulTi).
+
+```python
+import numpy as np, tsecon
+
+rng = np.random.default_rng(0)
+k, n = 3, 200
+A = np.array([[0.5, 0.1, 0.0], [0.0, 0.4, 0.1], [0.1, 0.0, 0.5]])
+L = np.array([[1.0, 0.0, 0.0], [0.8, 0.6, 0.0], [0.5, 0.3, 0.8]])
+Y = np.zeros((n, k))
+for t in range(1, n):
+    Y[t] = A @ Y[t - 1] + L @ rng.standard_t(6, k)   # correlated, fat-tailed shocks
+
+d = tsecon.var_diagnostics(Y, lags=1, nlags=10)
+for key in ("jarque_bera", "jarque_bera_symmetric", "doornik_hansen"):
+    print(f"{key:22s} {d[key]:7.2f}   p = {d[key + '_pvalue']:.2g}")
+print("DH z1 (skewness):", np.round(d["doornik_hansen_z_skewness"], 2),
+      " z2 (kurtosis):", np.round(d["doornik_hansen_z_kurtosis"], 2))
+
+# Change the units of two series: only the JMulTi symmetric root moves.
+d2 = tsecon.var_diagnostics(Y * [1.0, 100.0, 0.01], lags=1, nlags=10)
+print("rescaled units:", [round(d2[key], 2) for key in
+                          ("jarque_bera", "jarque_bera_symmetric", "doornik_hansen")])
+
+# The same tests on any residual matrix, or on one series (k = 1).
+u = np.array(tsecon.var_fit(Y, lags=1)["resid"])
+assert tsecon.multivariate_normality(u)["doornik_hansen"] == d["doornik_hansen"]
+one = tsecon.multivariate_normality(u[:, 0])
+print(f"series 0 alone: DH {one['doornik_hansen']:.2f} (p = {one['doornik_hansen_pvalue']:.2g}),"
+      f" JB {one['jarque_bera']:.2f} = jarque_bera {tsecon.jarque_bera(u[:, 0])['statistic']:.2f}")
+print("T = 7:", tsecon.var_diagnostics(Y[:8], lags=1, nlags=2)["doornik_hansen"])
+```
+
+```text
+jarque_bera              37.12   p = 1.7e-06
+jarque_bera_symmetric    32.50   p = 1.3e-05
+doornik_hansen           27.25   p = 0.00013
+DH z1 (skewness): [ 1.87 -0.17 -0.04]  z2 (kurtosis): [3.84 2.11 2.12]
+rescaled units: [37.12, 15.12, 27.25]
+series 0 alone: DH 13.98 (p = 0.00092), JB 23.15 = jarque_bera 23.15
+T = 7: None
+```
+
+All three reject the Student-t(6) shocks, and the kurtosis z-scores carry the
+rejection. Re-expressing two series in other units leaves the Cholesky and
+Doornik-Hansen statistics unchanged to every printed digit and moves the
+symmetric-root one from 32.50 to 15.12 — the reason to report `doornik_hansen`
+and keep `jarque_bera_symmetric` for reproducing JMulTi.
 
 ### Confidence bands on the IRF — `var_irf_bands`
 
@@ -608,6 +1167,22 @@ beyond `K` and are correspondingly loose.
   replications, so the existing `seed` reproduces it and neither band argument is
   used; give it `n_boot` ≥ 999 for the same tail-quantile reason. Šidák and
   Bonferroni are closed forms in `K` and need neither.
+- Keywords the chosen arm and band do not read are **refused**, compared to
+  their defaults, exactly as `long_run_svar_bands` refuses them: `n_boot` and
+  `seed` under `method="asymptotic"`, `band_seed` and `band_n_sim` anywhere
+  but the asymptotic sup-t band, and a non-default `band_scope` with
+  `band="pointwise"`.
+- **Size budget.** Every count is checked against a 2^28-value (2 GiB)
+  working-set budget, counted as real storage, before anything is allocated,
+  and a refusal names the keyword whose term is over with the largest value
+  that fits. The bootstrap keeps each replication's responses in its slot of
+  one store (`n_boot`, or `horizon` when no count fits); the delta method
+  names `horizon and lags` (its pointwise working set), `horizon and
+  band_scope` (a family's joint covariance), `band_n_sim` (the sup-t
+  simulation, also capped at 2^36 work) or `horizon` (the Jacobians
+  $G_h$, whose work is QUADRATIC in the horizon and capped at 2^28
+  multiply-adds: 2047 periods on a bivariate VAR(8), 3.4 s; 28 on a
+  20-variable VAR(4), 5.4 s).
 
 **How to read the output.** The extra keys are `sim_lower`/`sim_upper`,
 `critical_value` (a k×k grid — one multiplier per response-shock cell, so you can

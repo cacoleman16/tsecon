@@ -3,7 +3,7 @@
 
 use crate::error::RngError;
 use crate::philox::Philox;
-use crate::seedseq::SeedSequence;
+use crate::seedseq::{reserve_children, SeedSequence};
 
 /// 2^-53, the spacing of the 53-bit uniform grid. `(1u64 << 53) as f64` is
 /// exact, so this constant is exactly 2^-53.
@@ -72,16 +72,58 @@ impl Stream {
     /// how replications are scheduled across threads.
     ///
     /// Equivalent to
-    /// `[Philox(seed=c) for c in np.random.SeedSequence(seed).spawn(n)]`.
+    /// `[Philox(seed=c) for c in np.random.SeedSequence(seed).spawn(n)]`;
+    /// element `i` is [`Stream::substream`]`(seed, i)`. Each stream is built
+    /// straight from its child sequence, so only the `n` streams are held.
     ///
     /// # Errors
     ///
     /// [`RngError::SpawnLimitExceeded`] if `n` exceeds the 32-bit spawn
-    /// index space.
+    /// index space; [`RngError::StreamBudgetExceeded`] if `n` exceeds
+    /// [`crate::MAX_MATERIALIZED_STREAMS`] (or the allocator refuses the
+    /// vector). Both are checked before anything is allocated. A caller
+    /// that would otherwise hold one stream per draw for a large `n` should
+    /// derive them lazily with [`Stream::substream`] instead.
     pub fn substreams(seed: u64, n: usize) -> Result<Vec<Stream>, RngError> {
-        let mut root = SeedSequence::new(u128::from(seed));
-        let children = root.spawn(n)?;
-        Ok(children.iter().map(Self::from_seed_sequence).collect())
+        Self::check_substream_count(n)?;
+        let mut streams = reserve_children(n)?;
+        for i in 0..n {
+            // check_substream_count bounds n by 2^32, so i fits a u32.
+            streams.push(Self::substream(seed, i as u32));
+        }
+        Ok(streams)
+    }
+
+    /// Substream `index` of `seed`, derived directly: bit-identical to
+    /// element `index` of [`Stream::substreams`]`(seed, n)` for every
+    /// `n > index` (NumPy's
+    /// `Philox(seed=np.random.SeedSequence(seed, spawn_key=(index,)))`, the
+    /// `index`-th child of `SeedSequence(seed).spawn(n)`).
+    ///
+    /// This is the lazy form of the parallel Monte Carlo contract: a loop
+    /// over replications derives replication `i`'s stream inside its own
+    /// task, so no vector of `n` streams is ever allocated and the memory
+    /// cost is O(1) in the replication count.
+    pub fn substream(seed: u64, index: u32) -> Stream {
+        Self::from_seed_sequence(&SeedSequence::root_child(u128::from(seed), index))
+    }
+
+    /// Whether `n` substreams of one seed fit the 32-bit spawn-key index
+    /// space (`n <= 2^32`), so that indices `0..n` all address distinct
+    /// children. Allocates nothing.
+    ///
+    /// # Errors
+    ///
+    /// [`RngError::SpawnLimitExceeded`] when `n > 2^32`.
+    pub fn check_substream_count(n: usize) -> Result<(), RngError> {
+        let available = u64::from(u32::MAX) + 1;
+        if n as u64 > available {
+            return Err(RngError::SpawnLimitExceeded {
+                requested: n,
+                available,
+            });
+        }
+        Ok(())
     }
 
     /// Next raw 64-bit value, bit-identical to

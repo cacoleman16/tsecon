@@ -88,7 +88,9 @@ pub use design::{stack_high_freq_lags, StackedDesign};
 pub use error::MidasError;
 pub use umidas::{adl_midas, umidas, MidasFit};
 pub use weighted::{weighted_midas, WeightScheme, WeightedMidasFit};
-pub use weights::{almon_pdl_basis, almon_weights, beta_weights, exp_almon_weights, BETA_EPS};
+pub use weights::{
+    almon_pdl_basis, almon_weights, beta_weights, exp_almon_weights, BETA_EPS, MAX_WEIGHT_LAGS,
+};
 
 // Re-export the shared standard-error selector so callers configuring U-MIDAS
 // / ADL-MIDAS inference do not need a separate `tsecon-hac` dependency.

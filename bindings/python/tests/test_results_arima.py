@@ -264,7 +264,10 @@ def test_differenced_fit_reports_the_right_order_and_nobs():
     y = np.cumsum(rng.standard_normal(150)) + 20.0
     res = ARIMAResults.fit(y, 1, 1, 0, forecast_steps=6, conf_alpha=0.10)
     assert res.order == (1, 1, 0)
-    assert res.nobs == 150
+    # 0.11: nobs is the likelihood's count (the raw `nobs` key), not len(y):
+    # simple differencing loses d observations.
+    assert res.nobs == res["nobs"] == 149
+    assert len(res.y) == 150
     assert len(res["residuals"]) == 149  # simple differencing loses d
     assert "ARIMA(1,1,0)" in res.summary()
     # conf_alpha=0.10 -> the stored bands are the 90% ones
@@ -275,4 +278,8 @@ def test_nobs_falls_back_to_residuals_when_series_absent(raw):
     detached = ARIMAResults(raw, order=(P, D, Q))
     assert detached.y is None
     assert detached.nobs == len(raw["residuals"])
+    # A dict without the 0.11 `nobs` key (built by hand, or pickled before
+    # it existed) still gets a count from the residuals.
+    legacy = ARIMAResults({k: v for k, v in raw.items() if k != "nobs"}, order=(P, D, Q))
+    assert legacy.nobs == len(raw["residuals"]) + D
     assert "ARIMA(1,0,1)" in detached.summary()

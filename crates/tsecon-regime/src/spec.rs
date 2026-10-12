@@ -47,13 +47,18 @@ impl MsarSpec {
     /// Validates the specification and returns the size `k^(order + 1)` of
     /// the expanded regime state space.
     ///
-    /// Errors with [`RegimeError::InvalidSpec`] if there are fewer than two
-    /// regimes or if the expanded state space would exceed the internal
-    /// cap of 4096 states.
+    /// Errors with [`RegimeError::InvalidParameter`] (naming `k_regimes`)
+    /// if there are fewer than two regimes, and with
+    /// [`RegimeError::StateSpaceTooLarge`] (naming `k_regimes` and `order`
+    /// and stating the largest admissible value of each) if the expanded
+    /// state space would exceed the internal cap of 4096 states.
     pub fn expanded_states(&self) -> Result<usize, RegimeError> {
         if self.k_regimes < 2 {
-            return Err(RegimeError::InvalidSpec {
-                what: "a Markov-switching model needs at least two regimes",
+            return Err(RegimeError::InvalidParameter {
+                name: "k_regimes",
+                value: self.k_regimes as f64,
+                requirement: "k_regimes >= 2 (a Markov-switching model needs at least two \
+                              regimes)",
             });
         }
         let mut m: usize = 1;
@@ -61,8 +66,10 @@ impl MsarSpec {
             m = m
                 .checked_mul(self.k_regimes)
                 .filter(|&m| m <= MAX_EXPANDED_STATES)
-                .ok_or(RegimeError::InvalidSpec {
-                    what: "expanded state space k^(order+1) exceeds the internal cap of 4096",
+                .ok_or(RegimeError::StateSpaceTooLarge {
+                    k_regimes: self.k_regimes,
+                    order: self.order,
+                    max_states: MAX_EXPANDED_STATES,
                 })?;
         }
         Ok(m)

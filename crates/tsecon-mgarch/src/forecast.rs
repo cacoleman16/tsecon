@@ -30,6 +30,16 @@
 //! Covariances are assembled as `H_{T+h} = D_{T+h} R_{T+h} D_{T+h}` with
 //! `D_{T+h}` from the per-series analytic univariate variance forecasts —
 //! the further standard approximation `E[D R D] ~= E[D] E[R] E[D]`.
+//!
+//! # Size budget
+//!
+//! Every forecast step is materialised: one `k x k` matrix per reported
+//! path (CCC: the covariances; DCC: the correlations and the covariances),
+//! the per-series variances, and — in the Python bindings — their nested
+//! lists. [`check_forecast_horizon`] sizes that working set before
+//! anything is allocated and refuses a horizon past [`MAX_FORECAST_HORIZON`]
+//! (the univariate cap) or past [`FORECAST_BUDGET_VALUES`] values, naming
+//! `forecast_horizon` and the largest horizon that fits for `k` series.
 
 use tsecon_linalg::faer::Mat;
 
@@ -37,6 +47,89 @@ use crate::ccc::scale_correlation;
 use crate::dcc::DccFit;
 use crate::error::MgarchError;
 use crate::util::{cholesky, corr_from_cov};
+
+pub use tsecon_garch::MAX_FORECAST_HORIZON;
+
+/// The working-set budget of one multivariate forecast, in `f64` values
+/// (`2^28`, 2 GiB) — the budget `long_run_svar_bands` puts on its cubes.
+pub const FORECAST_BUDGET_VALUES: usize = 1 << 28;
+
+/// Which multivariate forecast is being sized.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ForecastKind {
+    /// [`crate::CccFit::forecast_covariance`]: one `(horizon, k, k)` path
+    /// (the covariances) plus the per-series variances.
+    Ccc,
+    /// [`DccFit::forecast`]: two `(horizon, k, k)` paths (the correlations
+    /// and the covariances) plus the per-series variances.
+    Dcc,
+}
+
+/// The working set of a `horizon`-step forecast of `k` series in `f64`
+/// values, or `None` when the count itself overflows.
+///
+/// Per step and per reported `k x k` path: the faer matrix, `8 ceil(k / 8)
+/// k + 8` values (each column padded to 64 bytes plus a header, as in
+/// `tsecon-var`'s band budget), the `Vec<Vec<f64>>` the bindings convert it
+/// through (`k^2 + 3 k`) and its Python nested list (`4 k^2 + 8 k`: a
+/// 24-byte float and an 8-byte slot per entry, and a list header per row).
+/// Per step once: the variances in the same three forms (`6 k + 11`).
+pub fn forecast_footprint(kind: ForecastKind, k: usize, horizon: usize) -> Option<usize> {
+    let paths = match kind {
+        ForecastKind::Ccc => 1usize,
+        ForecastKind::Dcc => 2,
+    };
+    let k2 = k.checked_mul(k)?;
+    let mat = k
+        .div_ceil(8)
+        .checked_mul(8)?
+        .checked_mul(k)?
+        .checked_add(8)?;
+    let per_path = mat
+        .checked_add(k2.checked_mul(5)?)?
+        .checked_add(k.checked_mul(11)?)?;
+    let per_step = per_path
+        .checked_mul(paths)?
+        .checked_add(k.checked_mul(6)?.checked_add(11)?)?;
+    horizon.checked_mul(per_step)
+}
+
+/// The largest forecast horizon [`check_forecast_horizon`] admits for `k`
+/// series: [`MAX_FORECAST_HORIZON`], or less when the working set of that
+/// many steps passes [`FORECAST_BUDGET_VALUES`]. `0` when not even one
+/// step fits.
+pub fn max_forecast_horizon(kind: ForecastKind, k: usize) -> usize {
+    match forecast_footprint(kind, k, 1) {
+        Some(per_step) if per_step > 0 => {
+            (FORECAST_BUDGET_VALUES / per_step).min(MAX_FORECAST_HORIZON)
+        }
+        _ => 0,
+    }
+}
+
+/// Refuses a forecast horizon past [`max_forecast_horizon`] for `k` series,
+/// before anything is allocated. The bindings run it before fitting, so an
+/// absurd `forecast_horizon` costs no estimation either.
+///
+/// # Errors
+///
+/// [`MgarchError::ForecastTooLarge`] naming `forecast_horizon` and the
+/// largest horizon that fits for `k` series.
+pub fn check_forecast_horizon(
+    kind: ForecastKind,
+    k: usize,
+    horizon: usize,
+) -> Result<(), MgarchError> {
+    let max_horizon = max_forecast_horizon(kind, k);
+    if horizon > max_horizon {
+        return Err(MgarchError::ForecastTooLarge {
+            horizon,
+            k,
+            max_horizon,
+        });
+    }
+    Ok(())
+}
 
 /// h-step forecasts from a fitted DCC-family model.
 #[derive(Debug, Clone)]
@@ -65,6 +158,9 @@ impl DccFit {
     /// # Errors
     ///
     /// * [`MgarchError::InvalidHorizon`] if `horizon == 0`;
+    /// * [`MgarchError::ForecastTooLarge`] if `horizon` is past
+    ///   [`max_forecast_horizon`] for these `k` series (checked before
+    ///   anything is allocated);
     /// * [`MgarchError::Univariate`] if a univariate variance forecast
     ///   fails (e.g. EGARCH beyond one step);
     /// * [`MgarchError::Linalg`] if a forecast correlation cannot be
@@ -74,6 +170,7 @@ impl DccFit {
             return Err(MgarchError::InvalidHorizon);
         }
         let k = self.stage.k;
+        check_forecast_horizon(ForecastKind::Dcc, k, horizon)?;
 
         // Per-series analytic variance forecast paths (each length horizon).
         let mut var_paths = Vec::with_capacity(k);

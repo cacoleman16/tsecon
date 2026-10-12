@@ -51,9 +51,11 @@ solution in state-space form: the **policy matrix** `G` mapping the predetermine
 state to the jumps (`jump_t = G·predetermined_t`), the **law of motion** `P` and
 **impact matrix** `Q` governing the predetermined block
 (`predetermined_{t+1} = P·predetermined_t + Q·z`), the sorted **eigenvalue
-moduli** of the reduced form `M = A⁻¹B`, and a **verdict** classifying the model
-as having a unique stable solution, being indeterminate, or having no stable
-solution. Nothing here is estimated from data — the "solve" is a deterministic
+moduli** of the reduced form `M = A⁻¹B`, and a **verdict** that a returned
+solution always reads as unique and stable: the Blanchard-Kahn count classifies
+the model as having a unique stable solution, being indeterminate, or having no
+stable solution, and the last two raise a `ValueError` naming the regime
+instead of returning. Nothing here is estimated from data — the "solve" is a deterministic
 linear-algebra map from a calibrated/estimated model to its decision rule. The
 policy rule comes from the stable eigenvectors, `G = V_xs·V_ks⁻¹`, and the state
 dynamics from `P = M_kk + M_kx·G`, `Q = N_k`; the stable eigenvalues of `M` are
