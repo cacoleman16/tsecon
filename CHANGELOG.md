@@ -5,7 +5,7 @@ All notable changes to this project are documented here. The format follows
 pre-1.0 policy in [ROADMAP.md](ROADMAP.md) (minor = breaking allowed, patch =
 fixes) until 1.0, then strict [SemVer](https://semver.org/).
 
-## [Unreleased]
+## [0.11.0] - 2026-10-20
 
 ### Added
 

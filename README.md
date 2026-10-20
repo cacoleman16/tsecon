@@ -60,7 +60,7 @@ Verify what you got:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.10.0
+print(tsecon.__version__)                                       # 0.11.0
 print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 206
           if not n.startswith("_")))
 ```
