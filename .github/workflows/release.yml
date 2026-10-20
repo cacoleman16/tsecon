@@ -5,13 +5,26 @@ name: Release
 # trusted publishing (OIDC — no API token). One abi3 wheel per platform serves
 # all Python >= 3.9. Plan: docs/roadmap/14-packaging-distribution.md.
 #
-# Dry-run the whole thing against Test PyPI first (set the environment/repo
-# below to test.pypi.org) before the irreversible production upload.
+# Dry-run the whole thing against Test PyPI first, before the irreversible
+# production upload: run this workflow manually with `publish_to: testpypi`.
+#
+# The two triggers are not interchangeable, by construction:
+#   * a TAG PUSH always publishes to production PyPI;
+#   * a MANUAL RUN can only ever reach Test PyPI, and only when asked for.
+# The `publish` job keys off `github.event_name`, not off the ref, so a manual
+# run launched against a tag still cannot reach production. There is no manual
+# path to production PyPI and no file to edit to get one.
 
 on:
   push:
     tags: ["v*"]
   workflow_dispatch:
+    inputs:
+      publish_to:
+        description: "Manual runs only. 'none' builds and tests every wheel and uploads nowhere; 'testpypi' also uploads to Test PyPI. Production PyPI is reachable only by pushing a v* tag."
+        type: choice
+        options: ["none", "testpypi"]
+        default: "none"
 
 permissions:
   contents: read
@@ -104,11 +117,17 @@ jobs:
     name: Publish to PyPI (trusted publishing)
     needs: [wheels, sdist]
     runs-on: ubuntu-latest
-    # Only publish on an actual tag, never on manual dispatch.
-    if: startsWith(github.ref, 'refs/tags/')
+    # A tag push publishes to production. A manual run publishes to Test PyPI
+    # and only when `publish_to: testpypi` was chosen — the `none` default
+    # builds and tests the wheels and uploads nowhere. Both conditions test
+    # `github.event_name` rather than the ref, so dispatching this workflow
+    # against a tag cannot reach production either.
+    if: >-
+      (github.event_name == 'push' && startsWith(github.ref, 'refs/tags/'))
+      || (github.event_name == 'workflow_dispatch' && inputs.publish_to == 'testpypi')
     environment:
-      name: pypi
-      url: https://pypi.org/project/tsecon/
+      name: ${{ github.event_name == 'push' && 'pypi' || 'testpypi' }}
+      url: ${{ github.event_name == 'push' && 'https://pypi.org/project/tsecon/' || 'https://test.pypi.org/project/tsecon/' }}
     permissions:
       # OIDC identity for trusted publishing — this is the ONLY credential used;
       # there is no API token to leak. Also enables PEP 740 build attestations.
@@ -122,5 +141,7 @@ jobs:
         uses: pypa/gh-action-pypi-publish@dc37677b2e1c63e2034f94d8a5b11f265b73ba33 # v1.14.2
         with:
           packages-dir: dist
-          # For the Test PyPI dry-run, uncomment:
-          # repository-url: https://test.pypi.org/legacy/
+          # Named explicitly on both arms rather than left to the action's
+          # default, so the upload target is readable here and a manual run can
+          # never fall through to production.
+          repository-url: ${{ github.event_name == 'push' && 'https://upload.pypi.org/legacy/' || 'https://test.pypi.org/legacy/' }}
