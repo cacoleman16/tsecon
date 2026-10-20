@@ -184,3 +184,51 @@ fn cumulative_and_level_agree_at_horizon_zero() {
         "cumulative response should differ from the level at h=2"
     );
 }
+
+/// The Driscoll-Kraay bandwidth guard is the house's, not the static
+/// menu's alone: `panel_fe` and every `panel_lp` route refuse
+/// `bandwidth + 1` past the periods that carry scores, naming `bandwidth`
+/// (and, in `panel_lp`, the horizon that ran short), and keep the largest
+/// admissible value, every lag weighted.
+#[test]
+fn driscoll_kraay_bandwidth_past_the_score_periods_is_refused_everywhere() {
+    use tsecon_panel::{panel_ols_fe, LpBiasCorrection};
+    let (data, shock) = panel_and_shock();
+    let t = data.n_periods();
+    // panel_fe: every period carries scores (S = T = 40).
+    let lagged = PanelData::balanced(
+        data.outcome().to_owned(),
+        vec![(
+            "s".into(),
+            Mat::from_fn(data.n_entities(), t, |_, tt| shock[tt]),
+        )],
+    )
+    .unwrap();
+    let fe = panel_ols_fe(&lagged).unwrap();
+    let dk = |bandwidth| PanelSeType::DriscollKraay { bandwidth };
+    assert!(fe.inference(dk((t - 1) as f64)).is_ok());
+    for bw in [t as f64, 1e300] {
+        let msg = fe.inference(dk(bw)).unwrap_err().to_string();
+        assert!(
+            msg.starts_with("bandwidth:") && msg.contains("S = 40 here"),
+            "{msg}"
+        );
+    }
+    // panel_lp: horizon h regresses on periods [2, T - h), S = 38 - h, so
+    // with max_horizon 4 the binding horizon is h = 4 (S = 34).
+    for bc in [
+        LpBiasCorrection::None,
+        LpBiasCorrection::DhaeneJochmans,
+        LpBiasCorrection::Spj,
+    ] {
+        let mut cfg = PanelLpConfig::new(4, 2, dk(33.0));
+        cfg.bias_correction = bc;
+        assert!(panel_lp(&data, &shock, &cfg).is_ok(), "{bc:?} at 33");
+        cfg.cov = dk(34.0);
+        let msg = panel_lp(&data, &shock, &cfg).unwrap_err().to_string();
+        assert!(
+            msg.starts_with("bandwidth:") && msg.contains("S = 34 here") && msg.contains("h = 4"),
+            "{bc:?}: {msg}"
+        );
+    }
+}

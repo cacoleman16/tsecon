@@ -72,5 +72,5 @@ mod spec;
 pub use error::GarchError;
 pub use inference::StdErrors;
 pub use model::GarchModel;
-pub use results::GarchResults;
+pub use results::{check_forecast_horizon, GarchResults, MAX_FORECAST_HORIZON};
 pub use spec::{DistSpec, GarchSpec, MeanSpec, VolSpec};

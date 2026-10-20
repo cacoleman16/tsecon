@@ -122,6 +122,7 @@
 
 use crate::error::TermStructureError;
 use crate::fit::{centered_rsquared, map_ols_err};
+use crate::jsz::MAX_MATURITY;
 use tsecon_hac::ols;
 use tsecon_linalg::faer::Mat;
 
@@ -212,7 +213,11 @@ fn position(maturities: &[usize], n: usize) -> Option<usize> {
 }
 
 /// Validate the maturity grid: non-empty, strictly ascending positive
-/// integers, starting at the one-period maturity.
+/// integers, starting at the one-period maturity, and bounded by
+/// [`MAX_MATURITY`] — the price recursion tabulates every integer period up
+/// to the longest maturity, exactly as the JSZ recursions do, so the same
+/// cap applies (a maturity of 2^31 used to request a 16 GiB table and abort
+/// the process).
 fn check_acm_maturities(maturities: &[usize]) -> Result<(), TermStructureError> {
     if maturities.is_empty() {
         return Err(TermStructureError::EmptyMaturities);
@@ -222,6 +227,13 @@ fn check_acm_maturities(maturities: &[usize]) -> Result<(), TermStructureError> 
             return Err(TermStructureError::InvalidMaturity {
                 index: i,
                 value: 0.0,
+            });
+        }
+        if m > MAX_MATURITY {
+            return Err(TermStructureError::MaturityTooLarge {
+                index: i,
+                value: m,
+                max: MAX_MATURITY,
             });
         }
         if i > 0 && m <= maturities[i - 1] {
@@ -331,7 +343,9 @@ fn price_recursion(
 /// # Errors
 ///
 /// [`TermStructureError::EmptyMaturities`], [`TermStructureError::InvalidMaturity`]
-/// (a zero maturity), [`TermStructureError::MaturitiesNotAscending`],
+/// (a zero maturity), [`TermStructureError::MaturityTooLarge`] (a maturity
+/// above [`MAX_MATURITY`] periods, the JSZ cap),
+/// [`TermStructureError::MaturitiesNotAscending`],
 /// [`TermStructureError::MissingShortMaturity`] (no one-period maturity),
 /// [`TermStructureError::InvalidFactorCount`] (`n_factors = 0` or
 /// `>= M`), [`TermStructureError::InvalidPeriodsPerYear`],

@@ -211,6 +211,7 @@ pub fn bn_from_arma(
             got: y.len(),
             nobs: y.len(),
             what: "one first difference — the BN decomposition works on growth rates",
+            remedy: "Supply a series of at least two observations.",
         });
     }
     let threshold = crate::auto::ROOT_ADMISSIBILITY_THRESHOLD;

@@ -15,7 +15,10 @@ favourable supply disturbance **raises unemployment on impact**; and demand
 disturbances account for **most of the forecast-error variance** of output at
 short horizons and of unemployment throughout. This page is the natural
 flagship for
-[`long_run_svar`](../reference/model-cards/structural-identification.md#long_run_svar-blanchard-quah-long-run-restrictions).
+[`long_run_svar`](../reference/model-cards/structural-identification.md#long_run_svar-blanchard-quah-long-run-restrictions),
+its confidence bands
+[`long_run_svar_bands`](../reference/model-cards/structural-identification.md#long_run_svar_bands-bootstrap-and-delta-method-bands-for-long-run-svars),
+and `historical_decomposition(identification="impact")`.
 
 **What this is, and is not.** A **design replication at figure-reading
 resolution**, not a numerical one. The paper used real GNP and unemployment
@@ -41,8 +44,9 @@ as a two-column extract at
 guard runs offline like every other replication page (tsecon ships no data
 loaders). `--write-fixture` regenerates the extract from the bundle, and the
 guard checks equality with it whenever statsmodels is importable. The script
-runs in about nine seconds, including 1,000 bootstrap replications and three
-figures.
+runs in about three seconds on the build machine, including two sets of 1,000
+bootstrap replications (plain and Kilian-corrected), the delta-method bands and
+three figures.
 
 ---
 
@@ -61,7 +65,7 @@ comfortably outside the unit circle — the Faust-Leeper fragility check the
 model card asks for).
 
 ```python
-bq = tsecon.long_run_svar(data, lags=8, horizon=40)   # trend="c" by default
+bq = tsecon.long_run_svar(data, lags=8, horizon=40, impact_signs=[(0, 1)])   # trend="c"
 ```
 
 `long_run_svar` returns the impact matrix `impact` (B), the long-run matrix
@@ -71,10 +75,12 @@ paper's ordering (output growth first, unemployment second) the default
 recursive long-run pattern *is* the Blanchard-Quah restriction. One
 convention to be explicit about: tsecon signs each disturbance so the
 long-run diagonal is positive, which labels the demand disturbance by its
-*cumulative* effect on unemployment; Blanchard-Quah sign it as expansionary —
-output up on impact, unemployment down — so the script flips that column
-(`flip = [1, −1]` here). A sign convention, not a different model; the
-variance shares are invariant to it.
+*cumulative* effect on unemployment. Blanchard-Quah sign it as expansionary,
+with output up on impact and unemployment down. That is
+`impact_signs=[(0, 1)]`, which anchors the demand column on output's impact
+response and negates it here. It is a sign convention, not a different model,
+and the variance shares are invariant to it. Before 0.11.0 the script
+flipped the column by hand.
 
 ```text
 long-run matrix C(1)B            impact matrix B (one-s.d. disturbances)
@@ -94,8 +100,8 @@ disturbance.
 
 The objects the paper plots: output's **cumulated** response (the level) and
 unemployment's plain response, in percent and percentage points per
-one-standard-deviation disturbance, with 68% and 90% percentile bands from a
-residual bootstrap (below).
+one-standard-deviation disturbance, with 68% and 90% percentile bands from
+`long_run_svar_bands`' residual bootstrap (below).
 
 | response | h = 0 | h = 2 | h = 4 | h = 8 | h = 12 | h = 20 | h = 40 | extremum (h) |
 |---|---|---|---|---|---|---|---|---|
@@ -126,52 +132,110 @@ pins it to:
    h ∈ [1, 8] and at least 0.1 below the impact; |h = 20| < 0.10;
    |h = 40| < 0.05; trough within two quarters of the output peak.
 4. **A favourable supply disturbance raises unemployment on impact**
-   (+0.137, 68% band [+0.055, +0.170]), stays positive through h = 20
+   (+0.137, 68% band [+0.058, +0.173]), stays positive through h = 20
    (+0.059) and dies out (−0.003 at h = 40). The paper's later *sign
    reversal* — unemployment eventually falling after a supply disturbance —
    is **not visible** here (the minimum is −0.005 at h = 34), and is not
    pinned. *Guard:* impact > 0.05; |h = 40| < 0.05; 68% lower band > 0.
 5. **Demand dominates the short-run variance** — the table two sections down.
 
-**Bootstrap bands.** `long_run_svar` is a point estimator, so the bands are
-the script's own: a residual (iid) bootstrap of the reduced-form VAR that
-resamples `var_fit`'s centered residuals with `bootstrap_indices` (one seed
-per replication spawned from `SeedSequence(20260911)`), rebuilds each
-pseudo-sample, and re-runs `long_run_svar` under the same sign convention.
-The paper reports one-standard-deviation bands from a comparable Monte Carlo;
-the 68% percentile band is the analogue. 1,000 replications, seed 20260911,
+**Bootstrap bands.** The bands are `long_run_svar_bands(data, lags=8,
+horizon=40, impact_signs=[(0, 1)], n_boot=1000, seed=20260911,
+return_draws=True)`. It is a residual (iid) bootstrap of the reduced-form VAR
+that resamples the centred residuals from substream b of
+`SeedSequence(20260911).spawn(1000)`, rebuilds each pseudo-sample from the
+first eight observations, refits, and **re-identifies inside every draw**
+under the same anchor. The page's level objects (cumulated output, plain
+unemployment) are formed per draw from `irf_draws`, and then the percentiles
+are taken. Every draw keeps the anchor's sign (`sign_anchor_mismatches` is
+`[0]`) and no refit is explosive (`n_unstable_draws` 0). The paper reports
+one-standard-deviation bands from a comparable Monte Carlo, and the 68%
+percentile band is the analogue. 1,000 replications, seed 20260911,
 bit-reproducible:
 
 | response | h | point | 68% band | 90% band |
 |---|---|---|---|---|
-| output ← supply | 0 | +0.243 | [+0.058, +0.461] | [−0.074, +0.571] |
-| output ← supply | 4 | +0.264 | [−0.041, +0.610] | [−0.224, +0.825] |
-| output ← supply | 12 | +0.161 | [−0.000, +0.365] | [−0.121, +0.472] |
-| output ← supply | 40 | +0.486 | [+0.339, +0.547] | [+0.286, +0.640] |
-| output ← demand | 0 | +0.708 | [+0.542, +0.714] | [+0.445, +0.757] |
-| output ← demand | 4 | +1.095 | [+0.781, +1.120] | [+0.659, +1.229] |
-| output ← demand | 12 | +0.439 | [+0.143, +0.524] | [+0.034, +0.650] |
-| output ← demand | 40 | −0.004 | [−0.010, +0.058] | [−0.037, +0.108] |
-| unemployment ← supply | 0 | +0.137 | [+0.055, +0.170] | [+0.014, +0.196] |
-| unemployment ← supply | 4 | +0.116 | [−0.092, +0.240] | [−0.208, +0.323] |
-| unemployment ← supply | 12 | +0.175 | [+0.032, +0.245] | [−0.035, +0.323] |
-| unemployment ← supply | 40 | −0.003 | [−0.009, +0.012] | [−0.024, +0.030] |
-| unemployment ← demand | 0 | −0.188 | [−0.212, −0.141] | [−0.225, −0.112] |
-| unemployment ← demand | 4 | −0.550 | [−0.559, −0.420] | [−0.601, −0.372] |
-| unemployment ← demand | 12 | −0.241 | [−0.291, −0.093] | [−0.360, −0.031] |
-| unemployment ← demand | 40 | +0.003 | [−0.028, +0.007] | [−0.054, +0.024] |
+| output ← supply | 0 | +0.243 | [+0.059, +0.465] | [−0.068, +0.577] |
+| output ← supply | 4 | +0.264 | [−0.034, +0.626] | [−0.228, +0.827] |
+| output ← supply | 12 | +0.161 | [+0.003, +0.350] | [−0.132, +0.473] |
+| output ← supply | 40 | +0.486 | [+0.344, +0.541] | [+0.289, +0.621] |
+| output ← demand | 0 | +0.708 | [+0.546, +0.716] | [+0.451, +0.756] |
+| output ← demand | 4 | +1.095 | [+0.780, +1.125] | [+0.653, +1.237] |
+| output ← demand | 12 | +0.439 | [+0.159, +0.539] | [+0.041, +0.667] |
+| output ← demand | 40 | −0.004 | [−0.015, +0.056] | [−0.052, +0.100] |
+| unemployment ← supply | 0 | +0.137 | [+0.058, +0.173] | [+0.012, +0.197] |
+| unemployment ← supply | 4 | +0.116 | [−0.088, +0.241] | [−0.196, +0.333] |
+| unemployment ← supply | 12 | +0.175 | [+0.039, +0.251] | [−0.021, +0.327] |
+| unemployment ← supply | 40 | −0.003 | [−0.011, +0.013] | [−0.025, +0.039] |
+| unemployment ← demand | 0 | −0.188 | [−0.213, −0.142] | [−0.228, −0.111] |
+| unemployment ← demand | 4 | −0.550 | [−0.562, −0.411] | [−0.611, −0.374] |
+| unemployment ← demand | 12 | −0.241 | [−0.294, −0.103] | [−0.364, −0.038] |
+| unemployment ← demand | 40 | +0.003 | [−0.028, +0.011] | [−0.053, +0.032] |
 
-Read the demand column: the 90% bands on output (h = 0, 4) sit entirely above
-zero and on unemployment entirely below it, and by h = 40 output's band
-straddles zero — the restriction, with its uncertainty. These are Efron
+Read the demand column. The 90% bands on output (h = 0, 4) sit entirely above
+zero and those on unemployment entirely below it, and by h = 40 output's band
+straddles zero: that is the restriction, with its uncertainty. These are Efron
 percentile bands, and they show the familiar downward bias of VAR-response
 bootstraps in persistent systems: the point estimate sits near the *upper*
-edge of the 68% band for the demand responses. No bias correction is applied
-(`var_irf_bands` ships Kilian's `bias_correct` for recursive schemes only);
-the bands are honest about that rather than tidied. The CI guard runs 200
-replications at seed 0, where the percentiles move by at most 0.14 across
-seeds 0, 1, 7 and 42 (measured); each band claim it pins carries at least
-twice that margin.
+edge of the 68% band for the demand responses.
+
+No bound in this table moved by more than 0.019 against the pre-0.11.0 page.
+The construction is the same, but the native callable draws replication b from
+`SeedSequence(seed).spawn(n)[b]` where the hand-built version seeded
+`bootstrap_indices` from `SeedSequence(seed).generate_state(n)[b]`, so the
+two use different random draws. Given the *same* indices, the hand-built
+construction is kept in the script as a cross-check
+(`bootstrap_draws_by_hand`, on a NumPy replay of the native stream). It
+agrees with `irf_draws` to **2.3e-14** over 40 draws and every horizon. That
+is rounding, not bit identity, because the hand-built recursion `z @ params +
+e` sums in a different order.
+
+**Three arms, and how far to trust each.** `long_run_svar_bands` also ships
+Kilian's bias correction (`bias_correct=True`) and a delta-method arm
+(`method="asymptotic"`). The 90% bands, same seed and replications:
+
+| response | h | Efron | Efron + Kilian (its point) | delta |
+|---|---|---|---|---|
+| output ← supply | 0 | [−0.068, +0.577] | [−0.316, +0.568] (+0.167) | [−0.167, +0.653] |
+| output ← supply | 4 | [−0.228, +0.827] | [−0.606, +0.900] (+0.160) | [−0.415, +0.942] |
+| output ← supply | 40 | [+0.289, +0.621] | [+0.274, +0.860] (+0.554) | [+0.275, +0.696] |
+| output ← demand | 0 | [+0.451, +0.756] | [+0.449, +0.767] (+0.730) | [+0.559, +0.858] |
+| output ← demand | 4 | [+0.653, +1.237] | [+0.714, +1.369] (+1.176) | [+0.810, +1.380] |
+| output ← demand | 12 | [+0.041, +0.667] | [+0.181, +0.988] (+0.572) | [+0.052, +0.825] |
+| output ← demand | 40 | [−0.052, +0.100] | [−0.079, +0.342] (+0.013) | [−0.046, +0.038] |
+| unemployment ← demand | 0 | [−0.228, −0.111] | [−0.223, −0.033] (−0.173) | [−0.267, −0.109] |
+| unemployment ← demand | 4 | [−0.611, −0.374] | [−0.640, −0.300] (−0.559) | [−0.671, −0.428] |
+| unemployment ← demand | 12 | [−0.364, −0.038] | [−0.495, −0.065] (−0.286) | [−0.441, −0.041] |
+
+Kilian's correction raises the estimated persistence. Its point estimate
+moves (output ← supply at h = 40 goes from +0.486 to +0.554), its bands
+widen, and the long-run matrix grows a heavy right tail: the 90% upper bound
+of `LR[1][0]` goes from 7.048 to 27.529.
+
+**Coverage, cell by cell.** The model card's committed Monte Carlo uses this
+page's VAR(8) as the truth, with 1,000 replications × 299 draws at nominal
+90% (`lab/bq_bands/out/mc_coverage.txt`).
+It shows that **no arm covers every cell**:
+
+* The flagship object, output LEVEL ← demand at h = 0 / 1 / 2 / 4 / 8,
+  covers 0.680 / 0.559 / 0.599 / 0.603 / 0.684 under Efron (this page's
+  table), 0.721 / 0.629 / 0.717 / 0.797 / 0.846 under Efron + Kilian, and
+  0.914 / 0.884 / 0.858 / 0.850 / 0.813 under the delta method.
+* Unemployment ← demand under Kilian is 0.771 / 0.737 at h = 2 / 4.
+* Kilian is the best arm on the long-run matrix (0.850–0.925, against Efron's
+  0.612–0.834).
+* The delta arm's own weak cells are output LEVEL ← supply (0.846–0.859 at
+  h ≤ 4) and cumulative unemployment ← demand at long horizons (0.709 at
+  h = 40).
+
+So read the demand hump against the delta band. On this design the Efron 90%
+band in the table above covers the hump only 0.559–0.684 of the time at
+h ≤ 8.
+
+The CI guard runs 200 replications at seed 0. At that size the percentiles
+move by at most 0.152 across seeds 0, 1, 7 and 42 (measured: 0.152 / 0.139 /
+0.078 against seed 0), and each band claim it pins sits clear of its
+threshold at seeds 0 and 1.
 
 ---
 
@@ -211,14 +275,24 @@ by at least 0.1, and above 0.4; unemployment share > 0.5 at one step and
 
 ![Blanchard-Quah historical decomposition](img/repl-bq-hd.png)
 
-`tsecon.historical_decomposition` takes Cholesky or sign identification, not
-an arbitrary impact matrix, so the paper's decomposition is built in the
-script from the structural shocks `B⁻¹u_t` and the structural moving-average
-coefficients `long_run_svar` returns as `irf`. It is cross-checked against
-the library: the deterministic `baseline` is identification-invariant and
-agrees with `tsecon.historical_decomposition(identification="cholesky")` to
-**9e-15**, the total shock contribution to **4e-15**, and the adding-up
-identity `y = baseline + Σ_j hd_j` holds exactly.
+The paper's decomposition is one call, with the anchored impact matrix
+passed straight through (a nested list is accepted):
+
+```python
+B = tsecon.long_run_svar(data, lags=8, impact_signs=[(0, 1)])["impact"]
+hd = tsecon.historical_decomposition(data, lags=8, identification="impact", impact=B)
+```
+
+The reduced form is the same VAR(8) with a constant, which is the condition
+for the impact matrix and the residuals to belong together. The
+deterministic `baseline` is identification-invariant and **identical** to the
+Cholesky decomposition's. The total shock contribution agrees to
+**6.2e-15**, and the adding-up identity `y = baseline + Σ_j hd_j` holds
+exactly. `shock_covariance` is 0.912371 times the identity, which is
+$(T-m)/T$ with $m = 17$: the df-adjusted $\Sigma_u$ behind `long_run_svar`'s
+impact. The pre-0.11.0 construction from the structural shocks `B⁻¹u_t` and
+the structural moving-average coefficients is kept in the script as a
+cross-check (`historical_decomposition_by_hand`) and agrees to **3.6e-15**.
 
 The demand-disturbance component tracks detrended unemployment with a
 correlation of **0.926** (the supply component: 0.129), and carries the bulk
@@ -259,9 +333,10 @@ place of real GNP over 1948Q2–1987Q4. The estimation sample (1961Q2–2009Q3,
 22 more. That is why the page is graded a design replication: the shapes are
 the claim, not the numbers.
 
-**Different bands.** The paper's one-standard-deviation Monte Carlo bands
-versus the script's 68%/90% residual-bootstrap percentile bands, uncorrected
-for bias.
+**Different bands.** The paper reports one-standard-deviation Monte Carlo
+bands. This page reports `long_run_svar_bands`' 68%/90% residual-bootstrap
+percentile bands, uncorrected for bias in the main table, with the Kilian and
+delta arms beside them and their measured per-cell coverage.
 
 **Where the shapes differ.** Two of the paper's finer readings are not
 reproduced on this vintage and are not pinned: the supply effect on output
@@ -300,11 +375,13 @@ low-frequency feature of the data you did not model — and it is why the
 paper spends a section on this choice. Detrending unemployment, by contrast,
 changes nothing of substance.
 
-**Library gaps this page works around.** `long_run_svar` has no native
-confidence bands and `historical_decomposition` no arbitrary-impact-matrix
-entry point; both objects are built in the script from shipped primitives
-(`var_fit`, `bootstrap_indices`, `long_run_svar`) and validated as described
-above. Both are roadmap items for the identification module.
+**Library gaps this page used to work around, now closed (0.11.0).** Before
+0.11.0, `long_run_svar` had no native confidence bands and
+`historical_decomposition` had no arbitrary-impact-matrix entry point. Both
+objects were built in the script from shipped primitives (`var_fit`,
+`bootstrap_indices`, `long_run_svar`). They are now `long_run_svar_bands` and
+`historical_decomposition(identification="impact")`, and the old
+constructions remain only as cross-checks, at the agreement quoted above.
 
 ---
 
@@ -313,9 +390,9 @@ above. Both are roadmap items for the identification module.
 The identification itself is dual-checked on this data: an independent NumPy
 transcription of the Blanchard-Quah closed form on a statsmodels
 `VAR(data).fit(8)` — `C(1) = (I − ΣAᵢ)⁻¹`, `LR = chol(C(1) Σ C(1)ᵀ)`,
-`B = C(1)⁻¹ LR`, with the df-adjusted `sigma_u` — agrees with `long_run_svar`
-to **1.8e-13** on B, **2.3e-12** on the long-run matrix and **6.0e-12** on
-C(1) (guard: 1e-9). The same transcription underlies the crate's golden
+`B = C(1)⁻¹ LR`, with the df-adjusted `sigma_u` and the same demand-column
+sign — agrees with `long_run_svar` to **2.0e-13** on B, **2.5e-12** on the
+long-run matrix and **6.4e-12** on C(1) (guard: 1e-9). The same transcription underlies the crate's golden
 fixture ([`long_run_svar.json`](../../fixtures/long_run_svar.json)); here it
 is run on real data rather than a synthetic system.
 

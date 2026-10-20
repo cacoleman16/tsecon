@@ -1,0 +1,6 @@
+  iid errors: LM=  6.85 (df=4) p=0.1442  |  F= 1.72 df=(4, 194) p=0.1473
+AR(2) errors: LM= 55.86 (df=4) p=0.0000  |  F=18.80 df=(4, 194) p=0.0000
+
+  iid errors: d=2.051  exact p(rho>0)=0.5237  two-sided p=0.9527  (T=60, T-k=57)
+AR(1) errors: d=1.300  exact p(rho>0)=0.0015  two-sided p=0.0030  (T=60, T-k=57)
+

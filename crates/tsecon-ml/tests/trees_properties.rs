@@ -653,7 +653,10 @@ fn teaching_errors_name_the_argument_and_the_fix() {
         .to_string();
     assert_eq!(
         e,
-        "insufficient data: 7 observations, at least 10 required (tree fit)"
+        "invalid argument: min_samples_leaf = 5 leaves no split possible: a split keeps \
+         at least min_samples_leaf rows on each side, so a tree needs 2 * min_samples_leaf \
+         = 10 rows (insufficient data: 7 observations, at least 10 required); \
+         min_samples_leaf can be at most 3 for these 7 rows"
     );
 
     // Quantiles.

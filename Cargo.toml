@@ -49,7 +49,7 @@ members = [
 ]
 
 [workspace.package]
-version = "0.10.0"
+version = "0.11.0"
 edition = "2021"
 rust-version = "1.85"
 license = "MIT OR Apache-2.0"
@@ -59,3 +59,12 @@ publish = false
 
 [profile.release]
 lto = "thin"
+
+# Optimize the third-party dependencies (faer's matrix kernels, rand, rayon)
+# even in dev and test builds. The golden and Monte Carlo tests spend most of
+# their time inside them, and unoptimized they made `cargo test --workspace`
+# take over an hour. The workspace's own crates keep the plain dev profile, so
+# debug assertions and overflow checks still run on every line of tsecon, and
+# Rust never relaxes IEEE floating point at any opt-level, so no result moves.
+[profile.dev.package."*"]
+opt-level = 3

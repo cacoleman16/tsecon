@@ -64,6 +64,7 @@
 
 use crate::error::RegimeError;
 use crate::linsolve::{chol_solve, cholesky};
+use crate::setar::{check_n_boot_cap, n_boot_refused};
 use tsecon_bootstrap::{par_replicate, WildWeights};
 
 // ------------------------------------------------------------- the design
@@ -946,7 +947,9 @@ fn regime_ols(design: &Design, rows: &[usize]) -> Result<RegimeOlsParts, RegimeE
 /// # Errors
 ///
 /// The input errors of [`threshold_var`], plus
-/// [`RegimeError::InvalidParameter`] for `n_boot = 0` or `n_grid < 2`,
+/// [`RegimeError::InvalidParameter`] for `n_boot = 0`, `n_boot` above
+/// [`tsecon_bootstrap::MAX_TEST_REPLICATIONS`] (checked before any work) or
+/// `n_grid < 2`,
 /// and [`RegimeError::Singular`] if the Eicker-White covariance is
 /// singular at some candidate on the observed data.
 #[allow(clippy::too_many_arguments)]
@@ -971,6 +974,7 @@ pub fn threshold_var_test(
                           only by bootstrap; 499+ recommended)",
         });
     }
+    check_n_boot_cap(n_boot)?;
     if n_grid < 2 {
         return Err(RegimeError::InvalidParameter {
             name: "n_grid",
@@ -1063,11 +1067,7 @@ pub fn threshold_var_test(
             Err(_) => f64::INFINITY,
         }
     })
-    .map_err(|_| RegimeError::InvalidParameter {
-        name: "n_boot",
-        value: n_boot as f64,
-        requirement: "n_boot within the RNG substream spawn limit (< 2^32)",
-    })?;
+    .map_err(|_| n_boot_refused(n_boot))?;
 
     let exceed = boot_stats.iter().filter(|&&s| s >= stat).count();
     let p_value = (1 + exceed) as f64 / (n_boot + 1) as f64;

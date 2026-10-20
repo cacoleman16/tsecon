@@ -44,6 +44,7 @@ A compact index. Find your row, jump to the section.
 |---|---|---|
 | Series may be nonstationary; need to decide whether to difference | `check_stationarity` (`adf` + `kpss`) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Unit-root test without picking an augmentation lag (ADF alternative / cross-check) | `phillips_perron` | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
+| Is a price (log level) a random walk — are its increments serially uncorrelated, robust to volatility clustering? | `variance_ratio` (Lo-MacKinlay; a list of horizons adds the Chow-Denning joint test) | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Impulse response, and you trust a recursive ordering | `var_irf` (`var_fit`, `var_fevd`) | [2](#2-i-want-an-impulse-response) |
 | Impulse response, but you only trust the *signs* of a few responses | `sign_restricted_svar` | [2](#2-i-want-an-impulse-response) |
 | Impulse response combining exact *zeros* with *sign* restrictions | `zero_sign_svar` (RWZ 2010 + ARW 2018) | [2](#2-i-want-an-impulse-response) |
@@ -60,7 +61,7 @@ A compact index. Find your row, jump to the section.
 | A Bayesian VAR that selects which coefficients are non-zero | `bvar_ssvs` (spike-and-slab SSVS) | [2](#2-i-want-an-impulse-response) |
 | Impulse response from one equation, no full VAR to commit to | `lp`; instrumented `lp_iv`; state-dependent `lp_state` — LP or VAR? [chapter 16](guide/16-lp-vs-var-head-to-head.md) measures it | [2](#2-i-want-an-impulse-response) |
 | Quarterly target, monthly indicators, a ragged data edge | `dfm_nowcast` | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
-| A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
+| A handful of high-frequency lags to compress into a target | `weighted_midas` (large ratio) / `umidas` (small ratio) / `adl_midas` (persistent target: adds its own lags) | [3](#3-i-have-quarterly-gdp-and-monthly-indicators) |
 | Volatility with fat tails or occasional jumps | `gas_volatility(density="student_t")` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Intraday returns / a realized-variance series | `realized_measures`, `har_rv` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Panel whose units have genuinely different slopes | `panel_mean_group` (`mg`/`cce`), `panel_pmg` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
@@ -72,15 +73,20 @@ A compact index. Find your row, jump to the section.
 | The whole IRF at a tail quantile (downside *dynamics*, not the mean path) | `quantile_lp`; static coefficients `quantile_regression` | [4](#4-my-volatility-has-fat-tails-or-jumps) |
 | Did the coefficients break, and how many times? | `bai_perron` (unknown, multiple), `sup_f_test` (unknown, single); known date `chow_test` | [1](#1-is-my-series-stationary-do-i-need-to-difference) |
 | Panel IRF to a common shock; per-entity dynamics | `panel_lp`, `mean_group_var` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| Panel with a time-invariant regressor of interest (FE cannot estimate it) | `panel_re` — after the Mundlak check | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| FE or RE? | the Mundlak check: entity means as extra `panel_re` regressors, Wald on their `cov` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
+| Cross-sectional (asset-pricing) regressions, period by period | `panel_fama_macbeth` | [5](#5-i-have-a-panel-with-heterogeneous-units) |
 | Regressor is highly persistent (predictive regression) | `predictive_regression` (OLS + Stambaugh + IVX), `ivx_test` | [6](#6-my-regressor-is-highly-persistent) |
 | Many candidate predictors, most of them noise | `adaptive_lasso`, `lasso_path`, `cv_splits` | [7](#7-i-have-many-candidate-predictors) |
 | Spillovers / who-shocks-whom across many markets | `connectedness` | [8](#8-i-need-spillovers-across-markets) |
 | Single-equation cointegration test (is this pair tied in the long run?) | `phillips_ouliaris`; rank via `johansen` | [8](#8-i-need-spillovers-across-markets) |
+| Is there a level relationship, when the regressors may be I(0) *or* I(1)? | `ardl_bounds_test` (Pesaran-Shin-Smith bounds) | [8](#8-i-need-spillovers-across-markets) |
 | Fit or forecast a yield curve | `nelson_siegel`, `svensson`, `dynamic_ns` | [9](#9-i-want-to-fit-a-yield-curve) |
 | Endogenous regressor with instruments | `iv_gmm`; nonlinear moments `gmm_nonlinear` | [10](#10-endogenous-regressor-instruments) |
 
 Two cross-cutting escape hatches used throughout: robust standard errors
-(`se_type="hac"` on any regression estimator; see
+(`se_type="hac"` on any regression estimator, and `ols(se_type="ewc")` —
+Student-t_B p-values — when size matters with persistent errors; see
 [chapter 3](guide/03-inference-toolkit.md)) and honest out-of-sample
 evaluation (`backtest`, `dm_test`; see [chapter 5](guide/05-forecasting.md)).
 Never report an estimate without the first or a forecast without the second.
@@ -135,6 +141,21 @@ boundary, so it does *not* replace the ADF+KPSS quadrant.
 ```python
 pp = tsecon.phillips_perron(y, regression="c")   # test_type="tau" (Z-tau) or "rho" (Z-alpha)
 pp["stat"], pp["pvalue"], pp["lags"]             # small p ⇒ reject the unit root
+```
+
+**A unit root is not yet a random walk.** Once the level is I(1), the next
+question — the market-efficiency one for a log price — is whether its
+*increments* are serially uncorrelated. `variance_ratio` (Lo-MacKinlay) compares
+the variance of q-period changes with q times the one-period variance: 1 under a
+random walk, above 1 under momentum, below 1 under mean reversion. Its default
+statistic is robust to volatility clustering, which Ljung-Box on the returns is
+not. Pass the LEVEL series, not returns; a list of horizons adds the Chow-Denning
+joint test:
+
+```python
+vr = tsecon.variance_ratio(y, lags=[2, 4, 8, 16])   # y = log prices (levels)
+vr["vr"], vr["pvalue"]                             # per horizon
+vr["cd_stat"], vr["cd_pvalue"]                     # one joint verdict across horizons
 ```
 
 **Escape hatch — did the relationship *break*?** A conflict that survives
@@ -431,6 +452,9 @@ All five take the reduced-form `data` matrix and are deterministic (no RNG). Bel
   ```
 
   Check the VAR's roots first — the scheme is fragile near a unit root (Faust-Leeper).
+  For confidence bands use `long_run_svar_bands` (a bootstrap that re-identifies in
+  every draw, or the delta method). Read its card's per-cell coverage table first:
+  no arm covers every cell.
 
 - **A variance objective** — you want the single shock that explains the most of a
   target's forecast-error variance over a business-cycle window (the "main
@@ -744,6 +768,10 @@ contaminates the regressors.
 | Your situation | Reach for |
 |---|---|
 | One common slope; confounders are unit-fixed; want robust SEs | `panel_fe` (`se_type="cluster"` or `"driscoll_kraay"`) |
+| One common slope, but a regressor of interest is time-invariant | `panel_re` (random effects) — valid only if the unit effect is uncorrelated with the regressors |
+| FE or RE? | the Mundlak check: add the unit means of the time-varying regressors to `panel_re`; its slopes then equal `panel_fe`'s, and a cluster Wald on the means (from the returned `cov`) is the robust Hausman test — reject → `panel_fe` |
+| FE or FD? | `panel_fd` when the errors look more like a random walk than white noise (FE when serially uncorrelated); both remove the unit effect; at T = 2 they coincide. `constant=True` matches plm / Stata `D.y D.x` |
+| Cross-sectional pricing: one regression per period, averaged | `panel_fama_macbeth` — right for a time effect, **wrong** for a persistent firm effect (its SE then covers far below nominal; cluster by entity instead) |
 | Slopes differ across units; no common factor | `panel_mean_group(method="mg")` |
 | Slopes differ *and* an unobserved common factor drives `y` and `x` | `panel_mean_group(method="cce")` |
 | A long-run relationship you want to *pool*, with unit-specific short-run dynamics | `panel_pmg` |
@@ -967,6 +995,12 @@ candidate relationship — one dependent series regressed on the others — the
 lighter `phillips_ouliaris` residual test asks the yes/no question directly
 (null: no cointegration), the semiparametric Engle-Granger route; reach for
 `johansen` when you need the *number* of cointegrating vectors in a larger system.
+When you cannot say whether the regressors are I(0) or I(1) — the case unit-root
+pre-tests handle worst — `ardl_bounds_test(y, x)` runs the Pesaran-Shin-Smith
+bounds test: a level relationship when `p_value_upper` is small whatever the
+regressors are, none when `p_value_lower` is large, inconclusive in between; read
+its `t_statistic` on the lagged level too, since a rejecting F with a near-zero t
+is the degenerate case the F alone hides.
 
 ```python
 po = tsecon.phillips_ouliaris(data[:, 0], data[:, 1:], trend="c")   # y on the other columns; no constant column

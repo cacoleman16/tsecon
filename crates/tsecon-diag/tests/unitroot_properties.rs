@@ -232,12 +232,34 @@ fn lag_bounds_are_enforced() {
     assert!(adf(&y, AdfRegression::Constant, AdfLagSelection::Fixed(18)).is_ok());
     assert!(matches!(
         adf(&y, AdfRegression::Constant, AdfLagSelection::Fixed(19)),
-        Err(DiagError::InvalidLags { .. })
+        Err(DiagError::LagOrderTooLong {
+            param: "maxlag",
+            value: 19,
+            max: Some(18),
+            ..
+        })
     ));
     assert!(matches!(
         adf(&y, AdfRegression::Constant, AdfLagSelection::Aic(Some(19))),
-        Err(DiagError::InvalidLags { .. })
+        Err(DiagError::LagOrderTooLong {
+            param: "maxlag",
+            max: Some(18),
+            ..
+        })
     ));
+    // Regression "n" on an even n: the statsmodels bound n/2 - 1 = 19 leaves
+    // no residual degree of freedom, so the largest admissible lag is 18 —
+    // refused by name (it used to read "series has 40 observations but
+    // needs at least 41").
+    assert!(matches!(
+        adf(&y, AdfRegression::NoConstant, AdfLagSelection::Fixed(19)),
+        Err(DiagError::LagOrderTooLong {
+            value: 19,
+            max: Some(18),
+            ..
+        })
+    ));
+    assert!(adf(&y, AdfRegression::NoConstant, AdfLagSelection::Fixed(18)).is_ok());
     // KPSS: the Bartlett window must stay inside the sample.
     assert!(matches!(
         kpss(&y, KpssRegression::Constant, KpssLags::Fixed(40)),

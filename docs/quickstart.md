@@ -28,7 +28,7 @@ install and see how much is on the shelf:
 ```python
 import tsecon
 print(tsecon.__version__)                                       # 0.8.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 192
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 206
           if not n.startswith("_")))
 ```
 
@@ -89,7 +89,7 @@ indices.
 
 ## The API at a glance
 
-The 192 functions, grouped by the task they serve. Every one is a plain
+The 206 functions, grouped by the task they serve. Every one is a plain
 function that takes arrays and returns a NumPy array or a dict of documented
 keys — no fit/predict objects to learn. Authoritative signatures, defaults,
 and docstrings live in
@@ -103,22 +103,27 @@ and docstrings live in
 | `pacf` | Partial autocorrelations (Yule-Walker or OLS) |
 | `ljung_box` | Portmanteau white-noise test |
 | `jarque_bera` | Normality test from skewness and kurtosis |
+| `multivariate_normality` | Residual normality for a T x k matrix or one series: Doornik-Hansen (2008), plus the Cholesky and JMulTi symmetric-root Jarque-Bera forms |
 | `arch_lm` | Engle's test for conditional heteroskedasticity |
 | `adf` | Augmented Dickey-Fuller unit-root test (MacKinnon p-values) |
 | `kpss` | KPSS stationarity test — the ADF complement |
 | `phillips_perron` | Phillips-Perron semiparametric unit-root test (ADF alternative) |
 | `phillips_ouliaris` | Phillips-Ouliaris residual cointegration test |
 | `engle_granger` | Engle-Granger two-step cointegration test (matches statsmodels `coint`) |
+| `ardl_bounds_test` | ARDL / error-correction fit and the Pesaran-Shin-Smith bounds test for a level relationship (I(0) or I(1) regressors) |
 | `dfgls` | DF-GLS: the GLS-detrended Elliott-Rothenberg-Stock unit-root test |
 | `ng_perron` | Ng-Perron M unit-root tests (MZa, MZt, MSB, MPT) with MAIC lag choice |
 | `zivot_andrews` | Unit-root test against one endogenous structural break |
+| `variance_ratio` | Lo-MacKinlay variance-ratio random-walk test, with the Chow-Denning joint test over horizons |
 | `ndiffs` | How many differences a series needs, with the evidence at every order |
 | `nsdiffs` | How many *seasonal* differences a series needs (Hyndman-Khandakar) |
 | `box_cox_lambda` | Variance-stabilizing Box-Cox lambda (MLE or Guerrero) |
 | `check_stationarity` | The ADF + KPSS confirmatory workflow, with a recommendation |
 | `check_series` | One-call diagnostic battery: runs the test families, suggests models with evidence |
-| `ols` | Linear regression with nonrobust / HC / HAC standard errors |
+| `ols` | Linear regression with nonrobust / HC / HAC / EWC standard errors (EWC adds Student-t_B `pvalues`) |
 | `long_run_variance` | Kernel long-run variance of a series |
+| `ewc_lrv` | Equal-weighted cosine (EWC) long-run variance of a series (pair with t_B critical values) |
+| `ewc_default_b` | LLSW default EWC degrees of freedom, round(0.4 n^(2/3)) |
 | `periodogram` | Raw spectral density (matches SciPy) |
 | `welch` | Welch averaged-periodogram spectral density |
 | `coherence` | Magnitude-squared coherence between two series |
@@ -130,7 +135,7 @@ and docstrings live in
 
 | Function | What it does |
 |---|---|
-| `arima_fit` | Exact-MLE ARIMA(p,d,q) with optional forecast bands |
+| `arima_fit` | Exact-MLE (or `method="css"` conditional-sum-of-squares) ARIMA(p,d,q) with optional forecast bands |
 | `auto_arima` | Automatic ARIMA order selection (Hyndman-Khandakar stepwise) |
 | `ar_loglik` | Exact Gaussian AR(p) log-likelihood at fixed parameters |
 | `local_level_smooth` | Local-level Kalman filter + smoother (handles missing data) |
@@ -183,11 +188,12 @@ and docstrings live in
 | `var_irf` | Orthogonalized or raw impulse responses |
 | `var_irf_bands` | Frequentist IRF confidence bands (delta-method or bootstrap) |
 | `var_fevd` | Forecast-error variance decomposition |
-| `var_forecast` | Iterated VAR forecasts with intervals |
+| `var_forecast` | Iterated VAR forecasts with intervals and the forecast-error covariance (`param_uncertainty=True` adds Lütkepohl's estimation term) |
 | `var_granger` | Granger-causality F test |
 | `sign_restricted_svar` | Sign-restricted Bayesian SVAR identified-set bands |
 | `zero_sign_svar` | Zero + sign restricted Bayesian SVAR (RWZ 2010 / ARW 2018) |
 | `long_run_svar` | Blanchard-Quah long-run SVAR (supply/demand decomposition) |
+| `long_run_svar_bands` | Bootstrap (re-identified per draw, optional Kilian correction) and delta-method bands for the Blanchard-Quah SVAR |
 | `max_share_svar` | Max-share / maximum-FEV shock (main business cycle, news) |
 | `proxy_svar` | Proxy SVAR / external-instrument identification (SVAR-IV) |
 | `proxy_svar_bands` | Proxy-SVAR IRF bands (Jentsch-Lunsford moving-block bootstrap) |
@@ -268,6 +274,10 @@ and docstrings live in
 | Function | What it does |
 |---|---|
 | `panel_fe` | Fixed-effects panel OLS (cluster or Driscoll-Kraay SEs) |
+| `panel_re` | Random-effects panel GLS (Swamy-Arora; the Mundlak FE-or-RE check) |
+| `panel_between` | Between estimator: OLS on the entity means |
+| `panel_fd` | First-difference panel OLS (calendar adjacency, optional intercept) |
+| `panel_fama_macbeth` | Fama-MacBeth two-pass regression (Fama-MacBeth or Newey-West SEs) |
 | `panel_lp` | Panel local projection of a common shock |
 | `panel_mean_group` | Mean-group / CCE-MG heterogeneous-panel estimator (Pesaran) |
 | `panel_pmg` | Pooled Mean Group ARDL estimator (Pesaran-Shin-Smith) |
@@ -279,9 +289,11 @@ and docstrings live in
 | Function | What it does |
 |---|---|
 | `dfm_nowcast` | Dynamic-factor-model nowcast over a ragged data edge |
+| `dfm_smooth` | Fixed-parameter DFM Kalman smoother: re-smooth a new data vintage with a fitted model |
 | `dfm_news` | News / update decomposition of a nowcast revision |
 | `midas_weights` | MIDAS weighting kernels (exp-Almon or beta) |
 | `umidas` | Unrestricted mixed-frequency (U-MIDAS) regression |
+| `adl_midas` | ADL-MIDAS: U-MIDAS plus autoregressive lags of the low-frequency target |
 | `weighted_midas` | Weighted MIDAS estimated by nonlinear least squares |
 
 ### Regression, machine learning, and GMM

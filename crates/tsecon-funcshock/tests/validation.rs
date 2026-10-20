@@ -155,6 +155,42 @@ fn flp_rejects_horizon_that_exhausts_the_sample() {
 }
 
 #[test]
+fn flp_refuses_an_unreachable_maximum_horizon_before_sizing() {
+    // T = 12, p = 2, K = 2: nparams = 5 and horizon h keeps 10 - h rows, so
+    // h = 5 is the first infeasible horizon and horizons can be at most 4.
+    // A horizon far past the sample used to reserve horizons + 1 slots per
+    // output before the sample check and abort the process.
+    for horizons in [5usize, 1 << 31, 1 << 40, usize::MAX] {
+        let e = flp(&y_ok(12), &scores_ok(12, 2), horizons, 2, None).unwrap_err();
+        assert!(
+            matches!(
+                e,
+                FuncShockError::HorizonTooLong {
+                    horizon: 5,
+                    nobs: 5,
+                    nparams: 5
+                }
+            ),
+            "{e:?}"
+        );
+        assert!(msg(&e).contains("horizons can be at most 4"), "{e}");
+    }
+    assert_eq!(
+        flp(&y_ok(12), &scores_ok(12, 2), 4, 2, None)
+            .unwrap()
+            .horizons,
+        vec![0, 1, 2, 3, 4]
+    );
+    // When even horizon 0 is short the refusal points at the controls.
+    let e = flp(&y_ok(8), &scores_ok(8, 2), 0, 3, None).unwrap_err();
+    assert!(
+        matches!(e, FuncShockError::HorizonTooLong { horizon: 0, .. }),
+        "{e:?}"
+    );
+    assert!(msg(&e).contains("not even horizons = 0"), "{e}");
+}
+
+#[test]
 fn flp_rejects_too_many_lag_controls() {
     let e = flp(&y_ok(5), &scores_ok(5, 1), 0, 5, None).unwrap_err();
     assert!(matches!(e, FuncShockError::SeriesTooShort { .. }), "{e:?}");

@@ -8,7 +8,9 @@ use numpy::{IntoPyArray, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
 use pyo3::types::{PyDict, PyList};
-use tsecon_ssm::{FreqSeasonalSpec, TrendSpec, TvpOptions, UcComponent, UcOptions, UcSpec};
+use tsecon_ssm::{
+    CycleInit, FreqSeasonalSpec, TrendSpec, TvpOptions, UcComponent, UcOptions, UcSpec,
+};
 
 use crate::{to_py, vec1};
 
@@ -58,16 +60,64 @@ fn set_component<'py>(
     Ok(())
 }
 
+/// The state-regression keys: `nobs x k` nested lists (rows are periods,
+/// as for `filtered_state`), and the `k x k` smoothed covariance; all None
+/// when the coefficients are not states.
+fn set_regression<'py>(
+    py: Python<'py>,
+    d: &Bound<'py, PyDict>,
+    comps: &[UcComponent],
+    cov: Option<&Vec<Vec<f64>>>,
+) -> PyResult<()> {
+    let keys = [
+        "regression_coefficients",
+        "regression_coefficients_var",
+        "filtered_regression_coefficients",
+        "filtered_regression_coefficients_var",
+    ];
+    let cov = match cov {
+        Some(c) if !comps.is_empty() => c,
+        _ => {
+            for k in keys {
+                d.set_item(k, py.None())?;
+            }
+            d.set_item("regression_coefficients_cov", py.None())?;
+            return Ok(());
+        }
+    };
+    let n = comps[0].smoothed.len();
+    let paths: [fn(&UcComponent) -> &Vec<f64>; 4] = [
+        |c| &c.smoothed,
+        |c| &c.smoothed_var,
+        |c| &c.filtered,
+        |c| &c.filtered_var,
+    ];
+    for (key, path) in keys.iter().zip(paths) {
+        let rows: Vec<Vec<f64>> = (0..n)
+            .map(|t| comps.iter().map(|c| path(c)[t]).collect())
+            .collect();
+        d.set_item(*key, nested(py, &rows)?)?;
+    }
+    d.set_item("regression_coefficients_cov", nested(py, cov)?)?;
+    Ok(())
+}
+
 /// Harvey's structural time-series ("unobserved components") models by
 /// exact-diffuse maximum likelihood — level/trend, dummy and trigonometric
-/// seasonals, a (damped) stochastic cycle, and regressors:
+/// seasonals, a (damped) stochastic cycle, an autoregressive component, and
+/// regressors:
 ///
-///     y_t = mu_t + gamma_t + c_t + beta' x_t + eps_t
+///     y_t = mu_t + gamma_t + c_t + a_t + beta' x_t + eps_t
 ///
-/// with every state initialized exactly diffuse (Koopman 1997), NaN in
-/// `y` treated as missing, and the components assembled exactly as
-/// statsmodels' `UnobservedComponents(..., use_exact_diffuse=True)`
-/// enumerates them (the log-likelihoods are directly comparable).
+/// with NaN in `y` treated as missing and the components assembled exactly
+/// as statsmodels' `UnobservedComponents(..., use_exact_diffuse=True)`
+/// enumerates them. Under the defaults every state is initialized exactly
+/// diffuse (Koopman 1997), as statsmodels does, so the log-likelihoods are
+/// directly comparable with statsmodels'; an AR block is initialized from
+/// its stationary distribution exactly as statsmodels has it, so that stays
+/// comparable too. Two opt-in switches change the likelihood's DEFINITION
+/// (see below), so neither `loglik` nor `aic`/`bic` may be compared across
+/// them: `cycle_init="stationary"` and `mle_regression=False`.
 ///
 /// `level` picks the level/trend block by its statsmodels name (long or
 /// short form): "irregular"/"ntrend", "fixed intercept", "deterministic
@@ -91,23 +141,71 @@ fn set_component<'py>(
 /// resolution contributes `-ln(lambda)`), so an unbounded period is not a
 /// safe search region — and a cycle longer than the sample is not
 /// identified in any case. statsmodels leaves that bound at infinity.
-/// `exog` (T x k) enters with
-/// time-invariant coefficients estimated jointly (statsmodels
-/// `mle_regression=True`); `forecast_steps=h` returns h-step forecasts
-/// and needs `forecast_exog` (h x k) when `exog` is given.
+/// `cycle_init` ("diffuse" when None, statsmodels' convention; parsed
+/// trimmed and case-insensitive) set to "stationary" initializes the two
+/// cycle states from the damped cycle's unconditional distribution,
+/// `sigma2.cycle / (1 - damping^2)` on each, instead of exactly diffuse. It
+/// needs `damped_cycle=True` and `stochastic_cycle=True` (an undamped or
+/// deterministic cycle has no proper stationary distribution) and refuses a
+/// fixed damping of 1. The cycle then costs no diffuse element, which
+/// removes the low-frequency singularity above; it also changes the
+/// DEFINITION of the likelihood, so `loglik`, `nobs_diffuse`, `k_diffuse`,
+/// `aic` and `bic` are NOT comparable with the diffuse-cycle ones, even at
+/// the same parameters.
+/// `autoregressive=p` (1 <= p <= len(y); 0 is refused, pass None) adds an
+/// AR(p) component `a_t = ar.L1 a_{t-1} + ... + ar.Lp a_{t-p} + eta_t` after
+/// the cycle in statsmodels' row-companion form, initialized from its
+/// stationary distribution, with `sigma2.ar` and coefficients estimated
+/// inside the stationarity region (a fixed non-stationary polynomial is
+/// refused, naming the partial autocorrelation that leaves (-1, 1); so is
+/// one within roundoff of the unit circle, whose likelihood would silently
+/// skip observations). A likelihood evaluation costs O(len(y) k_states^3),
+/// and an estimated AR(p) needs O(p) evaluations per search step and
+/// O(p^2) for its standard errors, so a fit slows down steeply with p:
+/// keep the order to a few lags (a long one is slow, refused only by the
+/// working-set bound below).
+/// `exog` (T x k) enters with time-invariant coefficients estimated
+/// jointly by MLE (`mle_regression`, True when None, statsmodels' default).
+/// `mle_regression=False` puts them in the state vector instead (statsmodels
+/// `mle_regression=False`): k exactly diffuse constant states after the AR
+/// block, design row `x_t'`, no `beta.x*` parameters. The likelihood is then
+/// the MARGINAL (diffuse) likelihood of the variance parameters — the
+/// profile one minus `ln det(regression_coefficients_cov) / 2` at the GLS
+/// coefficients, so REML-like variances — the smoothed coefficients are the
+/// GLS estimate given them, and, unlike under MLE regression, `loglik`,
+/// `aic` and `bic` depend on the UNITS of the regressors (rescaling a column
+/// by c shifts `loglik` by exactly `-ln|c|`; the estimates do not move).
+/// Keep the columns in comparable units near 1: the diffuse coefficient
+/// states are loaded by x_t, and columns many orders of magnitude from each
+/// other or from 1 cannot be resolved by the exact-diffuse filter in
+/// floating point; that case (the diffuse period would not end where the
+/// same model on unit-scaled columns ends it) is refused, naming `exog`.
+/// `forecast_steps=h` returns h-step forecasts and needs `forecast_exog`
+/// (h x k) when `exog` is given, either way.
 /// `fixed_params` (statsmodels order: `sigma2.irregular`, the state
-/// variances in component order, `frequency.cycle`, `damping.cycle`,
-/// `beta.x1`...) evaluates the model there instead of estimating.
-/// `n_starts` (default 3) is the deterministic start ladder. Counts that
-/// size an allocation are bounded and refuse rather than abort: `seasonal`
-/// and each `freq_seasonal` period at most `len(y)` (they cost states, and
-/// a period the sample never completes is not identified), `forecast_steps`
-/// at most 100000, `n_starts` at most 64.
+/// variances in component order — level, trend, seasonal, each
+/// freq_seasonal block, cycle, then `sigma2.ar` — then `frequency.cycle`,
+/// `damping.cycle`, `ar.L1`...`ar.Lp`, `beta.x1`... — the betas only under
+/// MLE regression) evaluates the model there instead of estimating.
+/// `state_names` end with `cycle`, `cycle.auxiliary`, `ar.L1`...`ar.Lp`,
+/// `beta.x1`...`beta.xk` (the betas only under `mle_regression=False`). `n_starts` (default 3) is the
+/// deterministic start ladder (for an AR component the first partial
+/// autocorrelation walks 0.5, 0.9, 0, -0.5, 0.5, and the second rung of an
+/// AR(p >= 2) starts hump-shaped at (1.35, -0.5); the AR-UC likelihood is
+/// multimodal). Counts that size an allocation are bounded and refuse
+/// rather than abort: `seasonal`, each `freq_seasonal` period and
+/// `autoregressive` at most `len(y)` (they cost states, and a period the
+/// sample never completes is not identified), the working set
+/// `len(y) * k_states^2` at most 2^26 (the filter and smoother store four
+/// sequences of that many covariance cells; the refusal names the counts
+/// that cost the states), `forecast_steps` at most 100000, `n_starts` at
+/// most 64.
 ///
 /// Options that act only under a component RAISE when passed without it:
 /// `stochastic_seasonal` without `seasonal`; `freq_seasonal_harmonics` /
 /// `stochastic_freq_seasonal` without `freq_seasonal`; `damped_cycle` /
-/// `stochastic_cycle` / `cycle_period_bounds` without `cycle=True`;
+/// `stochastic_cycle` / `cycle_period_bounds` / `cycle_init` without
+/// `cycle=True`; `mle_regression` (even True) without `exog`;
 /// `forecast_exog` without `exog` or without `forecast_steps`.
 ///
 /// Estimation: BFGS + Nelder-Mead on the exact prediction-error
@@ -121,8 +219,16 @@ fn set_component<'py>(
 /// parameters only. statsmodels' `cov_type="approx"` inverts the full
 /// matrix instead, including the boundary directions where it is
 /// indefinite, so the two agree exactly when nothing is flagged and
-/// differ by definition when something is.
-/// `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom.
+/// differ by definition when something is. When the variance of a
+/// STATIONARY block is flagged (`sigma2.ar`, or `sigma2.cycle` under
+/// `cycle_init="stationary"`), the block is identically zero, so its
+/// transition parameters (`ar.L1`..., or `frequency.cycle` and
+/// `damping.cycle`) carry no information: they are dropped from the matrix
+/// too and get a NaN `se`. An AR coefficient's Hessian step is shrunk
+/// until every probe stays stationary, so an estimate next to the unit root
+/// still leaves the other standard errors finite.
+/// `aic`/`bic` use statsmodels' `k_params + k_diffuse` degrees of freedom,
+/// `k_diffuse` counting the exactly diffuse states only.
 /// The component keys without a prefix are the SMOOTHED (two-sided)
 /// paths; `filtered_*` are the one-sided ones. Variances inside the
 /// diffuse period are the finite part; `std_resid` is NaN there and at
@@ -145,7 +251,30 @@ fn set_component<'py>(
 /// flagged (the series is fetched from Rdatasets when the fixture is
 /// generated and never redistributed, so only its derived optimum is
 /// stored); parameter recovery, forecast-interval coverage and scale
-/// invariance measured by seeded Monte Carlo (see the model card).
+/// invariance measured by seeded Monte Carlo (see the model card). The
+/// stationary cycle (fixtures/uc_extensions.json) is pinned at the same
+/// 1e-8 against statsmodels' own block initialization ("stationary" on the
+/// cycle pair, its Lyapunov solve, its exact-diffuse filter and smoother —
+/// statsmodels has no keyword for it) on GDP, Nile and simulated
+/// specifications, plus the closed form `sigma2.cycle / (1 - damping^2)`
+/// for the initial covariance; its GDP MLE is pinned to the better of two
+/// optimizers, with the pile-up and the dropped transition parameters
+/// mirrored in the reference standard errors. The AR component is pinned at
+/// 1e-8 against statsmodels' own `autoregressive=` on Nile, inflation, GDP,
+/// GDP growth (every state stationary) and simulated combinations with
+/// seasonals, a cycle and regressors, plus the closed forms
+/// `sigma2.ar / (1 - phi^2)` and the AR(2) autocovariances for the initial
+/// covariance; its MLE on Nile, inflation and GDP reaches the better of two
+/// optimizers at the default `n_starts` (on inflation statsmodels' own fit
+/// stops 1.89 log-likelihood points short of the optimum this one
+/// reaches). The state regression is pinned at 1e-8 against statsmodels'
+/// `mle_regression=False` (with the regression-coefficient paths and
+/// covariance) on four specifications, one NaN-inserted and one combining
+/// every new option; against the closed form of white noise plus
+/// regressors (OLS coefficients, `sigma2 (X'X)^-1`, the diffuse
+/// log-likelihood, forecasts and their variances) at 1e-10; through the
+/// marginal/profile identity on six specifications and the regressor-units
+/// identity at 1e-10; and in one MLE to the better of two optimizers.
 ///
 /// Returned keys: `trend_specification`, `param_names`, `params`, `se`,
 /// `at_boundary`, `loglik`, `aic`, `bic`, `nobs`, `nobs_observed`,
@@ -156,12 +285,20 @@ fn set_component<'py>(
 /// `filtered_level_var`, `slope`, `slope_var`, `filtered_slope`,
 /// `filtered_slope_var`, `seasonal`, `seasonal_var`, `filtered_seasonal`,
 /// `filtered_seasonal_var`, `cycle`, `cycle_var`, `filtered_cycle`,
-/// `filtered_cycle_var` (None when the component is absent),
+/// `filtered_cycle_var`, `autoregressive`, `autoregressive_var`,
+/// `filtered_autoregressive`, `filtered_autoregressive_var` (the first AR
+/// state; None when the component is absent),
+/// `regression_coefficients`, `regression_coefficients_var`,
+/// `filtered_regression_coefficients`,
+/// `filtered_regression_coefficients_var` (nested lists, nobs x k, under
+/// `mle_regression=False`; the smoothed path is constant in t and is the
+/// GLS estimate), `regression_coefficients_cov` (k x k nested list, its
+/// smoothed covariance; all five None otherwise),
 /// `freq_seasonal`, `freq_seasonal_var`, `filtered_freq_seasonal`,
 /// `filtered_freq_seasonal_var` (lists with one array per block), `fitted`,
 /// `resid`, `std_resid`, `forecast`, `forecast_var`.
 #[pyfunction]
-#[pyo3(signature = (y, level = "llevel", seasonal = None, stochastic_seasonal = None, freq_seasonal = None, freq_seasonal_harmonics = None, stochastic_freq_seasonal = None, cycle = false, damped_cycle = None, stochastic_cycle = None, cycle_period_bounds = None, exog = None, forecast_steps = 0, forecast_exog = None, fixed_params = None, n_starts = 3))]
+#[pyo3(signature = (y, level = "llevel", seasonal = None, stochastic_seasonal = None, freq_seasonal = None, freq_seasonal_harmonics = None, stochastic_freq_seasonal = None, cycle = false, damped_cycle = None, stochastic_cycle = None, cycle_period_bounds = None, exog = None, forecast_steps = 0, forecast_exog = None, fixed_params = None, n_starts = 3, autoregressive = None, cycle_init = None, mle_regression = None))]
 #[allow(clippy::too_many_arguments)]
 fn unobserved_components<'py>(
     py: Python<'py>,
@@ -181,7 +318,17 @@ fn unobserved_components<'py>(
     forecast_exog: Option<PyReadonlyArray2<'py, f64>>,
     fixed_params: Option<Vec<f64>>,
     n_starts: usize,
+    autoregressive: Option<usize>,
+    cycle_init: Option<&str>,
+    mle_regression: Option<bool>,
 ) -> PyResult<Bound<'py, PyDict>> {
+    if exog.is_none() && mle_regression.is_some() {
+        return Err(PyValueError::new_err(
+            "mle_regression was given but exog is None: it only decides whether the \
+             regression coefficients are parameters (True) or states (False), so without \
+             regressors it is inert; pass exog=<T x k> or drop mle_regression",
+        ));
+    }
     if seasonal.is_none() && stochastic_seasonal.is_some() {
         return Err(PyValueError::new_err(
             "stochastic_seasonal was given but seasonal is None: it only switches the \
@@ -224,7 +371,17 @@ fn unobserved_components<'py>(
                  frequency, so without cycle=True it is inert; pass cycle=True or drop it",
             ));
         }
+        if cycle_init.is_some() {
+            return Err(PyValueError::new_err(
+                "cycle_init was given but cycle=False: it only initializes the two cycle \
+                 states, so without cycle=True it is inert; pass cycle=True or drop it",
+            ));
+        }
     }
+    let cycle_init = match cycle_init {
+        None => CycleInit::Diffuse,
+        Some(name) => CycleInit::parse(name).map_err(to_py)?,
+    };
     let trend = TrendSpec::parse(level).map_err(to_py)?;
     let mut freq_specs = Vec::new();
     if let Some(periods) = &freq_seasonal {
@@ -278,7 +435,10 @@ fn unobserved_components<'py>(
         damped_cycle: damped_cycle.unwrap_or(false),
         stochastic_cycle: stochastic_cycle.unwrap_or(false),
         cycle_period_bounds: bounds,
+        cycle_init,
+        autoregressive,
         exog: exog.as_ref().map(columns).unwrap_or_default(),
+        mle_regression: mle_regression.unwrap_or(true),
     };
     let opts = UcOptions {
         forecast_steps,
@@ -317,6 +477,13 @@ fn unobserved_components<'py>(
     set_component(py, &d, "slope", r.slope.as_ref())?;
     set_component(py, &d, "seasonal", r.seasonal.as_ref())?;
     set_component(py, &d, "cycle", r.cycle.as_ref())?;
+    set_component(py, &d, "autoregressive", r.autoregressive.as_ref())?;
+    set_regression(
+        py,
+        &d,
+        &r.regression_coefficients,
+        r.regression_coefficients_cov.as_ref(),
+    )?;
     let fs = PyList::empty(py);
     let fs_var = PyList::empty(py);
     let ffs = PyList::empty(py);

@@ -1,6 +1,6 @@
 # Model card — Structural identification (advanced)
 
-`long_run_svar` · `max_share_svar` · `proxy_svar` · `proxy_first_stage` ·
+`long_run_svar` · `long_run_svar_bands` · `max_share_svar` · `proxy_svar` · `proxy_first_stage` ·
 `proxy_svar_bands` · `proxy_ar_sets` · `hetero_svar` · `nongaussian_svar` ·
 `structural_fevd` · `historical_decomposition` · `narrative_svar` ·
 `fry_pagan_svar` · `robust_svar_bounds`
@@ -19,10 +19,14 @@ the estimand is one impact matrix or one structural column. All five take a plai
 data matrix, estimate the reduced form internally, and are deterministic — no
 RNG, no rejection sampling.
 
-**The external-instrument scheme is the one with honest uncertainty attached.**
-`proxy_svar_bands` supplies Jentsch-Lunsford moving-block bootstrap bands, and
-`proxy_ar_sets` supplies weak-instrument-robust Anderson-Rubin confidence sets;
-the other four schemes are still point-only, and their bands remain an open item.
+**Two schemes have uncertainty attached.** For the external instrument,
+`proxy_svar_bands` supplies Jentsch-Lunsford moving-block bootstrap bands and
+`proxy_ar_sets` supplies weak-instrument-robust Anderson-Rubin confidence sets.
+For the long-run scheme, `long_run_svar_bands` supplies a bootstrap that
+re-identifies in every draw (with Kilian's bias correction as an option) and a
+delta-method arm, with a measured per-cell coverage table. Max-share,
+heteroskedasticity and non-Gaussian identification are still point-only, and
+their bands remain an open item.
 
 **Post-identification and prior-robust tools**
 ([below](#post-identification-and-prior-robust-tools)) do not identify a new
@@ -92,9 +96,22 @@ lives at the infinite horizon, so the cumulative IRF is the object to read.
 **Key arguments and defaults (and why).** `lags`, `horizon`, `trend="c"`.
 `restrictions=None` gives the classic recursive BQ (long-run matrix lower
 triangular); pass a list of `(variable, shock)` long-run-zero pairs for a custom
-pattern. `normalize="long_run"` (default) makes the long-run diagonal positive;
+pattern. `normalize="long_run"` (default) makes each shock's long-run *pivot*
+positive: `LR[m][s]`, with `m` the number of long-run zeros in shock `s`'s
+column (the first variable the shock may move permanently). Under the default
+recursive pattern the pivots are the long-run diagonal; under a permuted
+`restrictions` pattern the diagonal can be negative or an imposed zero.
 `"impact"` makes the impact diagonal positive instead — a sign convention, not a
-different model.
+different model. `impact_signs` (None) anchors chosen shocks on their impact
+response, applied after `normalize`: for each `(variable, shock)` pair the
+shock's column of `impact`, `long_run` and `irf` is negated when
+`impact[variable][shock] < 0`. The test is strict, so an exact zero is left
+alone, and `cumulative_irf` is recomputed while `fevd` is unchanged. Blanchard
+and Quah's own convention, a demand shock that raises output on impact, is
+`impact_signs=[(0, 1)]` with output growth first. A bad index or a shock
+anchored twice is refused, naming `impact_signs`. `lags=0`, a malformed
+`restrictions` pair such as `[(0,)]`, and a `horizon` past the shared 2^28-value
+memory budget (399456 on two variables) are refused by name as well.
 
 **How to read the output.** `impact` (B), `long_run` (LR = C(1)·B, the cumulative
 structural impact — **check its imposed zeros**), `long_run_multiplier` (C(1)),
@@ -111,8 +128,13 @@ math knows.
 **Validated against.** An independent NumPy transcription of the documented
 closed form (faer LU inverse + lower Cholesky vs. NumPy) — a cross-implementation
 golden ([`long_run_svar.json`](../../../fixtures/long_run_svar.json),
-[`long_run.rs`](../../../crates/tsecon-ident/tests/long_run.rs)). See the
-[validation matrix](../validation-matrix.md).
+[`long_run.rs`](../../../crates/tsecon-ident/tests/long_run.rs)). The
+`impact_signs` relabelling is pinned there too (exactly the anchored columns
+flip; `B B' = Sigma_u` and the zero pattern are preserved), and the anchored
+impact matrix on the Blanchard-Quah data is part of
+[`historical_decomposition_impact.json`](../../../fixtures/historical_decomposition_impact.json).
+For confidence bands see [`long_run_svar_bands`](#long_run_svar_bands-bootstrap-and-delta-method-bands-for-long-run-svars).
+See the [validation matrix](../validation-matrix.md).
 
 **Replication.** The [Blanchard-Quah replication page](../../examples/replication-blanchard-quah.md)
 runs the paper's design — output growth demeaned around the 1974Q1 break,
@@ -124,8 +146,9 @@ vanishing demand effect on output (+1.10 at h = 3, −0.004 at h = 40), a
 permanent supply effect (+0.48), a mirror-image unemployment response
 (−0.19 on impact, −0.55 trough), supply raising unemployment on impact
 (+0.14), and demand's 89–97% share of short-horizon output variance — each
-pinned to a stated band, with seeded residual-bootstrap bands and the
-historical decomposition built in the script from shipped primitives, by
+pinned to a stated band, with the native `long_run_svar_bands` bands
+(`impact_signs=[(0, 1)]`) and the native
+`historical_decomposition(identification="impact")`, by
 [`test_replication_blanchard_quah.py`](../../../bindings/python/tests/test_replication_blanchard_quah.py)
 on [`fixtures/macrodata_bq.csv`](../../../fixtures/macrodata_bq.csv); the
 identification is dual-checked there against a NumPy transcription of the
@@ -170,6 +193,285 @@ The upper-right entry of `long_run` is exactly zero — the imposed neutrality �
 and output's *cumulative* response to the demand shock (0.375 on impact) decays
 to $-1.1\times10^{-5}$ by horizon 20: the level of output returns to baseline, as
 the restriction requires.
+
+---
+
+## `long_run_svar_bands` — bootstrap and delta-method bands for long-run SVARs
+
+Confidence bands for the `long_run_svar` impulse responses and long-run
+matrix, in two arms: a residual bootstrap that **re-identifies inside every
+draw** (optionally with Kilian's bias correction) and a delta method built on
+an analytic Jacobian of the Blanchard-Quah map. Read the coverage table before
+choosing an arm, because no arm covers every cell.
+
+**Coverage first, cell by cell.** These are nominal-90% bands on three designs:
+the replication page's estimated VAR(8) taken as the truth (T = 202), a
+moderate VAR(2) and a persistent VAR(2) (T = 200, companion radius 0.65 and
+0.95). Each design has 1,000 Monte Carlo replications with Gaussian
+innovations, 299 bootstrap draws per replication, and an MC standard error of
+0.009 at 0.90. The source is the committed `#[ignore]` Monte Carlo
+`mc_long_run_band_coverage` in
+[`long_run_bands_props.rs`](../../../crates/tsecon-var/tests/long_run_bands_props.rs),
+whose full output (every cell, horizons 0–40, the plain, cumulative, level and
+long-run objects) is `lab/bq_bands/out/mc_coverage.txt`.
+The headline object is the one the page plots, **output LEVEL ← demand** (the
+cumulated growth response), on the page design:
+
+| arm | h = 0 | h = 1 | h = 2 | h = 4 | h = 8 | h = 12 |
+|---|---|---|---|---|---|---|
+| Efron (the default) | 0.680 | 0.559 | 0.599 | 0.603 | 0.684 | 0.706 |
+| Efron + Kilian (`bias_correct=True`) | 0.721 | 0.629 | 0.717 | 0.797 | 0.846 | 0.885 |
+| delta (`method="asymptotic"`) | 0.914 | 0.884 | 0.858 | 0.850 | 0.813 | 0.826 |
+| Hall, from the same draws (not shipped) | 0.754 | 0.863 | 0.863 | 0.843 | 0.795 | 0.776 |
+
+The other level objects on the same design, at h = 0 / 1 / 2 / 4 / 8:
+
+| cell | Efron | Efron + Kilian | delta |
+|---|---|---|---|
+| unemployment ← demand | 0.936 / 0.867 / 0.745 / 0.616 / 0.719 | 0.915 / 0.840 / 0.771 / 0.737 / 0.846 | 0.831 / 0.899 / 0.916 / 0.854 / 0.844 |
+| output LEVEL ← supply | 0.899 / 0.888 / 0.896 / 0.886 / 0.889 | 0.913 / 0.903 / 0.903 / 0.893 / 0.886 | 0.850 / 0.848 / 0.859 / 0.846 / 0.875 |
+| unemployment ← supply | 0.873 / 0.873 / 0.878 / 0.876 / 0.871 | 0.908 / 0.911 / 0.909 / 0.894 / 0.899 | 0.865 / 0.865 / 0.865 / 0.860 / 0.870 |
+
+And the long-run matrix `LR = C(1) B`, cells `[0][0]`, `[1][0]`, `[1][1]` (the
+imposed `[0][1]` is covered in every replication by every arm, since it is
+exactly zero):
+
+| design | Efron | Efron + Kilian | delta |
+|---|---|---|---|
+| page VAR(8) | 0.834, 0.798, 0.612 | 0.925, 0.887, 0.850 | 0.866, 0.840, 0.719 |
+| persistent VAR(2) | 0.896, 0.886, 0.758 | 0.896, 0.895, 0.900 | 0.903, 0.912, 0.808 |
+| moderate VAR(2) | 0.885, 0.893, 0.772 | 0.897, 0.882, 0.892 | 0.891, 0.905, 0.839 |
+
+Averaged over the four cumulative cells, the page-design ranges over h = 0–40
+are 0.766–0.847 for Efron, 0.832–0.899 for Efron + Kilian, 0.850–0.875 for
+delta and 0.707–0.795 for Hall. The averages hide the headline, which is why
+the table above leads.
+
+**What the table says.**
+
+* **No arm is uniformly adequate.** Kilian's correction is the best arm on
+  average and on the long-run matrix (0.850–0.925 on the page design, against
+  0.612–0.834 for Efron). It does **not** rescue the flagship hump: output
+  LEVEL ← demand is still 0.629 at h = 1 and 0.717 at h = 2, its worst cells.
+  Kilian also leaves unemployment ← demand at 0.771 / 0.737 at h = 2 / 4.
+* **Only the delta arm covers the hump** (0.813–0.914 at h ≤ 8). Its own
+  weak cells are elsewhere: output LEVEL ← supply at 0.846–0.859 for h ≤ 4,
+  cumulative unemployment ← demand falling to 0.780 at h = 20 and 0.709 at
+  h = 40 on the page design, and long horizons on the short-memory VAR(2)
+  (output LEVEL ← demand 0.780 at h = 40).
+* **Plain Efron, the default and the page's pre-0.11.0 construction, is the
+  weakest arm** on the page design. It is kept as the default because it is
+  the one whose `point` equals `long_run_svar`'s bit for bit.
+* **Hall (basic) bands were measured and are not shipped.** They are better
+  than Efron on the hump (0.754–0.863 at h ≤ 8) and worse almost everywhere
+  else: 0.694–0.733 on output LEVEL ← supply at h ≤ 8, and 0.629 on
+  unemployment ← demand at h = 0. If you want them anyway, they are
+  `[2 point − upper, 2 point − lower]`.
+
+**Guidance.** Report the Kilian bootstrap for the long-run matrix and the level
+objects, and cross-check the hump against the delta arm. Where the two
+disagree, say so. Do not read the default Efron band on the demand hump as a
+90% statement: on the page design it covers 0.559–0.684 at h ≤ 8.
+
+**What it estimates.** The sampling uncertainty of the Blanchard-Quah
+responses `Theta_h = Psi_h B` and of `LR = C(1) B`. It comes from the
+reduced-form coefficients, which drive both the moving-average weights and the
+long-run multiplier, and from `Sigma_u`.
+
+* **Bootstrap arm** (`method="bootstrap"`, the default, unlike
+  `var_irf_bands`'s `"asymptotic"`). This is the Runkle (1987) / Kilian (1998)
+  residual recursive design on the same engine and stream as `var_irf_bands`:
+  * replication b resamples the centred residuals iid from substream b of
+    `SeedSequence(seed).spawn(n_boot)`;
+  * it rebuilds the pseudo-sample from the observed first `lags` rows, with no
+    burn-in, and refits the VAR;
+  * it re-runs the Blanchard-Quah map with the same `restrictions`,
+    `normalize` and `impact_signs`.
+
+  Identification is re-run per draw because holding `B` at its full-sample
+  value would drop the `C(1)` uncertainty that Faust and Leeper (1997) show
+  dominates long-run schemes. `lower`/`upper` are Efron percentiles and `se`
+  the across-draw SD; cumulation happens per draw, before the percentiles.
+
+  With `bias_correct=True`, the pseudo-samples come from Kilian-corrected
+  slopes and `point` becomes the map at the corrected coefficients and the
+  full-sample `Sigma_u`. The inner bias bootstrap has `n_boot` replications,
+  with seed `seed + 0x9E3779B97F4A7C15`, and is shrunk to stay stationary. The
+  intercept is not corrected, so the bootstrap DGP's implied mean moves.
+* **Delta arm** (`method="asymptotic"`). This is Lütkepohl (2005) with
+  `var_irf_bands`'s statsmodels conventions: `Sigma_alpha = (Z'Z)^-1 ⊗
+  Sigma_u` on the lag block, and `Sigma_sigma = 2 D⁺(Sigma_u ⊗ Sigma_u)D⁺'/T`
+  with `T = nobs`. The only new algebra is `∂vec B/∂(alpha, vech Sigma_u)`,
+  by forward mode through `D = I − ΣA_i`, `C(1)`, the Cholesky factor of
+  `C(1) Sigma_u C(1)'` and the column permutation. The column signs are held
+  at the point estimate's. Bands are `point ± z·se`.
+
+**The self-test: imposed zeros have zero width.** An imposed long-run zero is
+zero in every draw and has an exactly-zero row in the Jacobian. So
+`long_run_se` is exactly 0 there, and `long_run_lower == long_run_upper == ±0`,
+in both arms. A non-degenerate imposed cell would mean the identification had
+been hoisted out of the loop.
+
+**Assumptions.** Everything `long_run_svar` assumes (a correct reduced form, a
+true long-run neutrality, roots not too close to one), plus the usual
+bootstrap or delta-method asymptotics. Neither arm repairs a near-unit root.
+The table shows the long-run cells degrading as persistence rises, and the
+long-run multiplier inflates every error.
+
+**When to use (and when not).** Use it for any Blanchard-Quah figure or table
+that needs uncertainty: it replaces a hand-rolled bootstrap and is
+bit-reproducible from `seed`. Do not use one arm's band as the final word on
+the hump-shaped demand response (see the table). Do not use it to band a
+general long-run zero pattern: `restrictions` must still be a column
+permutation of the recursive pattern.
+
+**Key arguments and defaults (and why).**
+
+* `method="bootstrap"`, so that `point` equals `long_run_svar`'s output.
+* `alpha=0.1` (90% bands).
+* `n_boot=1000`, `seed=0`.
+* `bias_correct=False`.
+* `cumulative=False`; pass `True` for the output level.
+* `impact_signs`: pass BQ's `[(0, 1)]` with output growth ordered first.
+* `band="pointwise"`. `"sup-t"` / `"sidak"` / `"bonferroni"` add a simultaneous
+  band over `band_scope`, exactly as in `var_irf_bands`. Bootstrap sup-t reads
+  its quantile off the draws, so use `n_boot ≥ 999`; asymptotic sup-t simulates
+  from `band_seed` / `band_n_sim`.
+* `return_draws=True` adds `irf_draws` (n_boot, H+1, k, k) and
+  `long_run_draws` (n_boot, k, k). That is how to form the page's level objects
+  (cumulate row 0, keep row 1) from one set of draws.
+
+Inert keywords are refused rather than ignored, by the same rule
+`var_irf_bands` applies: `n_boot`, `seed` and `return_draws` on the asymptotic
+arm; `band_seed` and `band_n_sim` anywhere but the asymptotic sup-t band; and
+a non-default `band_scope` with a pointwise band.
+
+**How to read the output.** `point`, `se`, `lower`, `upper` are `[h][i][j]`.
+`long_run_point`, `long_run_se`, `long_run_lower`, `long_run_upper` are
+`[i][j]`. The echoes are `method`, `alpha`, `n_boot`, `bias_correct`, `band`
+and `cumulative`. Three diagnostics:
+
+* `min_root` is the full-sample VAR's smallest reverse-characteristic root
+  modulus, the `var_fit` convention: stable iff > 1.
+* `n_unstable_draws` counts raw refits whose companion spectral radius is ≥ 1.
+  This is the *inverse* convention to `min_root`: a radius, not a root.
+* `sign_anchor_mismatches` counts, per anchor, the draws whose anchored cell
+  would have been signed differently from the point's. On the Blanchard-Quah
+  data it is 0 of 1,000. A large value means the anchored impact cell is near
+  zero and the bands are bimodal.
+
+**Failure modes.**
+
+* Reading the default Efron band on the hump as 90%.
+* Kilian's heavy right tail on the long-run matrix. On the page data the 90%
+  upper bound of `LR[1][0]` goes from 7.048 (Efron) to 27.529 (Kilian), and
+  the corrected point raises output ← supply at h = 40 from 0.486 to 0.554
+  (1,000 draws, seed 20260911; `docs/examples/replication_blanchard_quah.py`).
+* A near-zero anchored cell, which makes the bands bimodal
+  (`sign_anchor_mismatches`).
+* A refit that cannot be identified (singular `I − ΣA_i` or a non-PD long-run
+  covariance), or a pseudo-sample that cannot be refitted at all. The second
+  is not measure-zero in very small samples: the iid resample can draw too
+  few distinct residual rows to span the k series, and the refit's residual
+  covariance is then singular. With k = 2, lags = 1 and the default 1,000
+  draws, at least one draw has at most k distinct rows with probability
+  1.00, 0.96, 0.35 and 0.05 at T = 7, 8, 9 and 10 (exact combinatorics,
+  `lab/audit/round16/var_numerics/pseudo_sample_singularity.py`). Such a
+  draw is recognised by counting its distinct rows, not by the Cholesky
+  factorization of its covariance, which lets most of these exactly
+  singular matrices through by rounding, so the replication named is the
+  same on every platform. The bias correction's inner bootstrap needs only
+  the slopes and never stops there, and neither do the reduced-form
+  responses of `var_irf_bands(orth=False)`. Either failure is reported by
+  replication index as an error, never dropped, because dropping exactly
+  the boundary draws would narrow the band; more observations, fewer lags
+  or `method="asymptotic"` avoid it.
+* An absurd `n_boot`, `horizon`, family size or `band_n_sim`. The working set
+  is counted as real storage and checked against a 2^28-value (2 GiB) budget
+  before anything is allocated, and the refusal names the keyword whose term
+  is over, with the largest value that fits. Bootstrap: `n_boot` (or `horizon`
+  when no count fits); each replication keeps its draws in its slot of one
+  store, measured at 647 bytes per replication against 848 counted on two
+  variables at horizon 12 (the per-matrix storage before 0.11 took 4087 and
+  could exceed its count twofold). Delta method: `horizon and lags` (the
+  pointwise working set), `horizon and band_scope` (a family's joint
+  covariance), `band_n_sim` (the sup-t simulation, also capped at 2^36 work)
+  or `horizon` (the Jacobians, quadratic in `horizon` and capped at 2^28
+  multiply-adds); a pointwise band is never told to change `band_scope` or
+  `band_n_sim`. The bootstrap arm's cost is linear in `horizon`.
+
+**Validated against.**
+[`long_run_svar_bands.json`](../../../fixtures/long_run_svar_bands.json),
+[`long_run_bands_golden.rs`](../../../crates/tsecon-var/tests/long_run_bands_golden.rs),
+rtol 1e-10:
+
+* **Bootstrap arm.** An RNG replay in NumPy of the documented stream
+  (`SeedSequence(seed).spawn(n_boot)` Philox, bitmask rejection, one raw draw
+  per attempt) with the Blanchard-Quah map re-run per draw. It covers the
+  page's VAR(8) at n_boot 200, plain and cumulative, and a permuted 3-variable
+  pattern with `normalize="impact"` and a draw-based sup-t band.
+* **Kilian branch.** A transcription of tsecon's own `estimate_bias` /
+  `correct_coefs`, so its only external anchor is the Monte Carlo above. The
+  same transcription pins a `var_irf_bands(bias_correct=True)` case.
+* **Delta arm.** statsmodels 0.15's `IRAnalysis` building blocks with the
+  analytic Jacobian. The generator checks that Jacobian against central finite
+  differences (worst relative error 2.2e-7) and, at `B = chol(Sigma_u)`,
+  against `IRAnalysis.stderr(orth=True)` (4.7e-14).
+
+Property tests
+([`long_run_bands_props.rs`](../../../crates/tsecon-var/tests/long_run_bands_props.rs))
+pin the zero-width self-test, `point` equal to `long_run_svar` bit for bit,
+1- vs 4-thread bit-identity, the same pseudo-samples as `var_irf_bands`,
+cumulative bands as percentiles of cumulated draws, the anchor in every draw,
+sup-t containment and seed purity, and the budgets at their boundary.
+
+**References.** Blanchard & Quah (1989); Runkle (1987); Kilian (1998);
+Lütkepohl (2005, ch. 3.7); Faust & Leeper (1997); Montiel Olea &
+Plagborg-Møller (2019).
+
+```python
+import numpy as np, tsecon
+
+# Blanchard-Quah bivariate: output growth (dy) and unemployment (u).
+rng = np.random.default_rng(0)
+T = 400
+es = rng.standard_normal(T)   # supply (permanent)
+ed = rng.standard_normal(T)   # demand (transitory)
+dy = np.zeros(T); u = np.zeros(T)
+for t in range(2, T):
+    dy[t] = 0.2 * dy[t - 1] + es[t] + 0.5 * ed[t] - 0.5 * ed[t - 1]
+    u[t] = 0.6 * u[t - 1] - 0.3 * es[t] + 0.7 * ed[t]
+data = np.column_stack([dy, u])
+
+kw = dict(lags=4, horizon=20, impact_signs=[(0, 1)], cumulative=True)
+efron = tsecon.long_run_svar_bands(data, n_boot=999, seed=1, **kw)
+kilian = tsecon.long_run_svar_bands(data, n_boot=999, seed=1, bias_correct=True, **kw)
+delta = tsecon.long_run_svar_bands(data, method="asymptotic", **kw)
+
+for name, r in (("Efron", efron), ("Efron+Kilian", kilian), ("delta", delta)):
+    lo, up = np.asarray(r["lower"]), np.asarray(r["upper"])
+    cells = ", ".join(f"h={h}: [{lo[h, 0, 1]:+.3f}, {up[h, 0, 1]:+.3f}]" for h in (0, 4, 20))
+    print(f"{name:>12}  output level <- demand, 90%: {cells}")
+print("imposed long-run zero, every arm: se", [r["long_run_se"][0][1] for r in (efron, kilian, delta)],
+      "band", [(r["long_run_lower"][0][1], r["long_run_upper"][0][1]) for r in (efron, kilian, delta)])
+print("min_root", round(efron["min_root"], 3), " n_unstable_draws", efron["n_unstable_draws"],
+      " sign_anchor_mismatches", efron["sign_anchor_mismatches"])
+```
+
+```
+       Efron  output level <- demand, 90%: h=0: [+0.151, +0.610], h=4: [-0.228, +0.021], h=20: [-0.001, +0.000]
+Efron+Kilian  output level <- demand, 90%: h=0: [+0.130, +0.607], h=4: [-0.243, +0.038], h=20: [-0.001, +0.000]
+       delta  output level <- demand, 90%: h=0: [+0.141, +0.609], h=4: [-0.241, +0.017], h=20: [-0.000, +0.000]
+imposed long-run zero, every arm: se [0.0, 0.0, 0.0] band [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+min_root 1.749  n_unstable_draws 0  sign_anchor_mismatches [2]
+```
+
+The three arms agree closely on this well-identified design. The output-level
+band to demand collapses toward zero by h = 20, which is the long-run
+neutrality, and the imposed zero has exactly zero width in every arm. Two of
+the 999 draws signed the demand shock differently from the point before the
+anchor was applied. The output is
+`lab/bq_bands/out/card_examples.txt`.
 
 ---
 
@@ -1283,10 +1585,14 @@ admissible rotations (that is what `robust_svar_bounds` is for on the IRFs).
 **Key arguments and defaults (and why).** `lags`, `horizon` (the FEVD is
 reported for steps $0..\,$`horizon`), `trend="c"`. `impact=None` uses the lower
 Cholesky of $\Sigma_u$ (so the result reproduces `var_fevd`); pass an
-$(n\times n)$ `impact` for any other scheme. `sigma="dfadj"` (default) or
-`"mle"` sets the default Cholesky's df scaling — the **shares are invariant to
-it** (numerator and denominator scale together); it only rescales the reported
-`impact`.
+$(n\times n)$ `impact` for any other scheme. `sigma` (`"dfadj"`, which the
+default `None` means, or `"mle"`) sets the default Cholesky's df scaling — the
+**shares are invariant to it** (numerator and denominator scale together); it
+only rescales the reported `impact`. It is validated on every path, and refused
+(naming it) whenever it is passed with `impact`, even as `"dfadj"`, since there
+is then no default Cholesky for it to scale. `lags=0` is
+refused, unlike `var_fevd`, which returns the static Cholesky shares of a
+VAR(0).
 
 **How to read the output.** `fevd` `[horizon+1][variable][shock]` (each
 `fevd[h][i]` sums to 1), and `impact` `[n][n]` (the $A_0$ used — the Cholesky
@@ -1297,7 +1603,12 @@ factor when `impact=None`).
 reading a recursive FEVD for a non-recursive shock; off-by-one horizon counts —
 `structural_fevd`'s `fevd` has `horizon + 1` outer entries (steps 0..horizon)
 where `var_fevd` has `horizon`; the axis order itself is no trap since 0.6.0:
-both are `[h][i][j]` (`var_fevd` was variable-major before then).
+both are `[h][i][j]` (`var_fevd` was variable-major before then). The shares
+are formed on row-scaled responses, so an `impact` of any finite scale gives
+the same shares (before 0.11.0 they were NaN beyond about 1e154 and wrong below
+about 1e-154). A `horizon` whose $(\text{horizon}+1)$ matrices and their
+Python lists exceed $2^{28}$ values (2 GiB) is refused by name, quoting the
+largest that fits.
 
 **Validated against.** statsmodels `VARResults.fevd` and the independent
 `tsecon-var` `var_fevd`, an exact cross-implementation golden for the Cholesky
@@ -1366,8 +1677,47 @@ fully absorbed into the baseline. The example below verifies it to $\sim10^{-15}
 **Assumptions.** A correct reduced form and an $A_0$. In the default
 `identification="cholesky"` mode the decomposition is *exactly identified* given
 the reduced form — the only modeling choice is the ordering. In
-`identification="sign"` mode the contributions become a set, summarized over the
-sign- (and optionally narrative-) restricted rotations.
+`identification="impact"` mode you supply the $A_0$ from any point-identified
+scheme. In `identification="sign"` mode the contributions become a set,
+summarized over the sign- (and optionally narrative-) restricted rotations.
+
+**Any point identification: `identification="impact"`.** Pass `impact=A0`, an
+$n \times n$ invertible matrix whose columns are one-standard-deviation
+structural shocks ($u_t = A_0\,\varepsilon_t$). It can be an ndarray, a pandas
+object, or a nested list straight out of another callable, so
+`long_run_svar(...)["impact"]` composes directly:
+
+```python
+B = tsecon.long_run_svar(X, lags=8, impact_signs=[(0, 1)])["impact"]   # nested list OK
+hd = tsecon.historical_decomposition(X, lags=8, identification="impact", impact=B)
+```
+
+$A_0 A_0' = \Sigma$ is **not** required. The structural shocks are
+$E = U A_0^{-\top}$ by an LU solve, $\Theta_s = \Psi_s A_0$, and the adding-up
+identity holds for any invertible $A_0$. The keys are cholesky mode's (`times`,
+`baseline`, `hd`, `shocks`), so it is a drop-in replacement, plus `impact` (the
+matrix used, echoed) and `shock_covariance` $= E'E/T_{\mathrm{eff}}$.
+`shock_covariance` is a diagnostic. It is the identity for
+$\mathrm{chol}(\Sigma_{\mathrm{mle}})$. For a `long_run_svar` impact, which is
+built from the df-adjusted $\Sigma_u$, it is $(T_{\mathrm{eff}}-m)/T_{\mathrm{eff}}$
+times the identity, with $m = 1 + np$. On the Blanchard-Quah page that is
+0.912371.
+
+The reduced form here is **always a VAR with a constant at `lags`**. An impact
+estimated with `trend="n"` or at other lags is silently inconsistent with these
+residuals: the identity still holds, but the shocks are not the ones that
+model identified. Estimate $A_0$ at the same `lags` with `trend="c"`. `impact`
+is refused, naming it, when it is missing, of the wrong shape, non-finite, or
+singular by the `numpy.linalg.matrix_rank` convention (smallest singular value
+≤ largest × $n$ × machine epsilon), a test applied to a unit-scaled copy so an
+invertible matrix is never called singular for its scale alone. An `impact`
+so far below or above the residuals' scale that its shocks or
+`shock_covariance` leave the double range is refused naming it with a rescale
+hint; on a unit-variance VAR the decomposition is exact (to 1e-15) from
+`1e-154` to `1e161` times its Blanchard-Quah impact and refused outside
+(`lab/audit/round16/ident_bayes/hd_scale_range.py`). Only $\Theta_0..\Theta_{T_{\mathrm{eff}}-1}$
+are built, so a `horizon` above $T_{\mathrm{eff}}-1$ is inert, while one below it
+is refused.
 
 **When to use (and when not).** Use to attribute a specific historical episode —
 "the 1979-82 funds-rate run-up was N% monetary shock" — or to plot the shock
@@ -1380,13 +1730,20 @@ set-identified scheme pass `identification="sign"` with `restrictions`.
 `(variable, shock, horizon, sign)` tuples, needed only for
 `identification="sign"`. `lags`, `horizon=None` (the MA is truncated at the exact
 $T_{\mathrm{eff}}-1$ by default). `identification="cholesky"` (point, $Q=I$) or
-`"sign"` (set). `n_draws`, `max_tries`, `seed`, `lambda1` control the sampler in
-sign mode; `narrative_restrictions` and `n_weight_draws` add episode restrictions
-(see `narrative_svar`).
+`"impact"` (point, your $A_0$) or `"sign"` (set). `n_draws`, `max_tries`, `seed`,
+`lambda1` control the sampler in sign mode; `narrative_restrictions` and
+`n_weight_draws` add episode restrictions (see `narrative_svar`). Under the two
+point modes these sampling controls are refused rather than ignored when they
+differ from their defaults, and so are non-empty `restrictions` and
+`narrative_restrictions`. Empty lists are accepted. Before 0.11.0, cholesky mode
+dropped restrictions silently. In sign mode `n_weight_draws` is refused when
+passed without `narrative_restrictions` (every weight is then 1). An unknown
+`identification` is refused as such before any of these checks.
 
 **How to read the output.** `times` (0-based effective-sample indices, $=$
-`data_row - lags`), `baseline` `[T_eff][n]`. In cholesky mode: `hd`
-`[T_eff][variable][shock]` and the structural `shocks` `[T_eff][n]`. In sign
+`data_row - lags`), `baseline` `[T_eff][n]`. In cholesky and impact modes: `hd`
+`[T_eff][variable][shock]` and the structural `shocks` `[T_eff][n]`, plus
+`impact` and `shock_covariance` in impact mode. In sign
 mode: `probs`, `hd_quantiles` `[T_eff][n][n][len(probs)]` (weighted type-7), the
 weight-free `hd_set_min`/`hd_set_max` envelope, per-draw `weights`, and
 `diagnostics`.
@@ -1403,6 +1760,18 @@ adding-up residual $\max|y - \mathrm{baseline} - \sum_j \mathrm{hd}| < 10^{-9}$
 ([`historical_decomposition_chol.json`](../../../fixtures/historical_decomposition_chol.json),
 [`historical_decomposition.rs`](../../../crates/tsecon-ident/tests/historical_decomposition.rs)
 plus the `shocks.rs`/`histdecomp.rs` unit tests).
+
+The impact mode has its own golden,
+[`historical_decomposition_impact.json`](../../../fixtures/historical_decomposition_impact.json),
+matched at rtol 1e-8 / atol 1e-10. It uses a statsmodels `VAR(data).fit(p,
+trend="c")` reduced form and the NumPy closed form above, on two cases: the
+Blanchard-Quah VAR(8) with its anchored long-run impact (`hd`, `baseline`,
+`shocks`, $\Theta_{0..3}$, `shock_covariance` and the seven recession rows),
+and a random non-orthogonal, non-covariance-consistent 3-variable $A_0$. It
+reduces to cholesky mode at $A_0 = \mathrm{chol}(\Sigma_{\mathrm{mle}})$ and to
+`decompose(Q)` at $A_0 = PQ$ (1e-12). Column sign flips leave $|\mathrm{hd}|$
+invariant, and a `horizon` far above $T_{\mathrm{eff}}$ gives the same output
+with no large allocation.
 
 **References.** Kilian & Lütkepohl (2017, ch. 4); Antolín-Díaz & Rubio-Ramírez
 (2018, for the sign-mode set version).
@@ -1661,7 +2030,12 @@ the traditional posterior); do not ignore the weights when reading the bands.
 **Key arguments and defaults (and why).** `sign_restrictions` (the traditional
 tuples; may be empty if narrative restrictions are given), `narrative_restrictions`
 (a list of dicts, schema below), `lags`, `horizon`, `n_draws`, `max_tries`,
-`seed`, `lambda1`, and `n_weight_draws=200` (the $K_w$ for $\hat{P}$). The dict
+`seed`, `lambda1`, and `n_weight_draws=200` (the $K_w$ for $\hat{P}$; refused
+when passed without `narrative_restrictions`, where every weight is 1). The
+weight loop costs `n_draws * n_weight_draws * (T_eff n^2 + (h + 3) n^3)`
+multiply-adds and is capped at $2^{35}$ (at most about a minute), refused
+naming `n_weight_draws`; the kept draws share the $2^{28}$-value working-set
+budget of the sign samplers (refusing `horizon` or `n_draws`). The dict
 schemas use 0-based **effective-sample** indices ($=$ `data_row - lags`):
 
 ```python

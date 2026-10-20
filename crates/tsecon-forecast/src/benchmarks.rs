@@ -90,7 +90,7 @@ fn with_interval(
 /// [`ForecastError::NonFinite`], [`ForecastError::InvalidSteps`], or
 /// [`ForecastError::InvalidLevel`].
 pub fn naive(y: &[f64], steps: usize, level: f64) -> Result<BenchmarkForecast, ForecastError> {
-    check_steps(steps)?;
+    check_steps(steps, "steps", "naive benchmark")?;
     check_level(level)?;
     let n = check_series(y, 2, "naive benchmark")?;
     let last = y[n - 1];
@@ -121,7 +121,7 @@ pub fn seasonal_naive(
     level: f64,
 ) -> Result<BenchmarkForecast, ForecastError> {
     const WHAT: &str = "seasonal-naive benchmark";
-    check_steps(steps)?;
+    check_steps(steps, "steps", WHAT)?;
     check_level(level)?;
     if period == 0 || y.len() < period + 1 {
         return Err(ForecastError::InvalidPeriod {
@@ -162,7 +162,7 @@ pub fn seasonal_naive(
 /// [`ForecastError::SeriesTooShort`] (`n < 3`), plus the shared
 /// validation errors of [`naive`].
 pub fn drift(y: &[f64], steps: usize, level: f64) -> Result<BenchmarkForecast, ForecastError> {
-    check_steps(steps)?;
+    check_steps(steps, "steps", "drift benchmark")?;
     check_level(level)?;
     let n = check_series(y, 3, "drift benchmark")?;
     let nf = n as f64;
@@ -197,7 +197,7 @@ pub fn historical_mean(
     steps: usize,
     level: f64,
 ) -> Result<BenchmarkForecast, ForecastError> {
-    check_steps(steps)?;
+    check_steps(steps, "steps", "historical-mean benchmark")?;
     check_level(level)?;
     let n = check_series(y, 2, "historical-mean benchmark")?;
     let nf = n as f64;

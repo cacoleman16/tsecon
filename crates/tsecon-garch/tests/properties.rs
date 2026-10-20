@@ -609,6 +609,49 @@ fn forecasts_converge_to_unconditional_variance() {
     assert!(res.forecast_variance(0).is_err());
 }
 
+/// The variance-forecast horizon is capped at `MAX_FORECAST_HORIZON`
+/// (1,000,000 steps), refused by name before the path is allocated (audit
+/// round 16: `2**31` used to request 16 GiB and abort the process). At the
+/// cap the forecast still runs and converges to the unconditional variance.
+#[test]
+fn forecast_horizon_is_capped_before_allocating() {
+    use tsecon_garch::{check_forecast_horizon, MAX_FORECAST_HORIZON};
+    let y = simulate_garch11(0.1, 0.1, 0.8, 400, 7);
+    let spec = GarchSpec {
+        mean: MeanSpec::Zero,
+        vol: VolSpec::Garch { p: 1, q: 1 },
+        dist: DistSpec::Normal,
+    };
+    let res = GarchModel::new(&y, spec).unwrap().fit().unwrap();
+    assert_eq!(MAX_FORECAST_HORIZON, 1_000_000);
+    for h in [MAX_FORECAST_HORIZON + 1, 1 << 31, 1 << 40, usize::MAX] {
+        let err = res.forecast_variance(h).unwrap_err();
+        assert!(
+            matches!(
+                err,
+                GarchError::InvalidParameter {
+                    name: "forecast_horizon",
+                    ..
+                }
+            ),
+            "{err:?}"
+        );
+        let msg = err.to_string();
+        assert!(msg.contains("forecast_horizon <= 1000000"), "{msg}");
+        assert!(check_forecast_horizon(h).is_err());
+    }
+    assert!(check_forecast_horizon(MAX_FORECAST_HORIZON).is_ok());
+    let f = res.forecast_variance(MAX_FORECAST_HORIZON).unwrap();
+    assert_eq!(f.len(), MAX_FORECAST_HORIZON);
+    let pers = spec.persistence(&res.params).unwrap();
+    assert_rel_close(
+        f[MAX_FORECAST_HORIZON - 1],
+        res.params[0] / (1.0 - pers),
+        1e-9,
+        "the capped horizon still converges to the unconditional variance",
+    );
+}
+
 /// Fitted models never report explosive persistence: the constraint set
 /// keeps the QMLE search strictly inside the stationary region.
 #[test]

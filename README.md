@@ -21,8 +21,8 @@ just present.
 
 ## Status
 
-Phases 0–1 complete; Phases 2–4 substantially landed. **43 Rust crates,
-1600+ Rust and 1300+ Python tests — all green and golden-fixture-gated**
+Phases 0–1 complete; Phases 2–4 substantially landed. **44 Rust crates,
+2000+ Rust and 4000+ Python tests — all green and golden-fixture-gated**
 (exact counts move with development and are measured in
 [testing.md](docs/reference/testing.md)). The whole
 library builds and tests from a clean checkout on every push (CI matrix on
@@ -60,8 +60,8 @@ Verify what you got:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.10.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 192
+print(tsecon.__version__)                                       # 0.11.0
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 206
           if not n.startswith("_")))
 ```
 
@@ -106,7 +106,7 @@ The **[Quickstart](docs/quickstart.md)** and the symptom-driven
   get routed to the right function.
 - **[Model cards & API reference](docs/reference/README.md)** — the
   assumptions, defaults, failure modes, and validation target of every
-  estimator, plus the full 192-function reference.
+  estimator, plus the full 206-function reference.
 - **[Migration guides](docs/migration/from-statsmodels.md)** — from
   statsmodels, R, and Stata, with a Rosetta glossary.
 - **[Gallery](docs/examples/README.md)** — worked figures in a professional
@@ -117,7 +117,7 @@ mkdocs serve`.
 
 ## What's inside
 
-192 functions callable from Python today: diagnostics, unit-root and
+206 functions callable from Python today: diagnostics, unit-root and
 specification tests (White/Breusch-Pagan, RESET, Chow, CUSUM); STL/MSTL
 seasonal decomposition and automatic ARIMA order selection; ARIMA, GARCH, and
 GAS score-driven volatility; VAR/SVAR with sign-restricted identification,

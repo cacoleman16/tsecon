@@ -1,0 +1,27 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+x = [1, z1, z2] (k = 3, constant column: k_aux = 3 + nlags)
+
+      T  nlags  k_aux          W   seconds  ns per W
+   1000     10     13   9.77e+04     0.001     10.61
+  10000     10     13   8.58e+05     0.005      5.82
+ 100000     10     13   8.46e+06     0.053      6.31
+1000000     10     13   8.45e+07     0.622      7.35
+  20000    100    103   1.13e+08     0.151      1.34
+  20000    250    253   7.37e+08     0.700      0.95
+ 100000    100    103   5.37e+08     0.790      1.47
+   5000   1000   1003   8.57e+09     2.974      0.35
+   3000   1000   1003   7.56e+09     2.237      0.30
+ 100000    564    567   1.72e+10    14.485      0.84
+   3000   1338   1341   1.72e+10     4.459      0.26
+
+largest admissible nlags (the documented rule; the refusal message quotes it):
+  T =      1000: nlags <= 996
+  T =      3000: nlags <= 1338
+  T =     20000: nlags <= 1027
+  T =    100000: nlags <= 564
+  T =   1000000: nlags <= 64
+  T =   5000000: nlags <= 10
+  default order (10) with k = 3 fits up to T = 5162220
+
+T = 100000, nlags = 20000 (a 16 GB design): refused in 0.003 s, quoting nlags <= 564

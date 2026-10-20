@@ -84,9 +84,10 @@ about avoiding those.
 | `pacf` | `nlags` | `20` | |
 | | `method` | `"yw"` | Yule-Walker; `"ols"` for the regression estimator |
 | `ljung_box` | `nlags` | `10` | statistic reported for each lag 1…nlags |
-| `arch_lm` | `nlags` | `4` | number of squared-residual lags |
+| `arch_lm` | `nlags` | `4` | number of squared-residual lags; needs `n >= 2·nlags + 2` and fits the lag budget (Failure modes) |
 | `adf` | `regression` | `"c"` | `"c"` constant, `"ct"` constant+trend, `"n"` none |
 | | `autolag` | `"aic"` | lag selection; or pass `maxlag` directly |
+| | `maxlag` | `None` | the search cap (or, with `autolag=None`, the fixed lag); at most `n//2 − ntrend − 1` (statsmodels) and within the lag budget; `None` → `ceil(12·(n/100)^(1/4))` |
 | `kpss` | `regression` | `"c"` | `"c"` level-stationary, `"ct"` trend-stationary |
 | | `nlags` | `None` | `None` → automatic (Hobijn-Franses-Ooms) bandwidth |
 | `check_stationarity` | `alpha` | `0.05` | significance level for both underlying tests |
@@ -127,6 +128,27 @@ about avoiding those.
   you read them naïvely on ARMA residuals (see Assumptions).
 - **Jarque-Bera in large samples** rejects on economically trivial fat tails —
   inspect skewness and kurtosis, do not stop at the p-value.
+- **A lag order the series cannot carry, or no machine can hold, is refused
+  by name.** `arch_lm`, `adf` (and `dfgls`, `ng_perron`, and `zivot_andrews`
+  — its lag search and its break-date scan) size the lag design before
+  building it: past the sample bound (`n >= 2·nlags + 2` for `arch_lm`,
+  `n//2 − ntrend − 1` for `adf`), past 2^26 design entries (512 MiB), or
+  past 2^35 multiply-adds of regression, lag search or break-date scan, the
+  call raises naming the keyword and the largest order that fits. Measured
+  at 1.1–1.7 ns per multiply-add, the work budget is about a minute: the
+  largest admissible `adf` search at n = 20,000 (`maxlag = 168`, `"ct"`) ran
+  in 36 s, the largest `arch_lm` order at n = 30,000 (`nlags = 1477`) in
+  57 s, and the largest fixed `zivot_andrews` lag at n = 3,000 (`lags = 70`;
+  the trimmed window admits 449) in 37 s. At n = 10^6, `arch_lm(nlags=400000)`
+  and `adf(maxlag=400000, autolag=None)` used to abort the interpreter in the
+  allocator; they are refused in about 10 ms and 3 ms, quoting
+  `nlags <= 67` and `maxlag <= 65`, and `zivot_andrews(autolag=None,
+  lags=14000)` at n = 10^5 (a 9.6 GB scan design) in under a millisecond,
+  quoting `lags <= 68` (`lab/unitroot_cost/lag_cost.py`). Orders up to the
+  default cap are exempt from the work budget, so a default call is refused
+  only when its design would not fit in memory, above about 610,000
+  observations; `check_stationarity` and `ndiffs(test="adf")`, which take no
+  lag keyword, say so and point to `adf` with an explicit `maxlag`.
 
 ## Validated against
 
@@ -263,10 +285,11 @@ Hyndman-Khandakar `nsdiffs` seasonal-differencing rule.
 | `seasonal_deg`/`trend_deg`/`low_pass_deg` | `1` | LOESS degree, 0 or 1 |
 | `robust` | `False` | `True` runs bisquare outer iterations |
 | `*_jump` | `1` | evaluate the LOESS every jump-th point, interpolate between (speedup) |
-| `inner_iter`/`outer_iter` | `None` | `None` → 2/15 if `robust` else 5/0 (Cleveland et al. §3.3) |
+| `inner_iter`/`outer_iter` | `None` | `None` → 2/15 if `robust` else 5/0 (Cleveland et al. §3.3); fixed loop counts, budgeted (Failure modes) |
 
 Requires `n >= 2·period` (R's `stl()` bound; statsmodels silently misbehaves
-below it) and `period >= 2`.
+below it — a longer period is refused naming `period` and the largest that
+fits, `n // 2`) and `period >= 2`.
 
 ### How to read the output
 
@@ -309,6 +332,19 @@ below it) and `period >= 2`.
   variances is implementation noise; audit round 6 measured ≈ 0.61–0.67 on
   flat lines before the guard). `nsdiffs` and `check_series` already
   special-case constants themselves.
+- **An absurd iteration count is refused, not run.** `inner_iter` and
+  `outer_iter` never stop early, and each inner pass costs about
+  `n·(min(seasonal, n/period) + low_pass + trend + 12)` LOESS evaluation
+  units, measured at 6.8–8.7 ns per unit (`lab/stl_cost/stl_cost.py`). A
+  request of more than 32 inner passes (`inner_iter·(outer_iter + 1)`, the
+  robust default's count) whose work exceeds 2^32 units — about half a
+  minute — is refused before any smoothing, naming the count and its
+  largest admissible value (or, when no single count fits with the others
+  held fixed, the pass count to reduce them to together); the default
+  counts are never refused. On the
+  96-observation monthly series of the audit that is `inner_iter <= 770397`
+  (which ran in 29.8 s); `inner_iter=2**31`, which used to run for about a
+  day holding the interpreter, is refused in under a millisecond.
 
 ### Validated against
 
@@ -411,7 +447,7 @@ cycles (24 inside 168) separate cleanly. `trend` and the robustness
 | `periods` | required | sequence of observations-per-cycle, e.g. `[24, 168]`; a single period is `[12]`; sorted ascending internally |
 | `windows` | `None` | per-period seasonal LOESS window (odd, ≥ 3), paired with the same-index period; `None` → the paper's rule 7 + 4·k over the *sorted* periods: 11, 15, 19, … |
 | `iterate` | `2` | refinement rounds over all periods; 1 is faster and usually close; forced to 1 when only one period survives |
-| STL kwargs | as in `stl` | `trend`, `low_pass`, degrees, `robust`, jumps, `inner_iter`/`outer_iter` are forwarded unchanged to **every** per-period STL pass |
+| STL kwargs | as in `stl` | `trend`, `low_pass`, degrees, `robust`, jumps, `inner_iter`/`outer_iter` are forwarded unchanged to **every** per-period STL pass; with `iterate` they share the STL work budget (Failure modes) |
 
 Deliberate safe-side refusals where statsmodels crashes or degrades
 silently: empty `periods`, duplicate periods, `iterate=0`, and "every
@@ -452,6 +488,15 @@ period was dropped" are teaching `ValueError`s.
   want.
 - **Duplicate periods are refused** rather than silently producing two
   components of the same period (which statsmodels does).
+- **Absurd `iterate`, `inner_iter` or `outer_iter` is refused, not run.**
+  The decomposition runs `iterate` rounds of one STL fit per period, each of
+  `inner_iter·(outer_iter + 1)` inner passes, and is charged against the STL
+  work budget of 2^32 LOESS units (see the STL failure modes): the default
+  counts (at most 32 passes per fit over at most two rounds) are never
+  refused, and past them a request over budget is refused naming the count —
+  `mstl(y, periods=[7, 30], iterate=2**31)` on 240 observations quotes
+  `iterate <= 23628`. With a single surviving period one round runs whatever
+  `iterate` says, as in statsmodels.
 
 ### Validated against
 

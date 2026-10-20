@@ -69,6 +69,7 @@ print(rep["quadrant"], "->", rep["recommendation"])   # UnitRoot -> Difference
 | Cointegration rank (Johansen) | `johansen` | `coint_johansen` | `urca::ca.jo` | `vecrank` |
 | Vector error-correction model | `vecm` | `VECM` | `urca::cajorls`, `vars::vec2var` | `vec` |
 | Residual cointegration test (Engle-Granger / Phillips-Ouliaris) | `engle_granger`, `phillips_ouliaris` | `coint` | `tseries::po.test`, `urca::ca.po` | `egranger` (user) |
+| ARDL bounds test for a level relationship (Pesaran-Shin-Smith) | `ardl_bounds_test` | `UECM(...).fit().bounds_test(case)` | `ARDL::bounds_f_test` | `ardl ..., ec` + `estat ectest` |
 | Bayesian VAR (Minnesota) | `bvar_fit`, `bvar_irf_draws` | — | `BVAR::bvar` | `bayes: var` |
 | Sign-restricted SVAR | `sign_restricted_svar` | — | `VARsignR`, `svars` | — |
 | SVAR long-run (Blanchard-Quah) restrictions | `long_run_svar` | — (`SVAR` is A/B only) | `vars::BQ` | `svar ..., lreq()` |
@@ -103,6 +104,10 @@ print(rep["quadrant"], "->", rep["recommendation"])   # UnitRoot -> Difference
 | Realized variance / bipower | `realized_measures` | — | `highfrequency::rCov`, `rBPCov` | — |
 | HAR-RV | `har_rv` | — | `HARModel::HARestimate` | — |
 | Panel fixed effects | `panel_fe` | — (`linearmodels.PanelOLS`) | `plm(model="within")` | `xtreg, fe` |
+| Panel random effects | `panel_re` | — (`linearmodels.RandomEffects`) | `plm(model="random")` (no parity pinned; unbalanced `swar` differs by construction) | `xtreg, re` (no parity pinned; `sa` differs by construction) |
+| Between estimator | `panel_between` | — (`linearmodels.BetweenOLS`) | `plm(model="between")` | `xtreg, be` (`be wls` = `reweight=True`) |
+| First differences | `panel_fd` | — (`linearmodels.FirstDifferenceOLS`) | `plm(model="fd")` (has an intercept: `constant=True`) | `regress D.y D.x` (has an intercept: `constant=True`) |
+| Fama-MacBeth | `panel_fama_macbeth` | — (`linearmodels.FamaMacBeth`) | `plm::pmg` with the index reversed (approx.) | `xtfmb` (user; parity not claimed) |
 | Driscoll-Kraay standard errors | `panel_fe(se_type="driscoll_kraay")` | — (`PanelOLS(cov_type="driscoll-kraay")`) | `plm` + `vcovSCC` | `xtscc` |
 | Mean-group / CCE-MG estimator | `panel_mean_group` | — | `plm::pmg(model="mg")`, `xtmg` | `xtpmg mg`, `xtmg cce` |
 | Pooled mean group (PMG) | `panel_pmg` | — | `plm::pmg(model="pmg")` | `xtpmg pmg` |

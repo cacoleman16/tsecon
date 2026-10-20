@@ -254,6 +254,11 @@ that prices the cross-section exactly.
   1983-2014 alone the 10-year premium sits ~1.1pp above the full-sample
   estimate at the same 0.97+ correlation). Compare premia only across models
   estimated on the same sample — and expect published vintages to differ.
+- **A maturity in the wrong unit.** `jsz_fit`, `jsz_loadings` and
+  `acm_term_premium` tabulate their affine recursions at every integer period
+  up to the longest maturity, so a maturity above 120000 periods (10,000 years
+  of monthly data) is refused by index (`maturities[i]`) before anything is
+  allocated — it is almost always a maturity in days, or a typo.
 - **Too few excess-return maturities.** `λ₀`/`λ₁` come from a cross-sectional
   regression on β (N×K), so you need strictly more return maturities than
   factors — with `n_factors=5`, at least six `(n−1, n)` pairs in the grid.

@@ -192,9 +192,9 @@ def test_panel_lp_default_returns_no_band_and_the_same_estimates():
 @pytest.mark.parametrize("band", ["sup-t", "sidak", "bonferroni"])
 def test_var_irf_simultaneous_contains_pointwise_cell_by_cell(band):
     y = _var_panel()
-    r = tsecon.var_irf_bands(
-        y, lags=2, horizon=8, band=band, band_n_sim=20_000
-    )
+    # Only the sup-t band simulates; the closed forms refuse band_n_sim as inert.
+    sim = {"band_n_sim": 20_000} if band == "sup-t" else {}
+    r = tsecon.var_irf_bands(y, lags=2, horizon=8, band=band, **sim)
     lower, upper = np.asarray(r["lower"]), np.asarray(r["upper"])
     sim_lo, sim_hi = np.asarray(r["sim_lower"]), np.asarray(r["sim_upper"])
     # The asymptotic branch's lower/upper ARE the symmetric point +/- z*se, so
@@ -485,17 +485,16 @@ def test_var_sup_t_routes_are_reproducible_from_their_seeds():
 
 def test_bootstrap_sup_t_is_reproducible_from_the_bootstrap_seed_alone():
     """On the bootstrap branch the replications ARE the draws, so `seed`
-    reproduces the band and `band_seed` is inert."""
+    reproduces the band and `band_seed` is inert -- and, since audit round 16,
+    refused as inert rather than silently ignored."""
     y = _var_panel()
     kw = dict(lags=2, horizon=6, method="bootstrap", n_boot=300, band="sup-t")
-    a = tsecon.var_irf_bands(y, seed=5, band_seed=1, **kw)
-    b = tsecon.var_irf_bands(y, seed=5, band_seed=1, **kw)
-    c = tsecon.var_irf_bands(y, seed=5, band_seed=987_654, **kw)
-    d = tsecon.var_irf_bands(y, seed=6, band_seed=1, **kw)
+    a = tsecon.var_irf_bands(y, seed=5, **kw)
+    b = tsecon.var_irf_bands(y, seed=5, **kw)
+    d = tsecon.var_irf_bands(y, seed=6, **kw)
+    with pytest.raises(ValueError, match=r"band_seed is not read here"):
+        tsecon.var_irf_bands(y, seed=5, band_seed=987_654, **kw)
     assert np.array_equal(np.asarray(a["sim_lower"]), np.asarray(b["sim_lower"]))
-    assert np.array_equal(
-        np.asarray(a["critical_value"]), np.asarray(c["critical_value"])
-    )
     assert not np.array_equal(
         np.asarray(a["critical_value"]), np.asarray(d["critical_value"])
     )

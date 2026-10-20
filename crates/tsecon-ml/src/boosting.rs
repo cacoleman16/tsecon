@@ -72,6 +72,7 @@
 
 use tsecon_linalg::faer::MatRef;
 
+use crate::budget::check_count;
 use crate::error::MlError;
 use crate::util::{check_xy, columns, dot};
 
@@ -145,7 +146,11 @@ pub struct BoostingFit {
 /// * [`MlError::NonFinite`] on a NaN/infinite entry of `x`, `y`, or
 ///   `x_test`;
 /// * [`MlError::InvalidArgument`] if `learning_rate` is outside `(0, 1]`,
-///   `n_steps == 0`, or every column of `x` has zero norm.
+///   `n_steps == 0`, or every column of `x` has zero norm;
+/// * [`MlError::InvalidValue`] naming `n_steps` when the paths it sizes,
+///   `n_steps x (n + p + 10)` values, exceed the crate's
+///   [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget (checked before
+///   anything is allocated).
 pub fn boosting(
     x: MatRef<'_, f64>,
     y: &[f64],
@@ -190,6 +195,26 @@ pub fn boosting(
             what: "n_steps must be at least 1",
         });
     }
+    // Every step keeps its operator factor w (n values), its coefficient
+    // vector (p) and four path scalars, each Vec with a 3-word header; the
+    // design copy, the Gram matrix and the fit vectors are fixed.
+    let m_test = x_test.map_or(0, |xt| xt.nrows());
+    let per_step = n.checked_add(p).and_then(|v| v.checked_add(10));
+    check_count(
+        "n_steps",
+        steps,
+        1,
+        "the boosting paths (n_steps x (n + p + 10): the operator factors, the \
+         coefficient path and the per-step scalars)",
+        |m| {
+            m.checked_mul(per_step?)?
+                .checked_add(n.checked_mul(p)?)?
+                .checked_add(p.checked_mul(p)?)?
+                .checked_add(n.checked_mul(4)?)?
+                .checked_add(p.checked_mul(5)?)?
+                .checked_add(m_test)
+        },
+    )?;
 
     let cols = columns(x);
     let norm2: Vec<f64> = cols.iter().map(|c| dot(c, c)).collect();

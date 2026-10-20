@@ -778,8 +778,20 @@ fn check_finite(mat: &Mat<f64>, what: &'static str) -> Result<(), SsmError> {
 /// helper), then positive semidefiniteness via the bounded jitter-ladder
 /// Cholesky — a matrix the ladder cannot factorize is genuinely
 /// indefinite. Returns the exactly-symmetrized matrix.
+///
+/// A diagonal matrix with a nonnegative diagonal is PSD by inspection and
+/// is returned as it is (it is already exactly symmetric), without the
+/// copies and the `O(n^3)` factorization: an `N x N` diagonal observation
+/// covariance — the idiosyncratic variances of a dynamic factor model over
+/// thousands of series — would otherwise cost seconds and several `N x N`
+/// buffers to confirm what its diagonal already says. Anything else,
+/// including a diagonal with a negative entry, takes the ladder as before,
+/// so no matrix changes verdict.
 fn check_psd(mat: Mat<f64>, what: &'static str) -> Result<Mat<f64>, SsmError> {
     let n = mat.nrows();
+    if is_nonnegative_diagonal(mat.as_ref()) {
+        return Ok(mat);
+    }
     let mut scale = 0.0f64;
     for j in 0..n {
         for i in 0..n {
@@ -798,5 +810,74 @@ fn check_psd(mat: Mat<f64>, what: &'static str) -> Result<Mat<f64>, SsmError> {
         Ok(_) => Ok(sym),
         Err(LinalgError::JitterExhausted { .. }) => Err(SsmError::NotPsd { what }),
         Err(e) => Err(SsmError::Linalg(e)),
+    }
+}
+
+/// True when `m` is square, every off-diagonal entry is exactly zero and
+/// every diagonal entry is `>= 0` — PSD by inspection (see [`check_psd`]).
+fn is_nonnegative_diagonal(m: MatRef<'_, f64>) -> bool {
+    if m.nrows() != m.ncols() {
+        return false;
+    }
+    for j in 0..m.ncols() {
+        for i in 0..m.nrows() {
+            let v = m[(i, j)];
+            let ok = if i == j { v >= 0.0 } else { v == 0.0 };
+            if !ok {
+                return false;
+            }
+        }
+    }
+    true
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The ladder path the diagonal fast path short-circuits.
+    fn ladder(mat: &Mat<f64>) -> Result<Mat<f64>, LinalgError> {
+        let sym = symmetrize(mat.as_ref())?;
+        jittered_cholesky(sym.as_ref()).map(|_| sym)
+    }
+
+    #[test]
+    fn a_nonnegative_diagonal_takes_the_fast_path_with_the_ladder_verdict() {
+        for diag in [vec![0.5, 0.0, 2.0, 1e-300, 7e200], vec![0.0; 6], vec![1.0]] {
+            let n = diag.len();
+            let m = Mat::from_fn(n, n, |i, j| if i == j { diag[i] } else { 0.0 });
+            assert!(is_nonnegative_diagonal(m.as_ref()));
+            let fast = check_psd(m.clone(), "H").unwrap();
+            let slow = ladder(&m).unwrap();
+            for j in 0..n {
+                for i in 0..n {
+                    assert_eq!(fast[(i, j)].to_bits(), slow[(i, j)].to_bits());
+                }
+            }
+        }
+    }
+
+    #[test]
+    fn anything_else_still_takes_the_ladder() {
+        // A negative diagonal entry, a nonzero off-diagonal: not the fast
+        // path, so the verdict is the ladder's.
+        let neg = Mat::from_fn(3, 3, |i, j| match (i, j) {
+            (1, 1) => -1.0,
+            (i, j) if i == j => 1.0,
+            _ => 0.0,
+        });
+        assert!(!is_nonnegative_diagonal(neg.as_ref()));
+        assert!(matches!(
+            check_psd(neg, "H"),
+            Err(SsmError::NotPsd { what: "H" })
+        ));
+        let full = Mat::from_fn(2, 2, |i, j| if i == j { 1.0 } else { 0.5 });
+        assert!(!is_nonnegative_diagonal(full.as_ref()));
+        assert!(check_psd(full, "Q").is_ok());
+        let indefinite = Mat::from_fn(2, 2, |i, j| if i == j { 1.0 } else { 2.0 });
+        assert!(matches!(
+            check_psd(indefinite, "Q"),
+            Err(SsmError::NotPsd { what: "Q" })
+        ));
     }
 }

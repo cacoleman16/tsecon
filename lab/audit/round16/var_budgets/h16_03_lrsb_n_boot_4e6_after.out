@@ -1,0 +1,3 @@
+n_boot=250000: rc=0 returned in 7.5 s; peak RSS 0.12 GB = 477 bytes/draw (budget counts 64 values = 512 bytes/draw) []
+n_boot=1000000: rc=0 returned in 31.3 s; peak RSS 0.32 GB = 318 bytes/draw (budget counts 64 values = 512 bytes/draw) []
+n_boot=4000000: rc=0 returned in 128.7 s; peak RSS 1.12 GB = 280 bytes/draw (budget counts 64 values = 512 bytes/draw) []

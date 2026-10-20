@@ -1,0 +1,8 @@
+tsecon 0.10.0, python 3.13.16, x86_64, 4 logical CPUs (shared machine)
+
+longest n whose default order fits 2^26 design entries:
+  adf(regression='n'): n <= 621486
+  adf(regression='c'): n <= 615785
+  adf(regression='ct'): n <= 610188
+  dfgls / ng_perron: n <= 621486
+  arch_lm(nlags=4): n <= 16777220

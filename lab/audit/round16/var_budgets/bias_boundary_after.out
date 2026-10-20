@@ -1,0 +1,6 @@
+vib k=3: largest admitted n_boot = 1056780
+ran in 69.8 s, peak RSS 1.16 GiB
+rc=0
+lrsb k=3: largest admitted n_boot = 1016750
+ran in 72.3 s, peak RSS 1.19 GiB
+rc=0

@@ -182,9 +182,26 @@ CALLS = {
         {"horizon": 6},
     ),
     "historical_decomposition": ((_var3(),), {}),
+    # 0.11.0: the arbitrary-impact mode adds `impact` and `shock_covariance`.
+    "historical_decomposition[impact]": (
+        (_var3(),),
+        {"identification": "impact", "impact": np.eye(3) + 0.2 * np.tri(3, k=-1)},
+    ),
+    # 0.11.0: every key, conditional ones included, on both arms.
+    "long_run_svar_bands": ((_var3(),), {"horizon": 6, "n_boot": 30, "impact_signs": [(0, 1)]}),
+    "long_run_svar_bands[draws+sup-t]": (
+        (_var3(),),
+        {"horizon": 6, "n_boot": 30, "return_draws": True, "band": "sup-t", "bias_correct": True},
+    ),
+    "long_run_svar_bands[asymptotic]": (
+        (_var3(),),
+        {"horizon": 6, "method": "asymptotic", "band": "sup-t", "band_n_sim": 2000, "cumulative": True},
+    ),
     "historical_decomposition[sign]": (
         (_var3(),),
-        {"identification": "sign", "restrictions": POS, "n_draws": 40, "n_weight_draws": 20, "seed": 0},
+        # n_weight_draws is only read under narrative_restrictions (refused
+        # as inert without them since audit round 16), so it is not passed.
+        {"identification": "sign", "restrictions": POS, "n_draws": 40, "seed": 0},
     ),
     "narrative_svar": ((_var3(), POS), {"horizon": 6, "n_draws": 40, "seed": 0}),
     "gpd_fit": ((np.abs(np.random.default_rng(0).standard_t(4, 200)),), {}),
@@ -384,6 +401,17 @@ def test_panel_card_lists_the_stamped_keys():
     did_line = next(l for l in card.splitlines() if l.startswith("- **`lp_did`** →"))
     for k in ("absorbing", "nonabsorbing_lag", "reweight", "pooled", "never_treated_only", "se_type"):
         assert f'"{k}"' in did_line
+    # 0.11.0: the static menu stamps its options too
+    for name, stamped in (
+        ("panel_re", ("se_type", "constant", "small_sample")),
+        ("panel_between", ("se_type", "constant", "reweight")),
+        ("panel_fd", ("se_type", "constant")),
+        ("panel_fama_macbeth", ("se_type", "constant", "bandwidth")),
+        ("panel_fe", ("se_type",)),
+    ):
+        line = next(l for l in card.splitlines() if l.startswith(f"- **`{name}`** →"))
+        for k in stamped:
+            assert f'"{k}"' in line, (name, k)
 
 
 def test_volatility_card_states_the_egarch_forecast_limit():

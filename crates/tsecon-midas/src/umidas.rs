@@ -133,12 +133,17 @@ fn fit_design(y: &[f64], columns: Vec<Vec<f64>>, se_type: SeType) -> Result<Mida
     let inference = fit.inference(se_type)?;
 
     let n = fit.nobs;
-    let rss: f64 = fit.residuals.iter().map(|u| u * u).sum();
+    // Both sums of squares are formed on y and the residuals divided by the
+    // power of two at or below max |y_t|: exact, so it changes no bit of an
+    // ordinary R-squared, and it keeps the squares of a finite series near
+    // 1e154 from overflowing into an inf / inf = NaN.
+    let s = pow2_scale(y);
+    let rss: f64 = fit.residuals.iter().map(|u| (u / s) * (u / s)).sum();
     let rsquared = if n == 0 {
         f64::NAN
     } else {
-        let ybar = y.iter().sum::<f64>() / n as f64;
-        let tss: f64 = y.iter().map(|v| (v - ybar).powi(2)).sum();
+        let ybar = y.iter().map(|v| v / s).sum::<f64>() / n as f64;
+        let tss: f64 = y.iter().map(|v| (v / s - ybar).powi(2)).sum();
         if tss > 0.0 {
             1.0 - rss / tss
         } else {
@@ -156,4 +161,19 @@ fn fit_design(y: &[f64], columns: Vec<Vec<f64>>, se_type: SeType) -> Result<Mida
         nparams: fit.nparams,
         rsquared,
     })
+}
+
+/// The power of two at or just below `max_t |v_t|` (1 for an all-zero or
+/// non-finite maximum; the smallest normal power for a subnormal one).
+fn pow2_scale(v: &[f64]) -> f64 {
+    let m = v.iter().fold(0.0_f64, |a, x| a.max(x.abs()));
+    if m == 0.0 || !m.is_finite() {
+        return 1.0;
+    }
+    let exponent_bits = m.to_bits() & (0x7ff_u64 << 52);
+    if exponent_bits == 0 {
+        f64::MIN_POSITIVE
+    } else {
+        f64::from_bits(exponent_bits)
+    }
 }

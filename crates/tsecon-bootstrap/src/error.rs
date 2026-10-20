@@ -51,6 +51,26 @@ pub enum BootstrapError {
     /// An error bubbled up from the RNG seeding hierarchy (e.g. the
     /// SeedSequence spawn limit when requesting too many replications).
     Rng(RngError),
+    /// A replication count beyond a budget, refused before any replication
+    /// runs: the result vector of [`crate::par_replicate`] /
+    /// [`crate::replicate`] past [`crate::MAX_REPLICATION_BYTES`], or a
+    /// bootstrap p-value's `n_boot` past [`crate::MAX_TEST_REPLICATIONS`].
+    /// Callers rewrite it to name their own keyword.
+    TooManyReplications {
+        /// The replication count requested.
+        n_reps: usize,
+        /// The largest admissible count.
+        max: usize,
+    },
+    /// A resample longer than [`crate::MAX_RESAMPLE_LEN`] was requested
+    /// from [`crate::indices`], refused before the index vector is
+    /// allocated.
+    SampleTooLong {
+        /// The requested resample length.
+        n: usize,
+        /// The largest admissible length.
+        max: usize,
+    },
 }
 
 impl fmt::Display for BootstrapError {
@@ -81,6 +101,17 @@ impl fmt::Display for BootstrapError {
                 write!(f, "series contains NaN or infinite values")
             }
             BootstrapError::Rng(e) => write!(f, "rng error: {e}"),
+            BootstrapError::TooManyReplications { n_reps, max } => write!(
+                f,
+                "{n_reps} bootstrap replications exceed the {max} one call accepts \
+                 (checked before any replication runs); request fewer replications"
+            ),
+            BootstrapError::SampleTooLong { n, max } => write!(
+                f,
+                "n = {n} exceeds the largest resample length, n = {max} (2^28 indices, \
+                 a 2 GiB index vector), checked before anything is allocated; a \
+                 bootstrap resample has the length of the sample it indexes"
+            ),
         }
     }
 }

@@ -351,15 +351,22 @@ pub fn girf<M: GirfModel>(
     let cells = (opts.horizon + 1) * k;
     check_budget(n_hist, n_draws, n_streams, cells)?;
 
-    let mut root = SeedSequence::new(u128::from(opts.seed));
-    let hist_seqs = root.spawn(n_hist).map_err(|_| spawn_error("histories"))?;
+    // History i's sequence is child i of SeedSequence(seed), derived inside
+    // its task: bit-identical to spawning all n_hist children up front, but
+    // with no vector of them, which check_budget does not count.
+    Stream::check_substream_count(n_hist).map_err(|_| spawn_error("histories"))?;
+    let root = SeedSequence::new(u128::from(opts.seed));
 
     // One task per history, sequential over its draws; results land at
     // their history index, so nothing depends on scheduling.
     let outs: Vec<Result<HistoryOut, VarError>> = histories
         .par_iter()
-        .zip(hist_seqs.par_iter())
-        .map(|(hist, seq)| simulate_history(model, hist, seq, &states, opts, n_streams))
+        .enumerate()
+        .map(|(i, hist)| {
+            // check_substream_count bounds n_hist by 2^32, so i fits a u32.
+            let seq = root.child(i as u32);
+            simulate_history(model, hist, &seq, &states, opts, n_streams)
+        })
         .collect();
     let mut results = Vec::with_capacity(n_hist);
     for out in outs {
@@ -796,8 +803,10 @@ fn simulate_history<M: GirfModel>(
     }
     let shock0 = &states.shocks[state0];
 
-    let mut seq = seq.clone();
-    let draw_seqs = seq.spawn(n_streams).map_err(|_| spawn_error("draws"))?;
+    // Draw stream r is child r of this history's (fresh) sequence, derived
+    // as it is used: bit-identical to spawning all n_streams children up
+    // front, but O(1) in n_draws (a vector of them is not in check_budget).
+    Stream::check_substream_count(n_streams).map_err(|_| spawn_error("draws"))?;
 
     // Draw values, cell-major: vals[cell * n_draws + r]. Fallible
     // allocations: below the budget an allocator refusal is still an
@@ -815,8 +824,9 @@ fn simulate_history<M: GirfModel>(
     let mut diff = vec![0.0f64; cells];
 
     let mut r = 0usize;
-    for (s_idx, dseq) in draw_seqs.iter().enumerate() {
-        let mut stream = Stream::from_seed_sequence(dseq);
+    for s_idx in 0..n_streams {
+        // check_substream_count bounds n_streams by 2^32, so s_idx fits a u32.
+        let mut stream = Stream::from_seed_sequence(&seq.child(s_idx as u32));
         for e in eps.iter_mut() {
             *e = WildWeights::Normal.draw(&mut stream);
         }

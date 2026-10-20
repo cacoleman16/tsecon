@@ -36,6 +36,9 @@ impl VarResults {
     /// # Errors
     ///
     /// * [`VarError::InvalidArgument`] if `periods == 0`;
+    /// * [`VarError::SizeBudget`] naming `horizon` (the Python keyword for
+    ///   `periods`) beyond the shared size budget, checked before anything
+    ///   is allocated;
     /// * [`VarError::NotPositiveDefinite`] if `sigma_u` has no Cholesky
     ///   factor.
     pub fn fevd(&self, periods: usize) -> Result<Fevd, VarError> {
@@ -46,6 +49,17 @@ impl VarResults {
             });
         }
         let k = self.neqs;
+        // `periods` decompositions read `periods` moving-average matrices, so
+        // the refusal counts (and reports) the caller's own number.
+        crate::budget::check_cube(
+            crate::budget::HORIZON_WHAT,
+            "horizon",
+            periods,
+            1,
+            0,
+            k,
+            crate::budget::CUBE_COPIES,
+        )?;
         let orth = self.orth_ma_rep(periods - 1)?;
         let mut decomp = vec![Mat::<f64>::zeros(periods, k); k];
         // Running sums of squared orthogonalized responses per (i, j).

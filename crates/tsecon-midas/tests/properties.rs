@@ -244,3 +244,51 @@ fn umidas_is_free_lag_limit_of_weighted() {
         );
     }
 }
+
+// ---------------------------------------------------------------------------
+// Audit round 16 (A7): the lag-count budget.
+// ---------------------------------------------------------------------------
+
+/// A lag count beyond `MAX_WEIGHT_LAGS` (2^27) is refused by name before
+/// anything is allocated, by every weight construction (`k = 2^31` used to
+/// request 16 GiB and abort the process); the message states the largest
+/// admissible `k`. Ordinary lag counts are untouched (the goldens pin them).
+#[test]
+fn weight_lag_counts_beyond_the_budget_are_refused_before_allocating() {
+    use tsecon_midas::{MidasError, MAX_WEIGHT_LAGS};
+    assert_eq!(MAX_WEIGHT_LAGS, 1 << 27);
+    for k in [MAX_WEIGHT_LAGS + 1, 1 << 31, 1 << 40, usize::MAX] {
+        let cases = [
+            (
+                "exponential-Almon weights",
+                exp_almon_weights(0.1, -0.01, k).map(|_| ()),
+            ),
+            ("Beta weights", beta_weights(1.0, 5.0, k).map(|_| ())),
+            ("Almon weights", almon_weights(&[1.0, 0.5], k).map(|_| ())),
+            ("Almon PDL basis", almon_pdl_basis(k, 2).map(|_| ())),
+        ];
+        for (what, r) in cases {
+            let err = r.unwrap_err();
+            assert_eq!(
+                err,
+                MidasError::TooManyLags {
+                    what,
+                    k,
+                    max: MAX_WEIGHT_LAGS
+                }
+            );
+            let msg = err.to_string();
+            assert!(
+                msg.contains(&format!("k = {k} high-frequency lags"))
+                    && msg.contains("largest admissible k = 134217728"),
+                "{msg}"
+            );
+        }
+    }
+    // Hyperparameters are still validated (after the cheap size check).
+    assert!(matches!(
+        exp_almon_weights(f64::NAN, -0.01, 12).unwrap_err(),
+        MidasError::InvalidWeightParam { name: "theta1", .. }
+    ));
+    assert_eq!(exp_almon_weights(0.1, -0.01, 12).unwrap().len(), 12);
+}

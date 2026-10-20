@@ -498,7 +498,7 @@ pub fn cv_criterion(
     kind: RegressionKind,
     block: usize,
 ) -> Result<f64, MlError> {
-    let d = build_design(x, y, kind, block)?;
+    let d = build_design(x, y, kind, block, false)?;
     check_fixed_bandwidth(bandwidth, d.k)?;
     let mut w = vec![0.0; d.n];
     Ok(criterion_at(&d, kind, bandwidth, block, &mut w))
@@ -507,11 +507,16 @@ pub fn cv_criterion(
 /// Validates the column count and the sample size (the sufficiency check
 /// runs before any design work, so an empty `x` reports insufficiency
 /// rather than a bare empty-input error), then the entries.
+///
+/// `named_block` marks a `half` the caller passed as `block`: when the
+/// sample would suffice at `block = 1` and only the requested width leaves
+/// it short, the refusal names `block` and its largest admissible value.
 fn build_design(
     x: MatRef<'_, f64>,
     y: &[f64],
     kind: RegressionKind,
     half: usize,
+    named_block: bool,
 ) -> Result<Design, MlError> {
     let k = x.ncols();
     if k == 0 {
@@ -528,11 +533,30 @@ fn build_design(
             ),
         });
     }
+    let n = x.nrows();
     let needed = min_observations(k, kind, half);
-    if x.nrows() < needed {
+    let short = needed.is_none_or(|v| n < v);
+    let remaining = remaining_rows(k, kind);
+    if short && named_block && min_observations(k, kind, 1).is_some_and(|v| n >= v) {
+        let needed = needed.map_or_else(|| "more than 2^64".to_string(), |v| v.to_string());
+        let dropped = half
+            .checked_mul(2)
+            .and_then(|v| v.checked_add(1))
+            .map_or_else(|| "more than 2^64".to_string(), |v| v.to_string());
+        return Err(MlError::InvalidValue {
+            what: format!(
+                "block = {half} excludes 2 * block + 1 = {dropped} rows around each \
+                 observation, leaving fewer than the {remaining} rows each local fit needs \
+                 out of the {n} rows of x (insufficient data: {n} observations, at least \
+                 {needed} required); block can be at most {} for these {n} rows",
+                (n - remaining - 1) / 2
+            ),
+        });
+    }
+    if short {
         return Err(MlError::InsufficientData {
-            needed,
-            got: x.nrows(),
+            needed: needed.unwrap_or(usize::MAX),
+            got: n,
             what: "kernel_regression",
         });
     }
@@ -548,12 +572,16 @@ fn build_design(
 /// The smallest sample the local fits can be computed from once the
 /// exclusion window (`2 * half + 1` rows) is removed: `k + 1` remaining
 /// rows for local linear, one for Nadaraya-Watson.
-fn min_observations(k: usize, kind: RegressionKind, half: usize) -> usize {
-    let remaining = match kind {
+fn min_observations(k: usize, kind: RegressionKind, half: usize) -> Option<usize> {
+    remaining_rows(k, kind).checked_add(half.checked_mul(2)?.checked_add(1)?)
+}
+
+/// Rows each local fit needs once the exclusion window is removed.
+fn remaining_rows(k: usize, kind: RegressionKind) -> usize {
+    match kind {
         RegressionKind::LocalLinear => k + 1,
         RegressionKind::NadarayaWatson => 1,
-    };
-    remaining + 2 * half + 1
+    }
 }
 
 fn check_fixed_bandwidth(bw: &[f64], k: usize) -> Result<(), MlError> {
@@ -814,7 +842,10 @@ fn select_bandwidth(
 ///   everywhere in the search range;
 /// * [`MlError::InsufficientData`] if fewer than `k + 2 + 2 * block`
 ///   (local linear) or `2 + 2 * block` (Nadaraya-Watson) rows remain to
-///   fit from — `block = 0` outside `"block_cv"`.
+///   fit from — `block = 0` outside `"block_cv"` — and
+///   [`MlError::InvalidValue`] naming `block` and its largest admissible
+///   value when the sample would suffice at `block = 1` and only the
+///   requested `block` leaves it short.
 pub fn kernel_regression(
     x: MatRef<'_, f64>,
     y: &[f64],
@@ -846,7 +877,10 @@ pub fn kernel_regression(
         }
         _ => (0, None),
     };
-    let d = build_design(x, y, kind, half)?;
+    // A block the caller named (not the ceil(n^(1/3)) default) is refused by
+    // name when it alone leaves the sample short.
+    let named_block = matches!(opts.bandwidth, BandwidthSpec::BlockCv { block: Some(_) });
+    let d = build_design(x, y, kind, half, named_block)?;
     if let Some(xt) = x_test {
         if xt.ncols() != d.k {
             return Err(MlError::DimensionMismatch {

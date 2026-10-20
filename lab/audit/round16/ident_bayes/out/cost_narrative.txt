@@ -1,0 +1,3 @@
+n=3 T=160 D=20000 K=200: 12.69s accepted=15417 units=6.480e+09 ns/unit=1.959
+n=4 T=400 D=20 K=20000: 1.72s accepted=11 units=2.733e+09 ns/unit=0.629
+n=4 T=400 D=100 K=10000: 4.39s accepted=54 units=6.832e+09 ns/unit=0.643

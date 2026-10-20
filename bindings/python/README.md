@@ -44,8 +44,8 @@ Then check what you got:
 
 ```python
 import tsecon
-print(tsecon.__version__)                                       # 0.7.0
-print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 162
+print(tsecon.__version__)                                       # 0.11.0
+print(sum(callable(getattr(tsecon, n)) for n in dir(tsecon)     # 206
           if not n.startswith("_")))
 ```
 

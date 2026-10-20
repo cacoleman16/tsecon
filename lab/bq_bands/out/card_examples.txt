@@ -1,0 +1,13 @@
+# --- long_run_svar_bands ---
+       Efron  output level <- demand, 90%: h=0: [+0.151, +0.610], h=4: [-0.228, +0.021], h=20: [-0.001, +0.000]
+Efron+Kilian  output level <- demand, 90%: h=0: [+0.130, +0.607], h=4: [-0.243, +0.038], h=20: [-0.001, +0.000]
+       delta  output level <- demand, 90%: h=0: [+0.141, +0.609], h=4: [-0.241, +0.017], h=20: [-0.000, +0.000]
+imposed long-run zero, every arm: se [0.0, 0.0, 0.0] band [(0.0, 0.0), (0.0, 0.0), (0.0, 0.0)]
+min_root 1.749  n_unstable_draws 0  sign_anchor_mismatches [2]
+
+# --- historical_decomposition(identification='impact') ---
+adding-up  max|y - baseline - sum_j hd|: 2.220446049250313e-15
+shock_covariance:
+ [[0.977273 0.      ]
+ [0.       0.977273]]
+(T_eff - m) / T_eff = 0.977273

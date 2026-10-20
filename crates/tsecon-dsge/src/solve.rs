@@ -73,14 +73,19 @@ impl fmt::Display for BlanchardKahnVerdict {
             Self::Indeterminate { n_unstable, n_jump } => write!(
                 f,
                 "indeterminate: {n_unstable} unstable eigenvalue(s) < {n_jump} \
-                 jump variable(s), so a continuum of stable solutions exists — add \
-                 a jump variable or a forward-looking equation"
+                 jump variable(s) (the variables past n_predetermined), so a continuum \
+                 of stable solutions exists — check n_predetermined (a variable the \
+                 past fixes is predetermined, not a jump), or change the calibration so \
+                 that the model has one explosive root per jump (for a policy rule, the \
+                 Taylor principle)"
             ),
             Self::NoStableSolution { n_unstable, n_jump } => write!(
                 f,
                 "no stable solution: {n_unstable} unstable eigenvalue(s) > \
-                 {n_jump} jump variable(s), so every path explodes — remove a jump \
-                 variable or add a predetermined state"
+                 {n_jump} jump variable(s) (the variables past n_predetermined), so \
+                 every path explodes — check n_predetermined (a forward-looking variable \
+                 is a jump, not predetermined), or change the calibration so that the \
+                 model has no more explosive roots than jumps"
             ),
         }
     }

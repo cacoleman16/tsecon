@@ -52,6 +52,30 @@ pub enum MgarchError {
     },
     /// A forecast horizon of zero was requested.
     InvalidHorizon,
+    /// The requested forecast horizon is past the size budget for this many
+    /// series (see [`crate::check_forecast_horizon`]); checked before
+    /// anything is allocated.
+    ForecastTooLarge {
+        /// The requested horizon.
+        horizon: usize,
+        /// The number of series.
+        k: usize,
+        /// The largest horizon that fits for `k` series.
+        max_horizon: usize,
+    },
+    /// The lag length of the constant-correlation test is too long for the
+    /// sample or past its size budget (see
+    /// [`crate::constant_correlation_test`]).
+    LagsTooLong {
+        /// The requested lag length.
+        lags: usize,
+        /// The number of time observations.
+        nobs: usize,
+        /// The largest lag length that fits.
+        max_lags: usize,
+        /// Which requirement binds.
+        why: &'static str,
+    },
     /// The requested forecast has no analytic form in this release (DCC
     /// multi-step forecasts require simulation).
     UnsupportedForecast {
@@ -102,6 +126,28 @@ impl fmt::Display for MgarchError {
                 "invalid parameter {name} = {value}: requires {requirement}"
             ),
             Self::InvalidHorizon => write!(f, "forecast horizon must be at least 1"),
+            Self::ForecastTooLarge {
+                horizon,
+                k,
+                max_horizon,
+            } => write!(
+                f,
+                "forecast_horizon = {horizon} is too large for a forecast of {k} series: every \
+                 step materialises the k x k forecast matrices, the per-series variances and \
+                 their Python nested lists, and the horizon is capped at 1000000 steps and at \
+                 a working set of 2^28 values (2 GiB), checked before anything is allocated; \
+                 with k = {k} series forecast_horizon can be at most {max_horizon}"
+            ),
+            Self::LagsTooLong {
+                lags,
+                nobs,
+                max_lags,
+                why,
+            } => write!(
+                f,
+                "lags = {lags} is invalid for {nobs} observations: {why}; lags can be at most \
+                 {max_lags} here"
+            ),
             Self::UnsupportedForecast { what } => {
                 write!(f, "unsupported forecast: {what}")
             }

@@ -48,6 +48,28 @@ use crate::error::MidasError;
 /// shape parameter is below one, matching the reference MIDAS packages.
 pub const BETA_EPS: f64 = 1e-8;
 
+/// The most high-frequency lags `K` a weight profile is built for:
+/// 2^27 = 134 217 728.
+///
+/// The exponential-Almon and Beta profiles hold two `K`-long buffers at once
+/// (the log-weights and their exponentials), so the cap keeps the working
+/// set at 2^28 doubles (2 GiB), the house convention; a MIDAS lag window is
+/// tens to a few thousand lags. It is checked before anything is allocated:
+/// `K = 2^31` used to request 16 GiB and abort the process.
+pub const MAX_WEIGHT_LAGS: usize = 1 << 27;
+
+/// Refuse a lag count beyond [`MAX_WEIGHT_LAGS`] by name, before allocating.
+fn check_lag_budget(what: &'static str, k: usize) -> Result<(), MidasError> {
+    if k > MAX_WEIGHT_LAGS {
+        return Err(MidasError::TooManyLags {
+            what,
+            k,
+            max: MAX_WEIGHT_LAGS,
+        });
+    }
+    Ok(())
+}
+
 /// Exponential-Almon lag weights,
 /// `w_k proportional to exp(theta1 k + theta2 k^2)`, `k = 1..=K`, normalized
 /// to sum to one (Ghysels, Sinko & Valkanov 2007).
@@ -60,6 +82,7 @@ pub const BETA_EPS: f64 = 1e-8;
 /// # Errors
 ///
 /// [`MidasError::InvalidLagCount`] if `k == 0`;
+/// [`MidasError::TooManyLags`] if `k` exceeds [`MAX_WEIGHT_LAGS`] (2^27);
 /// [`MidasError::InvalidWeightParam`] if `theta1` or `theta2` is non-finite;
 /// [`MidasError::DegenerateWeights`] if the shifted mass is not finite and
 /// positive (only reachable at pathological hyperparameters).
@@ -71,6 +94,7 @@ pub fn exp_almon_weights(theta1: f64, theta2: f64, k: usize) -> Result<Vec<f64>,
             needed: 1,
         });
     }
+    check_lag_budget("exponential-Almon weights", k)?;
     check_param("exponential-Almon weights", "theta1", theta1, true)?;
     check_param("exponential-Almon weights", "theta2", theta2, true)?;
 
@@ -95,9 +119,10 @@ pub fn exp_almon_weights(theta1: f64, theta2: f64, k: usize) -> Result<Vec<f64>,
 /// # Errors
 ///
 /// [`MidasError::InvalidLagCount`] if `k < 2` (the `x_k` grid is degenerate
-/// for a single lag); [`MidasError::InvalidWeightParam`] if `t1` or `t2` is
-/// non-finite or not strictly positive; [`MidasError::DegenerateWeights`] if
-/// the mass is not finite and positive.
+/// for a single lag); [`MidasError::TooManyLags`] if `k` exceeds
+/// [`MAX_WEIGHT_LAGS`] (2^27); [`MidasError::InvalidWeightParam`] if `t1` or
+/// `t2` is non-finite or not strictly positive;
+/// [`MidasError::DegenerateWeights`] if the mass is not finite and positive.
 pub fn beta_weights(t1: f64, t2: f64, k: usize) -> Result<Vec<f64>, MidasError> {
     if k < 2 {
         return Err(MidasError::InvalidLagCount {
@@ -106,6 +131,7 @@ pub fn beta_weights(t1: f64, t2: f64, k: usize) -> Result<Vec<f64>, MidasError> 
             needed: 2,
         });
     }
+    check_lag_budget("Beta weights", k)?;
     check_param("Beta weights", "t1", t1, false)?;
     check_param("Beta weights", "t2", t2, false)?;
 
@@ -135,6 +161,7 @@ pub fn beta_weights(t1: f64, t2: f64, k: usize) -> Result<Vec<f64>, MidasError> 
 /// # Errors
 ///
 /// [`MidasError::InvalidLagCount`] if `k == 0`;
+/// [`MidasError::TooManyLags`] if `k` exceeds [`MAX_WEIGHT_LAGS`] (2^27);
 /// [`MidasError::InvalidPolynomialDegree`] if `degree + 1 > k` (the basis
 /// would have more columns than lags and the restricted design would be
 /// rank-deficient).
@@ -146,6 +173,7 @@ pub fn almon_pdl_basis(k: usize, degree: usize) -> Result<Vec<Vec<f64>>, MidasEr
             needed: 1,
         });
     }
+    check_lag_budget("Almon PDL basis", k)?;
     if degree + 1 > k {
         return Err(MidasError::InvalidPolynomialDegree { degree, k });
     }
@@ -170,6 +198,7 @@ pub fn almon_pdl_basis(k: usize, degree: usize) -> Result<Vec<Vec<f64>>, MidasEr
 /// # Errors
 ///
 /// [`MidasError::InvalidLagCount`] if `k == 0`;
+/// [`MidasError::TooManyLags`] if `k` exceeds [`MAX_WEIGHT_LAGS`] (2^27);
 /// [`MidasError::InvalidWeightParam`] if `coeffs` is empty or non-finite, or
 /// if the polynomial degree exceeds `K - 1`;
 /// [`MidasError::DegenerateWeights`] if the profile sums to a non-finite or
@@ -182,6 +211,7 @@ pub fn almon_weights(coeffs: &[f64], k: usize) -> Result<Vec<f64>, MidasError> {
             needed: 1,
         });
     }
+    check_lag_budget("Almon weights", k)?;
     if coeffs.is_empty() {
         return Err(MidasError::InvalidWeightParam {
             what: "Almon weights",

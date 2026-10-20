@@ -290,8 +290,14 @@ fn model_confidence_set<'py>(
 /// until a step adds nothing (or every model is superior — `arch` raises
 /// there; this stops). The full-set SPA result is returned alongside.
 /// Validation: reproduces `arch.bootstrap.StepM`'s superior set exactly on
-/// arch's own resamples (`studentize=False`), the studentized rule against
-/// the NumPy transcription.
+/// arch's own resamples (`studentize=False`), including multi-step paths
+/// arch completes, the studentized rule against the NumPy transcription.
+/// Family-wise error and power were measured against arch's own StepM on
+/// four seeded designs (n = 200, 5 models, block 8): un-studentized, the
+/// rates agree within Monte Carlo error (FWER 0.0625 against arch's 0.057
+/// at a nominal 0.05 under the least favourable configuration), while the
+/// studentized default over-rejects family-wise at n = 200 (0.1025 at a
+/// nominal 0.05 under that configuration) and falls to 0.065 by n = 800.
 ///
 /// Further arguments, with defaults: `size` (0.05), `block_size` (None:
 /// Politis-White), `reps` (1000), `bootstrap` ("stationary"), `studentize`

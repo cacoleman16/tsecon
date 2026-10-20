@@ -79,7 +79,9 @@
 //! *Journal of Econometrics* 110(2), 293-318. Also Hansen (1996),
 //! *Econometrica* 64(2) (the fixed-regressor bootstrap).
 
-use tsecon_bootstrap::{par_replicate, WildWeights};
+use tsecon_bootstrap::{
+    check_test_replications, par_replicate, WildWeights, MAX_TEST_REPLICATIONS,
+};
 use tsecon_linalg::faer::MatRef;
 
 use crate::error::CointError;
@@ -903,6 +905,47 @@ pub struct HansenSeoTest {
 
 // ------------------------------------------------------------------- fit
 
+/// The most `(beta, gamma)` cells the [`threshold_vecm`] grid search
+/// evaluates: `n_grid_beta * min(n_grid_gamma, n) <= 2^20 = 1 048 576`
+/// (`n` the usable sample, which bounds the feasible gamma candidates; the
+/// default 50 x 300 is 15 000), the same cell budget as the STAR grid in
+/// `tsecon-regime`.
+///
+/// Every beta candidate rebuilds the design and rescans the whole gamma
+/// grid, and the beta grid itself is materialized, so the product sizes
+/// both the work and the allocation. It is checked, with an overflow-proof
+/// product, before the beta grid is allocated: `n_grid_beta = 2^31` used to
+/// request a 16 GiB grid vector and abort the process. The check applies
+/// only when a grid is searched (`beta = None`, `n_grid_beta > 1`,
+/// `beta_span > 0`).
+pub const TVECM_MAX_GRID_CELLS: usize = 1 << 20;
+
+/// Refuse a beta grid whose `(beta, gamma)` product exceeds
+/// [`TVECM_MAX_GRID_CELLS`], naming `n_grid_beta` and its largest
+/// admissible value.
+fn check_beta_grid(
+    n_grid_beta: usize,
+    n_grid_gamma: usize,
+    n_usable: usize,
+) -> Result<(), CointError> {
+    let gamma_cells = n_grid_gamma.min(n_usable).max(1);
+    let cells = n_grid_beta.checked_mul(gamma_cells);
+    if cells.is_some_and(|c| c <= TVECM_MAX_GRID_CELLS) {
+        return Ok(());
+    }
+    Err(CointError::InvalidSpec {
+        what: format!(
+            "n_grid_beta = {n_grid_beta}: the (beta, gamma) grid search would evaluate \
+             n_grid_beta * min(n_grid_gamma, n) = {n_grid_beta} * {gamma_cells} = {} cells \
+             (n = {n_usable} usable rows bounds the gamma candidates), beyond its budget of \
+             {TVECM_MAX_GRID_CELLS} (2^20) cells, checked before the grid is allocated; at \
+             n_grid_gamma = {n_grid_gamma} the largest admissible n_grid_beta is {}",
+            (n_grid_beta as u128) * (gamma_cells as u128),
+            TVECM_MAX_GRID_CELLS / gamma_cells
+        ),
+    })
+}
+
 /// Fit the Hansen-Seo (2002) two-regime threshold VECM by concentrated
 /// Gaussian MLE: grid search over `(beta, gamma)` with per-cell two-regime
 /// OLS, minimizing `ln det SigmaHat`.
@@ -927,6 +970,9 @@ pub struct HansenSeoTest {
 ///   degenerate grid request, `beta[0] = 0`, or `beta = None` with
 ///   `k > 2` (pass the cointegrating vector — the `(k-1)`-dimensional
 ///   grid is not searched);
+/// * [`CointError::InvalidSpec`] when the `(beta, gamma)` grid exceeds
+///   [`TVECM_MAX_GRID_CELLS`] (naming `n_grid_beta` and its largest
+///   admissible value, checked before the grid is allocated);
 /// * [`CointError::NonFinite`] for NaN/infinite data or `beta`;
 /// * [`CointError::ThresholdInsufficientObservations`] when the usable
 ///   sample cannot hold two trimmed regimes;
@@ -997,6 +1043,11 @@ pub fn threshold_vecm(
                 let grid: Vec<f64> = if n_grid_beta == 1 || beta_span == 0.0 {
                     vec![center]
                 } else {
+                    check_beta_grid(
+                        n_grid_beta,
+                        n_grid_gamma,
+                        endog.nrows().saturating_sub(k_ar_diff + 1),
+                    )?;
                     let lo = center - beta_span * se1;
                     let hi = center + beta_span * se1;
                     (0..n_grid_beta)
@@ -1200,6 +1251,16 @@ fn regime_ols(design: &Design, rows: &[usize]) -> Result<RegimeOlsParts, CointEr
 
 // ------------------------------------------------------------------ test
 
+/// The refusal of an `n_boot` beyond the shared [`MAX_TEST_REPLICATIONS`]
+/// cap of the fixed-regressor bootstrap tests, before any work: a count of
+/// 2^31 used to abort the process allocating one RNG stream per
+/// replication, and a merely huge one runs for hours.
+const N_BOOT_CAP: CointError = CointError::InvalidArgument {
+    what: "n_boot must be at most 1000000: the bootstrap p-value's Monte Carlo \
+           standard error, at most 0.5 / sqrt(n_boot), is at most 0.0005 there \
+           (checked before any replication runs); pass n_boot <= 1000000",
+};
+
 /// The Hansen-Seo (2002) sup-LM test of linear cointegration against
 /// two-regime threshold cointegration, p-valued by their fixed-regressor
 /// bootstrap (module docs).
@@ -1214,7 +1275,8 @@ fn regime_ols(design: &Design, rows: &[usize]) -> Result<RegimeOlsParts, CointEr
 /// # Errors
 ///
 /// The input errors of [`threshold_vecm`], plus
-/// [`CointError::InvalidArgument`] for `n_boot = 0` and
+/// [`CointError::InvalidArgument`] for `n_boot = 0` or `n_boot` above
+/// [`MAX_TEST_REPLICATIONS`] (checked before any work) and
 /// [`CointError::Singular`] if the Eicker-White covariance is singular at
 /// some candidate on the observed data.
 pub fn hansen_seo_test(
@@ -1241,6 +1303,11 @@ pub fn hansen_seo_test(
                    recommended; Hansen-Seo used 1000+)",
         });
     }
+    debug_assert_eq!(
+        MAX_TEST_REPLICATIONS, 1_000_000,
+        "N_BOOT_CAP quotes the cap"
+    );
+    check_test_replications(n_boot).map_err(|_| N_BOOT_CAP)?;
     let k = endog.ncols();
     let beta_used = match beta {
         Some(b) => normalize_beta(b, k)?,
@@ -1330,9 +1397,7 @@ pub fn hansen_seo_test(
             Err(_) => f64::INFINITY,
         }
     })
-    .map_err(|_| CointError::InvalidArgument {
-        what: "n_boot exceeds the RNG substream spawn limit (< 2^32)",
-    })?;
+    .map_err(|_| N_BOOT_CAP)?;
 
     let exceed = boot_stats.iter().filter(|&&s| s >= stat).count();
     let p_value = (1 + exceed) as f64 / (n_boot + 1) as f64;

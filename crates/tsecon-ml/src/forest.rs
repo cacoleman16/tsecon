@@ -75,6 +75,7 @@ use rayon::prelude::*;
 use tsecon_linalg::faer::MatRef;
 use tsecon_rng::Stream;
 
+use crate::budget::check_count;
 use crate::error::MlError;
 use crate::importance::{self, Groups};
 use crate::tree::{check_tree_inputs, grow, RegressionTree, TreeOptions};
@@ -429,6 +430,75 @@ fn quantile_predictions(outputs: &[TreeOutput], y: &[f64], quantiles: &[f64]) ->
         .collect()
 }
 
+/// Refuses an `n_trees` or `n_permutations` whose working set exceeds the
+/// crate's [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget, before a single
+/// substream is spawned (a `2^31`-tree request used to allocate one stream
+/// per tree and abort the process).
+///
+/// Per tree the forest keeps a substream (9 words), its row weights and
+/// training predictions (`2 n`), its test predictions (`m`), for a
+/// quantile forest its leaf index (the test leaves, the training rows by
+/// leaf and at least two offsets, `m + n + 2` and three `Vec` headers), its
+/// raw importance (`p`) and at least one node with its `Vec` headers (20
+/// words); the design copy and the aggregates are fixed. The node count is
+/// data-dependent and enters at that minimum, so the count is never above
+/// what the call holds (a grown tree's nodes, ten words each, and the
+/// out-of-bag lists come on top: a forest of depth-4 trees at the largest
+/// admitted `n_trees` holds about twice the budget).
+/// Block-permutation importance then materializes `n_units x
+/// n_permutations` permutations of the `n` rows (`n + 4` values each, with
+/// the header and the replicate's MSE).
+fn check_forest_budget(
+    n: usize,
+    p: usize,
+    x_test: Option<MatRef<'_, f64>>,
+    opts: &ForestOptions,
+    groups: Option<&Groups>,
+    permutation: Option<(usize, usize)>,
+) -> Result<(), MlError> {
+    let m = x_test.map_or(0, |xt| xt.nrows());
+    let n_q = opts.quantiles.as_ref().map_or(0, Vec::len);
+    let leaves = if n_q > 0 { m + n + 11 } else { 0 };
+    let forest = |trees: usize| -> Option<usize> {
+        let per_tree = n
+            .checked_mul(2)?
+            .checked_add(m)?
+            .checked_add(leaves)?
+            .checked_add(p)?
+            .checked_add(29)?;
+        trees
+            .checked_mul(per_tree)?
+            .checked_add(9)?
+            .checked_add(n.checked_mul(p.checked_add(4)?)?)?
+            .checked_add(m.checked_mul(n_q.checked_add(1)?)?)
+    };
+    check_count(
+        "n_trees",
+        opts.n_trees,
+        1,
+        "the forest (per tree: its substream, row weights, predictions and nodes)",
+        forest,
+    )?;
+    if let (Some(g), Some((_, n_perm))) = (groups, permutation) {
+        let n_units = g.members.len();
+        let base = forest(opts.n_trees);
+        check_count(
+            "n_permutations",
+            n_perm,
+            1,
+            "the block-permutation importance (n_units x n_permutations permutations of \
+             the n rows) on top of the forest",
+            |r| {
+                n_units
+                    .checked_mul(r)?
+                    .checked_mul(n.checked_add(4)?)?
+                    .checked_add(base?)
+            },
+        )?;
+    }
+    Ok(())
+}
+
 /// Fits a regression forest to `x` (`n x p`) and `y` (`n`); see the
 /// [module docs](self) for the resampling schemes, the out-of-bag caveat,
 /// quantile forests, and importance.
@@ -438,13 +508,19 @@ fn quantile_predictions(outputs: &[TreeOutput], y: &[f64], quantiles: &[f64]) ->
 /// * [`MlError::EmptyInput`] / [`MlError::DimensionMismatch`] /
 ///   [`MlError::NonFinite`] on malformed `x`, `y`, `x_test`, or
 ///   `importance_groups`;
-/// * [`MlError::InsufficientData`] if `n < max(2, 2 * min_samples_leaf)`;
+/// * [`MlError::InsufficientData`] if `n < 2`, and [`MlError::InvalidValue`]
+///   naming `min_samples_leaf` (and the largest admissible value, `n / 2`)
+///   if `2 * min_samples_leaf > n`;
 /// * [`MlError::InvalidBlockLength`] for a block or permutation block
 ///   outside `1..=n`;
 /// * [`MlError::InvalidArgument`] for `n_trees == 0`, an explicit
 ///   `max_features` outside `1..=p`, malformed `quantiles`, `quantiles`
 ///   without `x_test`, `n_permutations == 0`, or block-permutation
-///   importance under [`Resampling::None`] (no out-of-bag rows to score).
+///   importance under [`Resampling::None`] (no out-of-bag rows to score);
+/// * [`MlError::InvalidValue`] naming `n_trees` or `n_permutations` when
+///   the working set it sizes exceeds the crate's
+///   [`ML_MAX_VALUES`](crate::ML_MAX_VALUES) budget (checked before any
+///   substream is spawned).
 pub fn random_forest(
     x: MatRef<'_, f64>,
     y: &[f64],
@@ -524,10 +600,17 @@ pub fn random_forest(
         }
         Importance::None | Importance::Impurity => None,
     };
+    check_forest_budget(n, p, x_test, opts, groups.as_ref(), permutation)?;
 
     let cols = columns(x);
+    let n_streams = opts
+        .n_trees
+        .checked_add(1)
+        .ok_or(MlError::InvalidArgument {
+            what: "n_trees exceeds the reproducible substream limit",
+        })?;
     let mut streams =
-        Stream::substreams(opts.seed, opts.n_trees + 1).map_err(|_| MlError::InvalidArgument {
+        Stream::substreams(opts.seed, n_streams).map_err(|_| MlError::InvalidArgument {
             what: "n_trees exceeds the reproducible substream limit",
         })?;
     let mut perm_stream = streams.pop().unwrap_or_else(|| Stream::new(opts.seed));

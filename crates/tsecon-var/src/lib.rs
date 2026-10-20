@@ -24,18 +24,33 @@
 //! * [`VarResults::fevd`] — forecast-error variance decomposition;
 //! * [`VarResults::forecast`] / [`VarResults::forecast_interval`] —
 //!   iterated point forecasts with asymptotic (innovation-uncertainty
-//!   only) intervals;
+//!   only) intervals; [`VarResults::forecast_cov_with`] /
+//!   [`VarResults::forecast_interval_with`] add Lütkepohl's
+//!   parameter-uncertainty term `Omega(h)/T` on request
+//!   ([`ForecastOptions`]);
 //! * [`VarResults::conditional_forecast`] — hard-conditioned forecasts
 //!   (Doan-Litterman-Sims / Waggoner-Zha closed form: conditional path,
-//!   covariance and the implied minimum-norm shocks);
+//!   covariance and the implied minimum-norm shocks), and
+//!   [`VarResults::conditional_forecast_soft`] — Gaussian soft conditions
+//!   with stated standard deviations, read as the cell's forecast density
+//!   (Andersson-Palmqvist-Waggoner 2010) or as a noisy reading of the cell
+//!   (Monti 2010) ([`SoftMode`]);
 //! * [`VarResults::diagnostics`] — multivariate Portmanteau (adjusted and
-//!   unadjusted), multivariate Jarque-Bera with its components, and the
-//!   stability roots in one bundle;
+//!   unadjusted), multivariate Jarque-Bera with its components (Cholesky
+//!   and symmetric-root orthogonalisations), the Doornik-Hansen (2008)
+//!   omnibus normality test, and the stability roots in one bundle; the
+//!   three normality tests are also free functions of a residual matrix
+//!   ([`normality_test_cholesky`], [`normality_test_symmetric`],
+//!   [`doornik_hansen_test`]);
 //! * [`girf`] / [`GirfModel`] — the Koop-Pesaran-Potter (1996) generalized
 //!   impulse-response simulation engine shared by every nonlinear model
 //!   (common random numbers, antithetic pairs, Philox substreams per
 //!   history and draw), with [`LinearVarModel`] / [`var_girf`] as its
-//!   exact linear reduction.
+//!   exact linear reduction;
+//! * [`long_run_bootstrap_bands`] / [`long_run_asymptotic_bands`] —
+//!   confidence bands for Blanchard-Quah long-run SVARs, re-identified inside
+//!   every bootstrap draw (optional Kilian bias correction and sup-t bands) or
+//!   by an analytic delta-method Jacobian of the Blanchard-Quah map.
 //!
 //! The results object deliberately exposes `sigma_u`, `coefs`, `resid`,
 //! `params`, and `zz_inv` as public fields so the structural
@@ -44,12 +59,17 @@
 //! Bootstrap IRF confidence bands are `// TODO(phase0)` and will consume
 //! `tsecon-bootstrap` (see `src/irf.rs`).
 //!
+//! Every allocation that scales with a user count is checked against the
+//! shared size budget of [`budget`] before it is made, so an absurd horizon,
+//! step, replication or simulation count is refused by name.
+//!
 //! All fallible routines return [`VarError`]; nothing in this crate
 //! panics on user input.
 
 #![warn(missing_docs)]
 #![warn(clippy::unwrap_used, clippy::expect_used, clippy::panic)]
 
+pub mod budget;
 pub mod causality;
 pub mod conditional;
 pub mod diagnostics;
@@ -61,17 +81,23 @@ pub mod girf;
 pub mod irf;
 pub mod irf_asymptotic;
 pub mod irf_bootstrap;
+pub mod long_run_bands;
 pub mod proxy_bands;
 pub mod results;
 pub mod select;
 pub mod spec;
 
 pub use causality::CausalityTest;
-pub use conditional::ConditionalForecast;
-pub use diagnostics::{NormalityTest, PortmanteauTest, VarDiagnostics};
-pub use error::VarError;
+pub use conditional::{ConditionMode, ConditionalForecast, SoftMode};
+pub use diagnostics::{
+    doornik_hansen_test, normality_max_columns, normality_max_rows, normality_test_cholesky,
+    normality_test_symmetric, normality_tests, normality_values, normality_within_budget,
+    normality_work, DoornikHansenTest, NormalityTest, NormalityTests, PortmanteauTest,
+    VarDiagnostics, DOORNIK_HANSEN_MIN_NOBS, NORMALITY_MAX_VALUES, NORMALITY_WORK_BUDGET,
+};
+pub use error::{NonFiniteCell, VarError};
 pub use fevd::Fevd;
-pub use forecast::ForecastInterval;
+pub use forecast::{ForecastInterval, ForecastOptions, PARAM_UNCERTAINTY_WORK_BUDGET};
 pub use girf::{
     girf, sample_histories, subsample_indices, var_girf, Girf, GirfModel, GirfOptions, GirfShock,
     LinearVarModel, MEMORY_BUDGET_BYTES,
@@ -79,6 +105,9 @@ pub use girf::{
 pub use irf::{ma_rep, Irf};
 pub use irf_asymptotic::irf_asymptotic_se;
 pub use irf_bootstrap::{bootstrap_irf_bands, IrfBands};
+pub use long_run_bands::{
+    long_run_asymptotic_bands, long_run_bootstrap_bands, LongRunBandSpec, LongRunBands,
+};
 pub use results::VarResults;
 pub use select::{select_order, LagOrderCandidate, LagOrderSelection};
 pub use spec::{Trend, VarSpec};

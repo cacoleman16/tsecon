@@ -4,7 +4,7 @@
 //! # Model
 //!
 //! ```text
-//! y_t = mu_t + gamma_t + c_t + beta' x_t + eps_t,   eps_t ~ N(0, sigma2_irregular)
+//! y_t = mu_t + gamma_t + c_t + a_t + beta' x_t + eps_t,   eps_t ~ N(0, sigma2_irregular)
 //! ```
 //!
 //! with the components assembled exactly as statsmodels'
@@ -30,23 +30,55 @@
 //!   `cycle_period_bounds`, whose default upper period is the **sample
 //!   length**: see [`UcSpec::cycle_period_bounds`] for why an unbounded
 //!   period is not a safe default under exact-diffuse initialization;
+//! * **autoregressive** (`a_t`, [`UcSpec::autoregressive`] = `p`): an
+//!   AR(p) block after the cycle in statsmodels' row-companion form,
+//!   `a_{t+1} = phi_1 a_t + ... + phi_p a_{t-p+1} + eta_t`, its
+//!   coefficients estimated inside the stationarity region;
 //! * **regressors** with time-invariant coefficients `beta`, estimated
-//!   jointly by MLE (statsmodels `mle_regression=True`).
+//!   jointly by MLE (statsmodels `mle_regression=True`), or — with
+//!   [`UcSpec::mle_regression`] `= false` — carried as `k` exactly diffuse
+//!   constant states after the AR block with the per-period design row
+//!   `x_t'` (statsmodels `mle_regression=False`).
 //!
-//! Every state is initialized exactly diffuse (Koopman 1997), which is
-//! what statsmodels does under `use_exact_diffuse=True` — including the
-//! cycle states, so the log-likelihoods are directly comparable. The
-//! observation `y` may contain NaN for a missing period; regressors may
-//! not.
+//! Under the defaults every state is initialized exactly diffuse (Koopman
+//! 1997), which is what statsmodels does under `use_exact_diffuse=True` —
+//! including the cycle states — so the log-likelihoods are directly
+//! comparable with statsmodels'. An AR block is always initialized from
+//! its stationary distribution (the Lyapunov solution of its companion
+//! block), exactly as statsmodels has it, so that is comparable too; its
+//! states are not counted as diffuse. Two opt-in switches change the
+//! *definition* of the likelihood, and log-likelihoods, AIC and BIC must
+//! not be compared across either:
+//!
+//! * [`CycleInit::Stationary`] gives a damped stochastic cycle its
+//!   unconditional (Lyapunov) distribution instead of a diffuse prior,
+//!   which removes the cycle's diffuse elements (and the `lambda -> 0`
+//!   singularity that comes with them), so `nobs_diffuse` and `k_diffuse`
+//!   move too;
+//! * `mle_regression = false` makes the likelihood the *marginal*
+//!   (diffuse) likelihood of the variance parameters instead of the
+//!   profile one: at the GLS coefficients the two differ by exactly
+//!   `ln det(P_beta) / 2`, `P_beta` the coefficients' smoothed covariance.
+//!   Because the coefficient states enter through `x_t`, that likelihood
+//!   also depends on the *units* of the regressors — rescaling a column by
+//!   `c` shifts it by exactly `-ln |c|` (the estimates do not move); the
+//!   MLE form is invariant to them. The units also reach the numerics:
+//!   columns many orders of magnitude apart are refused when the
+//!   exact-diffuse filter cannot resolve them (see
+//!   `check_regressor_scales`).
+//!
+//! The observation `y` may contain NaN for a missing period; regressors
+//! may not.
 //!
 //! # Estimation
 //!
 //! The parameters (in statsmodels' order: `sigma2.irregular`, the state
-//! variances in component order, `frequency.cycle`, `damping.cycle`, the
-//! `beta`s) are estimated by BFGS + Nelder-Mead on the exact-diffuse
-//! prediction-error-decomposition log-likelihood, in the square-root /
-//! logistic working space of [`crate::mle`], from a small deterministic
-//! ladder of starts. `y` is standardized by its standard deviation and
+//! variances in component order with `sigma2.ar` last, `frequency.cycle`,
+//! `damping.cycle`, `ar.L1..ar.Lp`, the `beta`s) are estimated by BFGS +
+//! Nelder-Mead on the exact-diffuse prediction-error-decomposition
+//! log-likelihood, in the square-root / logistic / partial-autocorrelation
+//! working space of [`crate::mle`], from a small deterministic ladder of
+//! starts. `y` is standardized by its standard deviation and
 //! each regressor by its largest absolute value for the search and the
 //! estimates mapped back exactly (variances by `s^2`, coefficients by
 //! `s / c_j`); the reported log-likelihood, components and forecasts are
@@ -56,7 +88,11 @@
 //! A variance whose estimate cannot be told from zero (pile-up) is
 //! flagged in `at_boundary` and gets a NaN standard error; see
 //! [`crate::mle`] for the criterion. Standard errors are observed-
-//! information (numerical Hessian in the constrained space).
+//! information (numerical Hessian in the constrained space). When the
+//! variance of a stationary block (`sigma2.ar`; `sigma2.cycle` under the
+//! stationary cycle) is flagged, the block's transition parameters are
+//! unidentified and get NaN as well, and an AR coefficient's Hessian probe
+//! is kept inside the stationarity region.
 //!
 //! # Reporting conventions
 //!
@@ -69,14 +105,15 @@
 //! `v_t / sqrt(F_t)` after the diffuse period and NaN inside it (where no
 //! finite prediction variance exists) and at missing periods.
 
-use tsecon_linalg::faer::Mat;
+use tsecon_linalg::faer::{Mat, MatRef};
 
 use crate::dense::{dot, mat_vec, sandwich};
 use crate::error::SsmError;
 use crate::filter::TOLERANCE_RANK;
-use crate::mle::{maximize, ols, variance, ParamKind, ParamSpec};
+use crate::mle::{maximize_tied, ols, variance, ParamKind, ParamSpec};
 use crate::model::{Initialization, LinearGaussianSSM};
 use crate::smoother::smooth_univariate;
+use tsecon_optim::{OptimError, StationaryAr, Transform};
 
 /// The level / trend specification, in statsmodels' vocabulary (either
 /// the long or the short name parses).
@@ -211,6 +248,60 @@ impl FreqSeasonalSpec {
     }
 }
 
+/// How the two states of the stochastic cycle are initialized.
+///
+/// statsmodels initializes the cycle exactly diffuse, like every other
+/// structural component, and that is the default here. A *damped*
+/// stochastic cycle is a stationary process, though, and
+/// [`CycleInit::Stationary`] gives its two states their unconditional
+/// distribution instead: `a_1 = 0`, `P_1 = sigma2_cycle / (1 - rho^2) I_2`
+/// (the discrete Lyapunov solution for the rotation block). That changes
+/// the *definition* of the likelihood — the cycle no longer costs a
+/// diffuse element, so `nobs_diffuse`, `k_diffuse` and therefore AIC and
+/// BIC move, and the log-likelihood is not comparable with the diffuse
+/// one at the same parameters — and it removes the `lambda -> 0`
+/// singularity of the diffuse cycle (see [`UcSpec::cycle_period_bounds`]):
+/// with nothing diffuse in the cycle there is no `-ln F_inf` term to run
+/// away with.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
+pub enum CycleInit {
+    /// `"diffuse"`: both cycle states exactly diffuse (statsmodels).
+    #[default]
+    Diffuse,
+    /// `"stationary"`: the damped cycle's unconditional (Lyapunov)
+    /// distribution. Requires a damped, stochastic cycle.
+    Stationary,
+}
+
+impl CycleInit {
+    /// Parses `"diffuse"` / `"stationary"` (trimmed, case-insensitive).
+    ///
+    /// # Errors
+    ///
+    /// [`SsmError::InvalidSpec`] naming the accepted values.
+    pub fn parse(name: &str) -> Result<Self, SsmError> {
+        match name.trim().to_ascii_lowercase().as_str() {
+            "diffuse" => Ok(Self::Diffuse),
+            "stationary" => Ok(Self::Stationary),
+            _ => Err(SsmError::InvalidSpec {
+                message: format!(
+                    "cycle_init = {name:?} is not a cycle initialization; pass \"diffuse\" \
+                     (both cycle states exactly diffuse, the statsmodels convention) or \
+                     \"stationary\" (the damped cycle's unconditional distribution)"
+                ),
+            }),
+        }
+    }
+
+    /// The canonical (lower-case) name.
+    pub fn name(&self) -> &'static str {
+        match self {
+            Self::Diffuse => "diffuse",
+            Self::Stationary => "stationary",
+        }
+    }
+}
+
 /// The model specification.
 #[derive(Debug, Clone, PartialEq)]
 pub struct UcSpec {
@@ -240,8 +331,26 @@ pub struct UcSpec {
     /// `(0, pi)` walks into that singularity; a cycle longer than the
     /// sample is not identified anyway.
     pub cycle_period_bounds: (f64, f64),
+    /// How the cycle states are initialized (default
+    /// [`CycleInit::Diffuse`], statsmodels' convention). A non-default
+    /// value requires `cycle`, `damped_cycle` and `stochastic_cycle`.
+    pub cycle_init: CycleInit,
+    /// Order `p` of an autoregressive component (`None` = none; `1 <= p
+    /// <= n`). The AR(p) block follows the cycle in the state vector, in
+    /// statsmodels' row-companion form, and is always initialized from
+    /// its stationary distribution (as statsmodels does); its
+    /// coefficients are estimated inside the stationarity region.
+    pub autoregressive: Option<usize>,
     /// Regressor columns, each of length `n`.
     pub exog: Vec<Vec<f64>>,
+    /// `true` (default, statsmodels' default): the coefficients of `exog`
+    /// are parameters estimated jointly by MLE. `false`: they are states —
+    /// `k` exactly diffuse constant states after the AR block, with design
+    /// row `x_t'` — so the likelihood is the *marginal* (diffuse)
+    /// likelihood of the variance parameters, the smoothed coefficients
+    /// are the GLS estimate given them, and no `beta.x*` parameter exists.
+    /// Requires `exog`.
+    pub mle_regression: bool,
 }
 
 impl Default for UcSpec {
@@ -255,7 +364,10 @@ impl Default for UcSpec {
             damped_cycle: false,
             stochastic_cycle: false,
             cycle_period_bounds: (2.0, f64::INFINITY),
+            cycle_init: CycleInit::Diffuse,
+            autoregressive: None,
             exog: Vec::new(),
+            mle_regression: true,
         }
     }
 }
@@ -363,6 +475,18 @@ pub struct UcFit {
     pub freq_seasonal: Vec<UcComponent>,
     /// Cycle component.
     pub cycle: Option<UcComponent>,
+    /// Autoregressive component: the first state of the AR block
+    /// (statsmodels' `results.autoregressive`; the others are its lags).
+    pub autoregressive: Option<UcComponent>,
+    /// Under `mle_regression = false`: one component per regressor, the
+    /// filtered (recursive GLS) and smoothed coefficient paths with their
+    /// variances; the smoothed path is constant in `t` and equals the GLS
+    /// estimate given the variance parameters. Empty otherwise.
+    pub regression_coefficients: Vec<UcComponent>,
+    /// Under `mle_regression = false`: the `k x k` smoothed covariance of
+    /// the coefficient states (constant in `t`; reported at the last
+    /// period), i.e. `Var(beta_gls | theta)`. `None` otherwise.
+    pub regression_coefficients_cov: Option<Vec<Vec<f64>>>,
     /// One-step-ahead predictions `E[y_t | y_1..y_{t-1}]`.
     pub fitted: Vec<f64>,
     /// One-step prediction errors `v_t` (NaN at missing periods).
@@ -401,6 +525,13 @@ struct Layout {
     seasonal_off: Option<usize>,
     freq_offs: Vec<usize>,
     cycle_off: Option<usize>,
+    ar_off: Option<usize>,
+    ar_order: usize,
+    idx_ar: Option<usize>,
+    /// First state of the regression-coefficient block (`mle_regression =
+    /// false`).
+    exog_state_off: Option<usize>,
+    mle_regression: bool,
     specs: Vec<ParamSpec>,
     idx_irregular: Option<usize>,
     state_vars: Vec<StateVar>,
@@ -408,6 +539,15 @@ struct Layout {
     idx_damping: Option<usize>,
     idx_beta: usize,
     state_names: Vec<String>,
+    cycle_init: CycleInit,
+    /// Per-state exact-diffuse flag (`false` = stationary block).
+    diffuse: Vec<bool>,
+    /// Identification ties for the standard errors: when the variance
+    /// parameter `.0` is flagged at the boundary, the transition
+    /// parameters `.1` of its stationary block are unidentified (the block
+    /// is identically zero at variance 0) and are dropped from the
+    /// information matrix with a NaN standard error.
+    ties: Vec<(usize, Vec<usize>)>,
 }
 
 /// Largest accepted `forecast_steps`.
@@ -420,6 +560,20 @@ struct Layout {
 /// forecast variance carries information; anything larger is a mistake,
 /// and the refusal says so.
 pub const MAX_FORECAST_STEPS: usize = 100_000;
+
+/// Largest accepted `nobs * k_states^2`.
+///
+/// The filter and smoother keep four sequences of `k_states x k_states`
+/// covariance matrices, one per period (predicted, predicted diffuse,
+/// filtered, smoothed), so the state dimension is an allocation of
+/// `nobs * k_states^2` cells per sequence. Bounding each count that costs
+/// states (`seasonal`, the `freq_seasonal` periods, `autoregressive`, the
+/// regressors under `mle_regression = false`) by the sample length does
+/// not bound that product: an AR order or a seasonal period near the
+/// length of a long series asks for terabytes and ends in an allocator
+/// abort. `2^26` cells is half a GiB per sequence, and a model that size
+/// already costs `O(nobs * k_states^3)` per likelihood evaluation.
+pub const MAX_STATE_CELLS: usize = 1 << 26;
 
 /// Largest accepted `n_starts`.
 ///
@@ -509,6 +663,23 @@ impl Layout {
                 )));
             }
         }
+        if let Some(p) = spec.autoregressive {
+            if p == 0 {
+                return Err(invalid(
+                    "autoregressive = 0: the autoregressive order must be at least 1 (pass \
+                     None for no autoregressive component)"
+                        .to_string(),
+                ));
+            }
+            // Also the memory bound: the AR block costs `p` states.
+            if p > n {
+                return Err(invalid(format!(
+                    "autoregressive = {p} with {n} observations: the autoregressive order \
+                     must not exceed the sample length (it costs p states, and the filter \
+                     costs O(n p^2) per likelihood evaluation)"
+                )));
+            }
+        }
         let (pmin, pmax) = spec.cycle_period_bounds;
         if spec.cycle && !(pmin.is_finite() && pmin >= 2.0 && pmax > pmin) {
             return Err(invalid(format!(
@@ -527,15 +698,16 @@ impl Layout {
         // diffuse direction does resolve, and it resolves with
         // `F_inf ~ (rho sin lambda)^2 -> 0`, contributing
         // `-(ln 2 pi + ln F_inf) / 2 -> +infinity`. An optimizer let loose
-        // on `(0, pi)` walks into that singularity and reports a "cycle"
-        // of period 10^6 with a log-likelihood a dozen points above any
-        // genuine optimum. A cycle longer than the sample is not
-        // identified by the sample in any case. statsmodels leaves the
-        // bound at infinity when the series carries no frequency
-        // information (`structural.py`, `cycle_period_bounds=(2, inf)`)
-        // and does not meet the singularity because its diffuse tolerance
-        // is an absolute `1e-10` on `F_inf`, which quietly clips it;
-        // `uc_properties.rs` pins the divergence with numbers.
+        // on `(0, pi)` walks into that singularity: on the series of
+        // `uc_properties.rs` it stops at a "cycle" of period 2.7e7, 1.4
+        // log-likelihood points above the fit inside the default bounds
+        // (`scripts/uc_long_diffuse_evidence.py`). A cycle longer than the
+        // sample is not identified by the sample in any case. statsmodels
+        // leaves the bound at infinity when the series carries no
+        // frequency information (`structural.py`, `cycle_period_bounds=(2,
+        // inf)`) and does not meet the singularity because its diffuse
+        // tolerance is an absolute `1e-10` on `F_inf`, which quietly clips
+        // it; `uc_properties.rs` pins the divergence with numbers.
         let pmax = if pmax.is_finite() { pmax } else { n as f64 };
         if spec.cycle && pmax <= pmin {
             return Err(invalid(format!(
@@ -570,12 +742,49 @@ impl Layout {
                 )));
             }
         }
+        if spec.cycle_init == CycleInit::Stationary {
+            if !spec.cycle {
+                return Err(invalid(
+                    "cycle_init = \"stationary\" was given but cycle = false: it only \
+                     initializes the two cycle states, so without a cycle it is inert; set \
+                     cycle = true or keep the default \"diffuse\""
+                        .to_string(),
+                ));
+            }
+            if !spec.damped_cycle {
+                return Err(invalid(
+                    "cycle_init = \"stationary\" requires damped_cycle = true: an undamped \
+                     cycle (damping 1) is a pure rotation with no stationary distribution \
+                     (its Lyapunov equation has no solution); estimate a damping with \
+                     damped_cycle = true or keep cycle_init = \"diffuse\""
+                        .to_string(),
+                ));
+            }
+            if !spec.stochastic_cycle {
+                return Err(invalid(
+                    "cycle_init = \"stationary\" requires stochastic_cycle = true: a \
+                     deterministic damped cycle has stationary variance 0, so its initial \
+                     state would be known to be zero and the cycle identically zero; set \
+                     stochastic_cycle = true or keep cycle_init = \"diffuse\""
+                        .to_string(),
+                ));
+            }
+        }
+        if !spec.mle_regression && spec.exog.is_empty() {
+            return Err(invalid(
+                "mle_regression = false was given but exog is empty: it only moves the \
+                 regression coefficients into the state vector, so without regressors it \
+                 is inert; pass exog or keep the default mle_regression = true"
+                    .to_string(),
+            ));
+        }
         let has_stochastic = irregular
             || (level && stochastic_level)
             || (trend && stochastic_trend)
             || (spec.seasonal.is_some() && spec.stochastic_seasonal)
             || spec.freq_seasonal.iter().any(|f| f.stochastic)
-            || (spec.cycle && spec.stochastic_cycle);
+            || (spec.cycle && spec.stochastic_cycle)
+            || spec.autoregressive.is_some();
         if !has_stochastic {
             return Err(invalid(format!(
                 "level = {:?} with every other component deterministic leaves the model \
@@ -586,8 +795,12 @@ impl Layout {
                 spec.trend.name()
             )));
         }
-        let unused_state =
-            !level && spec.seasonal.is_none() && spec.freq_seasonal.is_empty() && !spec.cycle;
+        let unused_state = !level
+            && spec.seasonal.is_none()
+            && spec.freq_seasonal.is_empty()
+            && !spec.cycle
+            && spec.autoregressive.is_none()
+            && (spec.mle_regression || spec.exog.is_empty());
 
         // State offsets in statsmodels' order.
         let mut i = 0usize;
@@ -634,6 +847,24 @@ impl Layout {
             Some(i - 2)
         } else {
             None
+        };
+        let ar_order = spec.autoregressive.unwrap_or(0);
+        let ar_off = spec.autoregressive.map(|p| {
+            let off = i;
+            for j in 1..=p {
+                state_names.push(format!("ar.L{j}"));
+            }
+            i += p;
+            off
+        });
+        let exog_state_off = if spec.mle_regression || spec.exog.is_empty() {
+            None
+        } else {
+            for j in 1..=spec.exog.len() {
+                state_names.push(format!("beta.x{j}"));
+            }
+            i += spec.exog.len();
+            Some(i - spec.exog.len())
         };
         let k_states = if unused_state {
             state_names.push("unused".to_string());
@@ -686,6 +917,9 @@ impl Layout {
         if let (Some(off), true) = (cycle_off, spec.stochastic_cycle) {
             push_var("sigma2.cycle".to_string(), vec![off, off + 1]);
         }
+        if let Some(off) = ar_off {
+            push_var("sigma2.ar".to_string(), vec![off]);
+        }
         let k_posdef = col.max(1);
         let idx_cycle_freq = if spec.cycle {
             specs.push(ParamSpec {
@@ -711,12 +945,47 @@ impl Layout {
         } else {
             None
         };
+        let idx_ar = ar_off.map(|_| {
+            let first = specs.len();
+            for j in 1..=ar_order {
+                specs.push(ParamSpec {
+                    name: format!("ar.L{j}"),
+                    kind: ParamKind::StationaryAr {
+                        block_start: j == 1,
+                    },
+                });
+            }
+            first
+        });
         let idx_beta = specs.len();
-        for j in 0..spec.exog.len() {
-            specs.push(ParamSpec {
-                name: format!("beta.x{}", j + 1),
-                kind: ParamKind::Free,
-            });
+        if spec.mle_regression {
+            for j in 0..spec.exog.len() {
+                specs.push(ParamSpec {
+                    name: format!("beta.x{}", j + 1),
+                    kind: ParamKind::Free,
+                });
+            }
+        }
+
+        // Every state is exactly diffuse except the stationary blocks.
+        let mut diffuse = vec![true; k_states];
+        let mut ties = Vec::new();
+        if let (Some(off), CycleInit::Stationary) = (cycle_off, spec.cycle_init) {
+            diffuse[off] = false;
+            diffuse[off + 1] = false;
+            let var = specs.iter().position(|s| s.name == "sigma2.cycle");
+            if let Some(v) = var {
+                ties.push((v, idx_cycle_freq.into_iter().chain(idx_damping).collect()));
+            }
+        }
+        // The AR block is always stationary (statsmodels' convention).
+        if let (Some(off), Some(first)) = (ar_off, idx_ar) {
+            for d in &mut diffuse[off..off + ar_order] {
+                *d = false;
+            }
+            if let Some(v) = specs.iter().position(|s| s.name == "sigma2.ar") {
+                ties.push((v, (first..first + ar_order).collect()));
+            }
         }
 
         Ok(Layout {
@@ -734,6 +1003,11 @@ impl Layout {
             seasonal_off,
             freq_offs,
             cycle_off,
+            ar_off,
+            ar_order,
+            idx_ar,
+            exog_state_off,
+            mle_regression: spec.mle_regression,
             specs,
             idx_irregular,
             state_vars,
@@ -741,6 +1015,9 @@ impl Layout {
             idx_damping,
             idx_beta,
             state_names,
+            cycle_init: spec.cycle_init,
+            diffuse,
+            ties,
         })
     }
 
@@ -752,11 +1029,13 @@ impl Layout {
         self.exog.len()
     }
 
+    /// Number of exactly diffuse states (statsmodels' `k_diffuse_states`:
+    /// the unit diagonal entries of `P_inf`).
     fn k_diffuse(&self) -> usize {
         if self.unused_state {
             0
         } else {
-            self.k_states
+            self.diffuse.iter().filter(|&&d| d).count()
         }
     }
 
@@ -812,6 +1091,24 @@ impl Layout {
             t[(off + 1, off)] = -rho * s;
             t[(off + 1, off + 1)] = rho * c;
         }
+        if let (Some(off), Some(first)) = (self.ar_off, self.idx_ar) {
+            // statsmodels' `companion_matrix(p).T` with the first row
+            // overwritten: phi across the first row, ones on the
+            // subdiagonal; the disturbance enters the first state only.
+            z[(0, off)] = 1.0;
+            for j in 0..self.ar_order {
+                t[(off, off + j)] = params[first + j];
+            }
+            for j in 1..self.ar_order {
+                t[(off + j, off + j - 1)] = 1.0;
+            }
+        }
+        if let Some(off) = self.exog_state_off {
+            // Constant coefficients: identity transition, no disturbance.
+            for j in 0..self.k_exog() {
+                t[(off + j, off + j)] = 1.0;
+            }
+        }
         for sv in &self.state_vars {
             let v = params[sv.param];
             for (k, &row) in sv.rows.iter().enumerate() {
@@ -819,27 +1116,49 @@ impl Layout {
                 q[(sv.col + k, sv.col + k)] = v;
             }
         }
+        // Exactly `Diffuse` when nothing is stationary, so the default
+        // specifications run the very same initialization as before.
         let init = if self.unused_state {
             Initialization::Known {
                 a1: vec![0.0],
                 p1: Mat::zeros(1, 1),
             }
-        } else {
+        } else if self.diffuse.iter().all(|&d| d) {
             Initialization::Diffuse
+        } else {
+            Initialization::Mixed {
+                diffuse: self.diffuse.clone(),
+            }
         };
-        LinearGaussianSSM::builder(1, m, r)
-            .z(z)
-            .h(h)
-            .t(t)
-            .r(sel)
-            .q(q)
-            .initialization(init)
-            .build()
+        let builder = LinearGaussianSSM::builder(1, m, r);
+        let builder = match self.exog_state_off {
+            None => builder.z(z),
+            // The regressors in the state: the design row carries x_t in
+            // the coefficient columns (the `tvp_regression` pattern).
+            Some(off) => {
+                let n = self.exog[0].len();
+                let zs = (0..n)
+                    .map(|tt| {
+                        let mut zt = z.clone();
+                        for (j, col) in self.exog.iter().enumerate() {
+                            zt[(0, off + j)] = col[tt];
+                        }
+                        zt
+                    })
+                    .collect();
+                builder.z_varying(zs)
+            }
+        };
+        builder.h(h).t(t).r(sel).q(q).initialization(init).build()
     }
 
-    /// `beta' x_t` for every period (zero without regressors).
+    /// `beta' x_t` for every period (zero without regressors, and zero
+    /// when the coefficients are states rather than parameters).
     fn regression_effect(&self, params: &[f64], n: usize) -> Vec<f64> {
         let mut eff = vec![0.0; n];
+        if !self.mle_regression {
+            return eff;
+        }
         for (j, col) in self.exog.iter().enumerate() {
             let b = params[self.idx_beta + j];
             for (e, x) in eff.iter_mut().zip(col) {
@@ -847,6 +1166,12 @@ impl Layout {
             }
         }
         eff
+    }
+
+    /// True when some state is initialized from a stationary distribution
+    /// (an AR block, a stationary cycle).
+    fn has_stationary_block(&self) -> bool {
+        !self.unused_state && self.diffuse.iter().any(|&d| !d)
     }
 
     /// Log-likelihood at `params` (NaN where undefined).
@@ -858,9 +1183,38 @@ impl Layout {
         let eff = self.regression_effect(params, y.len());
         let ym = Mat::from_fn(y.len(), 1, |i, _| y[i] - eff[i]);
         match model.filter(ym.as_ref()) {
+            Ok(fo) if self.skipped_observation(y, &fo).is_some() => f64::NAN,
             Ok(fo) => fo.loglik,
             Err(_) => f64::NAN,
         }
+    }
+
+    /// The first observed period the filter had to skip as numerically
+    /// singular, for a specification with a stationary block (`None`
+    /// otherwise, and always `None` for the all-diffuse specifications,
+    /// which keep the 0.10.0 behaviour exactly).
+    ///
+    /// A stationary block whose parameters sit at the edge of the
+    /// stationarity region in floating point — an AR partial
+    /// autocorrelation or a cycle damping within roundoff of 1, where
+    /// `tanh` / the logistic map saturate — still passes the Lyapunov
+    /// solve (its spectral radius is `1 - 1e-16`), but with an
+    /// unconditional variance some `1e16` times the one-step variance.
+    /// The filter's relative rank test then reads every later innovation
+    /// variance as cancellation noise and skips the observation, and the
+    /// "log-likelihood" collapses to the few diffuse terms: measured on
+    /// inflation, a local level + AR(2) search reached `-0.92` (one
+    /// `-ln(2 pi)/2` term) against a genuine optimum of `-453.74`. A
+    /// likelihood that silently drops observations is not a likelihood,
+    /// so it is reported as undefined. The same skip happens, with no
+    /// unit root involved, when every variance reaching the observation
+    /// is zero (a deterministic model whose states the data have pinned
+    /// down exactly); that is refused the same way.
+    fn skipped_observation(&self, y: &[f64], fo: &crate::filter::FilterOutput) -> Option<usize> {
+        if !self.has_stationary_block() {
+            return None;
+        }
+        (0..y.len()).find(|&t| y[t].is_finite() && !fo.steps[t].observed)
     }
 
     /// The deterministic ladder of starting values (standardized units).
@@ -901,6 +1255,20 @@ impl Layout {
         // the series has no cycle in the admissible band) is a corner the
         // search has to be able to walk to.
         let damp = [0.9, 0.5, 0.1, 0.95, 0.7];
+        // AR starts: the first partial autocorrelation walks a ladder of
+        // its own (the AR-UC likelihood is multimodal: the AR block can
+        // trade places with the irregular, absorb the trend, or die out
+        // into a piled-up zero variance), the rest start at zero, so the
+        // constrained start is (r1, 0, ..., 0) — except on the second rung
+        // of an AR(p >= 2), whose second partial autocorrelation is -0.5:
+        // phi = (1.35, -0.5), complex roots, the hump-shaped
+        // autocorrelation of a business cycle around a trend. Without that
+        // rung every start of the US-GDP local linear trend + AR(2) lands
+        // on the local optimum where the AR variance piles up at zero
+        // (-259.87, against -250.18 with the cycle-shaped start; both
+        // measured on this crate's optimizer).
+        let ar_first = [0.5, 0.9, 0.0, -0.5, 0.5];
+        let ar_second = [0.0, -0.5, 0.0, 0.0, 0.0];
         let mut starts = Vec::with_capacity(n_starts);
         for k in 0..n_starts {
             let idx = k % ladder.len();
@@ -930,8 +1298,23 @@ impl Layout {
             if let Some(i) = self.idx_damping {
                 p[i] = damp[idx];
             }
-            for (j, b) in beta.iter().enumerate() {
-                p[self.idx_beta + j] = *b;
+            if let Some(i) = self.idx_ar {
+                // PACF (r1, r2, 0, ...) as coefficients: phi1 = r1 (1 - r2),
+                // phi2 = r2 (the Levinson-Durbin step), the rest zero.
+                let (r1, r2) = (ar_first[idx], ar_second[idx]);
+                if self.ar_order >= 2 {
+                    p[i] = r1 * (1.0 - r2);
+                    p[i + 1] = r2;
+                } else {
+                    p[i] = r1;
+                }
+            }
+            // Under state regression there are no coefficient parameters
+            // (the OLS beta only shaped the residual scale above).
+            if self.mle_regression {
+                for (j, b) in beta.iter().enumerate() {
+                    p[self.idx_beta + j] = *b;
+                }
             }
             starts.push(p);
         }
@@ -975,6 +1358,33 @@ impl Layout {
                 _ => {}
             }
         }
+        if let Some(first) = self.idx_ar {
+            let phi = &fixed[first..first + self.ar_order];
+            let mut z = vec![0.0; phi.len()];
+            if let Err(OptimError::NotStationary { order, pacf }) =
+                StationaryAr.inverse(phi, &mut z)
+            {
+                return Err(invalid(format!(
+                    "fixed_params[{first}] (ar.L1) .. fixed_params[{}] (ar.L{}) = {phi:?} \
+                     is not a stationary autoregression: its partial autocorrelation at \
+                     lag {order} is {pacf}, outside (-1, 1); the AR component is \
+                     initialized from its stationary distribution, which a unit or \
+                     explosive root does not have",
+                    first + self.ar_order - 1,
+                    self.ar_order
+                )));
+            }
+        }
+        if let (CycleInit::Stationary, Some(i)) = (self.cycle_init, self.idx_damping) {
+            if fixed[i] >= 1.0 {
+                return Err(invalid(format!(
+                    "fixed_params[{i}] (damping.cycle) = {}: cycle_init = \"stationary\" \
+                     needs a damping strictly below 1 (an undamped cycle has no stationary \
+                     distribution to initialize from)",
+                    fixed[i]
+                )));
+            }
+        }
         Ok(())
     }
 }
@@ -1014,6 +1424,43 @@ pub fn unobserved_components(
             "y has {nobs_observed} observed (non-NaN) values but the specification has \
              {} states; at least k_states + 2 = {need} observations are needed",
             layout.k_states
+        )));
+    }
+    // The working set (see `MAX_STATE_CELLS`), refused before anything of
+    // that size is allocated; the counts that cost states are named.
+    let cells = n as u128 * (layout.k_states as u128).pow(2);
+    if cells > MAX_STATE_CELLS as u128 {
+        let mut sources = Vec::new();
+        if let Some(s) = spec.seasonal {
+            sources.push(format!("seasonal = {s} costs {} states", s - 1));
+        }
+        for (i, f) in spec.freq_seasonal.iter().enumerate() {
+            sources.push(format!(
+                "freq_seasonal[{i}] costs {} states",
+                2 * f.harmonics
+            ));
+        }
+        if let Some(p) = spec.autoregressive {
+            sources.push(format!("autoregressive = {p} costs {p} states"));
+        }
+        if layout.exog_state_off.is_some() {
+            sources.push(format!(
+                "exog under mle_regression = false costs {} states",
+                layout.k_exog()
+            ));
+        }
+        if sources.is_empty() {
+            sources.push(format!("y has {n} periods"));
+        }
+        return Err(invalid(format!(
+            "the specification has {} states over {n} periods ({}): the filter and smoother \
+             store four sequences of n * k_states^2 = {cells} covariance cells (about {:.1} \
+             GiB each), beyond the {MAX_STATE_CELLS} accepted; shorten the autoregressive \
+             order or the seasonal period (a long seasonal period is better modelled by a \
+             few freq_seasonal harmonics), or the sample",
+            layout.k_states,
+            sources.join(", "),
+            cells as f64 * 8.0 / (1u64 << 30) as f64
         )));
     }
     let h = opts.forecast_steps;
@@ -1066,6 +1513,26 @@ pub fn unobserved_components(
         }
     }
 
+    // The regressors divided by their largest absolute values: what the
+    // search runs on, and — under `mle_regression = false` — the
+    // well-conditioned twin of the reported model that `evaluate` checks
+    // the exact-diffuse filter against (see `check_regressor_scales`).
+    let col_scale: Vec<f64> = spec
+        .exog
+        .iter()
+        .map(|col| col.iter().fold(0.0f64, |m, v| m.max(v.abs())))
+        .collect();
+    let mut spec_s = spec.clone();
+    for (col, &c) in spec_s.exog.iter_mut().zip(&col_scale) {
+        for v in col.iter_mut() {
+            *v /= c;
+        }
+    }
+    let layout_s = Layout::new(&spec_s, n)?;
+    let scaled_twin = layout
+        .exog_state_off
+        .map(|_| (&layout_s, col_scale.as_slice()));
+
     if let Some(fixed) = &opts.fixed_params {
         layout.validate_fixed(fixed)?;
         let at_boundary: Vec<bool> = layout
@@ -1085,6 +1552,7 @@ pub fn unobserved_components(
             (0, 0),
             se,
             at_boundary,
+            scaled_twin,
         );
     }
 
@@ -1114,25 +1582,16 @@ pub fn unobserved_components(
         ));
     }
     let y_s: Vec<f64> = y.iter().map(|v| v / s).collect();
-    let col_scale: Vec<f64> = spec
-        .exog
-        .iter()
-        .map(|col| col.iter().fold(0.0f64, |m, v| m.max(v.abs())))
-        .collect();
-    let mut spec_s = spec.clone();
-    for (col, &c) in spec_s.exog.iter_mut().zip(&col_scale) {
-        for v in col.iter_mut() {
-            *v /= c;
-        }
-    }
-    let layout_s = Layout::new(&spec_s, n)?;
     let starts = layout_s.starting_values(&y_s, opts.n_starts);
-    let outcome = maximize(&layout_s.specs, &starts, |p| layout_s.loglik_value(&y_s, p))?;
+    let outcome = maximize_tied(&layout_s.specs, &starts, &layout_s.ties, |p| {
+        layout_s.loglik_value(&y_s, p)
+    })?;
     let back = |i: usize, v: f64| -> f64 {
         match layout_s.specs[i].kind {
             ParamKind::Variance => v * s * s,
             ParamKind::Bounded { .. } => v,
             ParamKind::Free => v * s / col_scale[i - layout_s.idx_beta],
+            ParamKind::StationaryAr { .. } => v,
         }
     };
     let params: Vec<f64> = outcome
@@ -1157,7 +1616,103 @@ pub fn unobserved_components(
         (outcome.n_iter, outcome.n_fevals),
         se,
         outcome.at_boundary,
+        scaled_twin,
     )
+}
+
+/// How far apart (largest over smallest, the unit loading of the level,
+/// trend and seasonal states included) the regressor columns' largest
+/// absolute values must be before a disagreement with the unit-scaled twin
+/// is put down to the units. Inside it the twin is essentially the same
+/// problem, so the units cannot be what the filter fails to resolve.
+const SCALE_SPREAD_UNITS: f64 = 1e2;
+
+/// The floating-point guard of the state regression.
+///
+/// Under `mle_regression = false` the coefficient states are exactly
+/// diffuse and loaded by `x_t`, so the exact-diffuse recursions carry the
+/// regressor units: `P_inf` and `F_inf` mix the coefficient directions
+/// with the unit loading of the level, trend and seasonal states. When
+/// the columns' scales sit many orders of magnitude from each other or
+/// from 1, the filter's relative rank test can no longer tell a resolved
+/// diffuse direction from an unresolved one in floating point: measured on
+/// a local level with two regressors, one column multiplied by `1e-8` or
+/// `1e8` leaves the diffuse period running to the end of the sample, with
+/// a log-likelihood off by 1.2 to 28 against the exact units identity and
+/// a coefficient wrong in every digit (statsmodels, which filters the raw
+/// columns as well, breaks the same way). The diffuse period itself does
+/// not depend on the units — it is the number of observations the diffuse
+/// directions need — so the same model on the columns divided by their
+/// largest absolute values (`twin`, the well-conditioned version the
+/// search runs on) must end it at the same period. When it does not, the
+/// reported numbers are roundoff, and the call is refused, naming `exog`;
+/// the reported model is kept in the raw units (statsmodels' convention,
+/// a unit diffuse prior on each coefficient) because that is what the
+/// filtered paths inside the diffuse period, and the log-likelihood,
+/// are defined against.
+///
+/// The refusal says *why* only when it can know. Columns whose scales are
+/// within [`SCALE_SPREAD_UNITS`] of each other and of 1 are already in
+/// comparable units, and the twin is essentially the same problem: a
+/// disagreement there means a diffuse direction the observations of the
+/// diffuse period see only weakly (a regressor nearly collinear with the
+/// others or with the level, trend and seasonal states over those
+/// observations), so close to the filter's rank tolerance that either run
+/// can land on either side of it. The message says that instead of
+/// blaming the units, and points to the remedies that remove the weak
+/// direction: dropping the column, or `mle_regression = true`, which has
+/// no diffuse coefficient states. It does not promise that rescaling
+/// cannot help: one of the two runs *is* a rescaled fit, and either may be
+/// the one that resolved the direction. (Before 0.11.0's filter fix that
+/// branch was also reached by well-scaled N(0, 1) columns, through a
+/// diffuse-element test that refused genuine elements late in a long
+/// diffuse period; it was reported as a units problem.)
+fn check_regressor_scales(
+    twin: &Layout,
+    scales: &[f64],
+    params: &[f64],
+    y: MatRef<'_, f64>,
+    d_diffuse: usize,
+) -> Result<(), SsmError> {
+    let d_twin = twin.build_ssm(params)?.filter(y)?.d_diffuse;
+    if d_twin == d_diffuse {
+        return Ok(());
+    }
+    Err(regressor_scale_refusal(scales, d_diffuse, d_twin))
+}
+
+/// The refusal of [`check_regressor_scales`], worded by whether the columns'
+/// scales can be the cause.
+fn regressor_scale_refusal(scales: &[f64], d_diffuse: usize, d_twin: usize) -> SsmError {
+    let (lo, hi) = scales
+        .iter()
+        .fold((1.0f64, 1.0f64), |(lo, hi), &c| (lo.min(c), hi.max(c)));
+    if hi / lo > SCALE_SPREAD_UNITS {
+        return invalid(format!(
+            "exog: under mle_regression = false the regression coefficients are exactly diffuse \
+             states loaded by x_t, and the columns' scales (largest absolute values {scales:?}, \
+             against the unit loading of the level, trend and seasonal states) are too far apart \
+             for the exact-diffuse filter to resolve them in floating point: the diffuse period \
+             would end at observation {d_diffuse} instead of {d_twin}, and the coefficients and \
+             the log-likelihood would be roundoff. Rescale the columns to comparable units near \
+             1 (the state-regression log-likelihood depends on the regressor units anyway; \
+             under mle_regression = true it does not)"
+        ));
+    }
+    invalid(format!(
+        "exog: under mle_regression = false the regression coefficients are exactly diffuse \
+         states loaded by x_t, and the exact-diffuse filter cannot resolve their diffuse \
+         directions reliably in floating point: the diffuse period ends at observation \
+         {d_diffuse} on the columns as given and at {d_twin} on the same columns divided by \
+         their largest absolute values ({scales:?}). Those scales are already comparable with \
+         each other and with the unit loading of the level, trend and seasonal states, so the \
+         units are not the cause: the observations of the diffuse period see some combination \
+         of the coefficients and the level, trend and seasonal states only weakly — a column \
+         nearly collinear with the others or with those states there — and the coefficients \
+         and the log-likelihood would be dominated by rounding error. Drop or replace the \
+         nearly redundant column, or estimate the coefficients as parameters with \
+         mle_regression = true, which has no diffuse coefficient states"
+    ))
 }
 
 #[allow(clippy::too_many_arguments)]
@@ -1171,6 +1726,7 @@ fn evaluate(
     (n_iter, n_fevals): (usize, usize),
     se: Vec<f64>,
     at_boundary: Vec<bool>,
+    scaled_twin: Option<(&Layout, &[f64])>,
 ) -> Result<UcFit, SsmError> {
     let n = y.len();
     let model = layout.build_ssm(params)?;
@@ -1180,6 +1736,25 @@ fn evaluate(
     let so = smooth_univariate(&model, ym.as_ref())?;
     let fo = &so.filter;
     let m = layout.k_states;
+    if let Some((twin, scales)) = scaled_twin {
+        check_regressor_scales(twin, scales, params, ym.as_ref(), fo.d_diffuse)?;
+    }
+    if let Some(t) = layout.skipped_observation(y, fo) {
+        let what = if estimated {
+            "the estimated parameters"
+        } else {
+            "fixed_params"
+        };
+        return Err(invalid(format!(
+            "{what} = {params:?}: the filter cannot resolve observation {t} — its one-step \
+             prediction variance is numerically zero next to the state uncertainty — so the \
+             log-likelihood would silently drop observations. With a stationary block this \
+             is a root within roundoff of the unit circle (an AR coefficient or the cycle \
+             damping at the stationarity boundary, whose unconditional variance dwarfs the \
+             one-step variance) or a degenerate model in which every variance that reaches \
+             the observation is zero; move those parameters off the boundary"
+        )));
+    }
 
     let diag = |mat: &Mat<f64>| -> Vec<f64> { (0..m).map(|i| mat[(i, i)]).collect() };
     let filtered_state = fo.filtered_state.clone();
@@ -1214,6 +1789,25 @@ fn evaluate(
         })
         .collect();
     let cycle = layout.cycle_off.map(|i| component(&[i]));
+    let autoregressive = layout.ar_off.map(|i| component(&[i]));
+    let regression_coefficients: Vec<UcComponent> = layout
+        .exog_state_off
+        .map(|off| {
+            (0..layout.k_exog())
+                .map(|j| component(&[off + j]))
+                .collect()
+        })
+        .unwrap_or_default();
+    let regression_coefficients_cov = layout.exog_state_off.map(|off| {
+        let last = &so.smoothed_state_cov[n - 1];
+        (0..layout.k_exog())
+            .map(|i| {
+                (0..layout.k_exog())
+                    .map(|j| last[(off + i, off + j)])
+                    .collect()
+            })
+            .collect()
+    });
 
     let mut fitted = vec![f64::NAN; n];
     let mut resid = vec![f64::NAN; n];
@@ -1250,7 +1844,17 @@ fn evaluate(
         // horizon — the same washout tolerance the filter uses, P_inf
         // being a rank indicator that ends at roundoff, not at exact zero.
         let mut p_inf = fo.predicted_diffuse_state_cov[n].clone();
+        let mut zrow = zrow;
         for step in 0..h {
+            // Regressors in the state: the design row at the forecast date
+            // carries that date's x (`model.z().at(n)` would repeat the last
+            // in-sample row), for the mean, the variance and the diffuse
+            // check alike.
+            if let Some(off) = layout.exog_state_off {
+                for (j, col) in opts.forecast_exog.iter().enumerate() {
+                    zrow[off + j] = col[step];
+                }
+            }
             if dot(&zrow, &mat_vec(p_inf.as_ref(), &zrow)) > TOLERANCE_RANK {
                 return Err(invalid(format!(
                     "forecast_steps = {h}: at horizon {} the forecast still carries a \
@@ -1263,8 +1867,10 @@ fn evaluate(
                 )));
             }
             let mut xb = 0.0;
-            for (j, col) in opts.forecast_exog.iter().enumerate() {
-                xb += params[layout.idx_beta + j] * col[step];
+            if layout.mle_regression {
+                for (j, col) in opts.forecast_exog.iter().enumerate() {
+                    xb += params[layout.idx_beta + j] * col[step];
+                }
             }
             forecast.push(xb + dot(&zrow, &a));
             forecast_var.push(dot(&zrow, &mat_vec(p.as_ref(), &zrow)) + hvar);
@@ -1309,10 +1915,258 @@ fn evaluate(
         seasonal,
         freq_seasonal,
         cycle,
+        autoregressive,
+        regression_coefficients,
+        regression_coefficients_cov,
         fitted,
         resid,
         std_resid,
         forecast,
         forecast_var,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    /// The closed form of the stationary cycle's initial covariance:
+    /// for the damped rotation `rho R(lambda)` driven by two independent
+    /// disturbances of variance `s2`, the Lyapunov solution is
+    /// `P = s2 / (1 - rho^2) I_2` (`R R' = I`). `UcFit` exposes no `P_1`,
+    /// so this leg is pinned on the system itself.
+    #[test]
+    fn stationary_cycle_initial_covariance_is_the_closed_form() {
+        let spec = UcSpec {
+            trend: TrendSpec::LocalLevel,
+            cycle: true,
+            damped_cycle: true,
+            stochastic_cycle: true,
+            cycle_init: CycleInit::Stationary,
+            ..UcSpec::default()
+        };
+        let layout = Layout::new(&spec, 60).unwrap();
+        assert_eq!(layout.diffuse, vec![true, false, false]);
+        assert_eq!(layout.k_diffuse(), 1);
+        let (s2c, freq, rho) = (2.0, 2.0 * std::f64::consts::PI / 30.0, 0.9);
+        let model = layout.build_ssm(&[0.3, 0.5, s2c, freq, rho]).unwrap();
+        let init = model.initial_state().unwrap();
+        let want = s2c / (1.0 - rho * rho);
+        assert!((want - 10.526_315_789_473_685).abs() < 1e-12);
+        for i in 0..3 {
+            for j in 0..3 {
+                let p_star = init.p_star[(i, j)];
+                let p_inf = init.p_inf[(i, j)];
+                let (ws, wi) = match (i, j) {
+                    (0, 0) => (0.0, 1.0),
+                    (1, 1) | (2, 2) => (want, 0.0),
+                    _ => (0.0, 0.0),
+                };
+                assert!(
+                    (p_star - ws).abs() <= 1e-12 * want,
+                    "P_*[{i},{j}] = {p_star}, want {ws}"
+                );
+                assert_eq!(p_inf, wi, "P_inf[{i},{j}]");
+            }
+        }
+        assert!(init.a1.iter().all(|&a| a == 0.0));
+        // The diffuse default keeps the exact `Diffuse` initialization.
+        let diffuse = Layout::new(
+            &UcSpec {
+                cycle_init: CycleInit::Diffuse,
+                ..spec.clone()
+            },
+            60,
+        )
+        .unwrap();
+        assert!(matches!(
+            diffuse
+                .build_ssm(&[0.3, 0.5, s2c, freq, rho])
+                .unwrap()
+                .initialization(),
+            Initialization::Diffuse
+        ));
+        assert_eq!(diffuse.k_diffuse(), 3);
+    }
+
+    /// The AR(1) block's initial variance is `sigma2_ar / (1 - phi^2)`; with
+    /// a stationary cycle beside it the two stationary blocks are solved as
+    /// one block-diagonal Lyapunov system (no cross-covariance), the level
+    /// stays diffuse, and the AR(2) block matches its own closed form
+    /// `gamma_0 = (1 - phi2) s2 / ((1 + phi2) ((1 - phi2)^2 - phi1^2))`.
+    #[test]
+    fn ar_initial_covariance_is_the_closed_form() {
+        let spec = UcSpec {
+            trend: TrendSpec::LocalLevel,
+            autoregressive: Some(1),
+            ..UcSpec::default()
+        };
+        let layout = Layout::new(&spec, 50).unwrap();
+        assert_eq!(layout.diffuse, vec![true, false]);
+        assert_eq!(layout.state_names, vec!["level", "ar.L1"]);
+        let model = layout.build_ssm(&[8000.0, 1400.0, 6000.0, 0.5]).unwrap();
+        let init = model.initial_state().unwrap();
+        let want = 6000.0 / (1.0 - 0.25);
+        assert!((init.p_star[(1, 1)] - want).abs() <= 1e-12 * want);
+        assert!((want - 8000.0).abs() < 1e-9);
+        assert_eq!(init.p_star[(0, 0)], 0.0);
+        assert_eq!(init.p_star[(0, 1)], 0.0);
+        assert_eq!(init.p_inf[(0, 0)], 1.0);
+        assert_eq!(init.p_inf[(1, 1)], 0.0);
+
+        let spec = UcSpec {
+            trend: TrendSpec::SmoothTrend,
+            cycle: true,
+            damped_cycle: true,
+            stochastic_cycle: true,
+            cycle_init: CycleInit::Stationary,
+            autoregressive: Some(2),
+            ..UcSpec::default()
+        };
+        let layout = Layout::new(&spec, 50).unwrap();
+        assert_eq!(layout.diffuse, vec![true, true, false, false, false, false]);
+        let names: Vec<&str> = layout.specs.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec![
+                "sigma2.irregular",
+                "sigma2.trend",
+                "sigma2.cycle",
+                "sigma2.ar",
+                "frequency.cycle",
+                "damping.cycle",
+                "ar.L1",
+                "ar.L2"
+            ]
+        );
+        let (s2c, rho, s2a, p1, p2) = (0.5, 0.9, 0.2, 0.5, -0.3);
+        let params = [0.01, 0.002, s2c, s2a, 0.25, rho, p1, p2];
+        let init = layout.build_ssm(&params).unwrap().initial_state().unwrap();
+        let cyc = s2c / (1.0 - rho * rho);
+        let g0 = (1.0 - p2) * s2a / ((1.0 + p2) * ((1.0 - p2) * (1.0 - p2) - p1 * p1));
+        let g1 = p1 * g0 / (1.0 - p2);
+        for (i, j, w) in [(2, 2, cyc), (3, 3, cyc), (4, 4, g0), (5, 5, g0), (4, 5, g1)] {
+            assert!(
+                (init.p_star[(i, j)] - w).abs() <= 1e-10 * w.abs(),
+                "P_*[{i},{j}] = {} vs {w}",
+                init.p_star[(i, j)]
+            );
+        }
+        for (i, j) in [(2, 4), (3, 5), (2, 5), (0, 2), (1, 4)] {
+            assert_eq!(init.p_star[(i, j)], 0.0, "cross-block P_*[{i},{j}]");
+        }
+        assert_eq!(layout.k_diffuse(), 2);
+        // The ties: sigma2.cycle -> frequency/damping, sigma2.ar -> ar.L*.
+        assert_eq!(layout.ties, vec![(2, vec![4, 5]), (3, vec![6, 7])]);
+    }
+
+    /// Regressors in the state: `k` exactly diffuse constant states after
+    /// the AR block, an identity transition with no disturbance, and the
+    /// design row carrying `x_t` in their columns at every period.
+    #[test]
+    fn state_regression_layout() {
+        let x = vec![vec![1.0, 2.0, 3.0, 4.0], vec![-1.0, 0.5, 0.25, 2.0]];
+        let spec = UcSpec {
+            trend: TrendSpec::LocalLevel,
+            autoregressive: Some(1),
+            exog: x.clone(),
+            mle_regression: false,
+            ..UcSpec::default()
+        };
+        let layout = Layout::new(&spec, 4).unwrap();
+        assert_eq!(
+            layout.state_names,
+            vec!["level", "ar.L1", "beta.x1", "beta.x2"]
+        );
+        assert_eq!(layout.diffuse, vec![true, false, true, true]);
+        assert_eq!(layout.k_diffuse(), 3);
+        let names: Vec<&str> = layout.specs.iter().map(|s| s.name.as_str()).collect();
+        assert_eq!(
+            names,
+            vec!["sigma2.irregular", "sigma2.level", "sigma2.ar", "ar.L1"]
+        );
+        let model = layout.build_ssm(&[1.0, 0.5, 0.3, 0.6]).unwrap();
+        for (t, (x1, x2)) in x[0].iter().zip(&x[1]).enumerate() {
+            let z = model.z().at(t);
+            assert_eq!(
+                (z[(0, 0)], z[(0, 1)], z[(0, 2)], z[(0, 3)]),
+                (1.0, 1.0, *x1, *x2)
+            );
+        }
+        let tr = model.t().at(0);
+        assert_eq!((tr[(2, 2)], tr[(3, 3)], tr[(2, 3)]), (1.0, 1.0, 0.0));
+        let rqr = model.rqr(0).unwrap();
+        assert_eq!((rqr[(2, 2)], rqr[(3, 3)]), (0.0, 0.0));
+        assert!(layout
+            .regression_effect(&[1.0, 0.5, 0.3, 0.6], 4)
+            .iter()
+            .all(|&e| e == 0.0));
+        // White noise plus state regression is not the "unused state" case.
+        let wn = Layout::new(
+            &UcSpec {
+                trend: TrendSpec::Irregular,
+                exog: x.clone(),
+                mle_regression: false,
+                ..UcSpec::default()
+            },
+            4,
+        )
+        .unwrap();
+        assert!(!wn.unused_state);
+        assert_eq!(wn.state_names, vec!["beta.x1", "beta.x2"]);
+        assert!(matches!(
+            wn.build_ssm(&[1.0]).unwrap().initialization(),
+            Initialization::Diffuse
+        ));
+        // The starting ladder has no coefficient parameters to fill.
+        let starts = layout.starting_values(&[1.0, 2.0, 1.5, 3.0], 3);
+        assert!(starts.iter().all(|p| p.len() == 4));
+    }
+
+    /// The state-regression guard names the cause it can know: a units
+    /// problem only when the columns' scales are far apart (from each other
+    /// or from the unit loading of the level), never for columns already in
+    /// units near 1 such as an N(0, 1) draw with max |x| = 2.8. There the
+    /// message must not advise rescaling; it names the weakly resolved
+    /// direction and the remedies that remove it (drop the column, or
+    /// `mle_regression = true`).
+    #[test]
+    fn regressor_scale_refusal_names_units_only_when_they_can_be_the_cause() {
+        for scales in [vec![1e-8, 1.3], vec![1e8], vec![2.0e2]] {
+            let m = regressor_scale_refusal(&scales, 120, 3).to_string();
+            assert!(
+                m.starts_with("invalid specification: exog: under mle_regression = false")
+                    && m.contains("too far apart")
+                    && m.contains("would end at observation 120 instead of 3")
+                    && m.contains("Rescale the columns"),
+                "{scales:?}: {m}"
+            );
+        }
+        for scales in [vec![2.7976489384849996], vec![0.05, 3.0], vec![99.0]] {
+            let m = regressor_scale_refusal(&scales, 14, 13).to_string();
+            assert!(
+                m.starts_with("invalid specification: exog: under mle_regression = false")
+                    && m.contains("ends at observation 14 on the columns as given and at 13")
+                    && m.contains("the units are not the cause")
+                    && m.contains("nearly collinear")
+                    && m.contains("with mle_regression = true")
+                    && !m.contains("Rescale the columns")
+                    && !m.contains("too far apart"),
+                "{scales:?}: {m}"
+            );
+        }
+    }
+
+    #[test]
+    fn cycle_init_parses_trimmed_and_case_insensitive() {
+        assert_eq!(
+            CycleInit::parse(" Stationary ").unwrap(),
+            CycleInit::Stationary
+        );
+        assert_eq!(CycleInit::parse("DIFFUSE").unwrap(), CycleInit::Diffuse);
+        let e = CycleInit::parse("bogus").unwrap_err().to_string();
+        assert!(e.contains("cycle_init = \"bogus\"") && e.contains("\"stationary\""));
+        assert_eq!(CycleInit::default(), CycleInit::Diffuse);
+        assert_eq!(CycleInit::Stationary.name(), "stationary");
+    }
 }

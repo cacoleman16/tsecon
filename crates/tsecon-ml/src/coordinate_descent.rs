@@ -172,6 +172,14 @@ fn check_penalty(alpha: f64, l1_ratio: f64, opts: CoordDescentOptions) -> Result
             what: "l1_ratio must lie in [0, 1]",
         });
     }
+    check_cd_options(opts)
+}
+
+/// Validates the coordinate-descent stopping controls. Every entry point
+/// that drives [`cd_engine`] runs it first, so `max_iter = 0` is refused by
+/// name instead of being reported as non-convergence after one sweep, and a
+/// zero, negative or NaN `tol` instead of non-convergence after `max_iter`.
+pub(crate) fn check_cd_options(opts: CoordDescentOptions) -> Result<(), MlError> {
     if !opts.tol.is_finite() || opts.tol <= 0.0 {
         return Err(MlError::InvalidArgument {
             what: "tol must be finite and positive",

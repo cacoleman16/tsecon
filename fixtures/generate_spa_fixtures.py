@@ -63,6 +63,15 @@ at Monte Carlo tolerance (the `mc` block, 4000 replications).
   `arch_raises: true` and the transcription's set (all models), which is
   what tsecon returns.
 
+  MULTI-STEP PIN (0.11.0): two cases (`stepdown_*_multistep`) were chosen so
+  that arch COMPLETES a StepM run whose later step adds a model — the path
+  the step-down exists for — rather than raising: arch's sets, the steps and
+  the step critical values are pinned bit-exact on arch's own resamples
+  (`arch_multistep: true`). Every StepM decision is certified like the
+  p-values: `stepm_margin` (min |obs_k - crit_step| over the steps and the
+  models still in play, on the comparison scale) is asserted > 1e-9 for the
+  un-studentized and the studentized leg.
+
 * "mc" (MONTE CARLO tolerance): arch's three p-values at 4000 replications
   with a different seed (un-studentized), and the transcription's
   studentized p-values on those 4000 resamples. tsecon's own seeded
@@ -95,6 +104,24 @@ is reported as the METHOD's and one they do not share is a bug. These are
 un-studentized rates (arch computes nothing else); the studentized path has
 no third-party rate and is measured, not validated, in the crate test.
 
+Family-wise error of StepM (`_meta.stepm_fwer_study`, `arch_stepm_fwer_study`,
+0.11.0): arch's OWN StepM (un-studentized, its studentize flag being inert)
+on four seeded designs of the size study's loss panel — the least
+favourable configuration (`lfc`, which IS `size_study`'s `ar05_b8` design,
+so through the step-1 identity its FWER re-measures the SPA size and the two
+are asserted to agree), a partial null with three worse models, a mixed
+design with two better models, and a step-down design whose second better
+model is detected only after the first is removed — n = 200, m = 5, B = 300,
+stationary bootstrap with block 8, 1000 Monte Carlo replications, sizes 0.05
+and 0.10 on the same resamples. Per design and size: the FWER (P(the set
+contains a true null)), any-power, all-power, average power, mean set size,
+arch's raises (counted as "every model superior"), arch's per-replication
+superior sets (so the binding test can pair tsecon with arch replication by
+replication), and an arch-versus-arch agreement baseline from a second arch
+seed on the same panels (`arch_agreement`). The panels come from NumPy's
+default_rng(880000 + r); a SHA-256 of each design's panels is stored so a
+consumer can tell whether its NumPy reproduces the stream.
+
 This generator NEVER imports tsecon. Doubles are written with json's
 shortest round-trip repr, which the Rust golden test parses to identical
 bits (serde_json `float_roundtrip`).
@@ -104,6 +131,7 @@ Run:  .venv/bin/python fixtures/generate_spa_fixtures.py
 
 from __future__ import annotations
 
+import hashlib
 import json
 import math
 from pathlib import Path
@@ -463,12 +491,17 @@ def spa_transcribe(bench, model_cols, resamples, block_size, studentize, nested)
 
 
 def stepm_transcribe(zc, obs, n, size):
+    """The stepwise rule; also returns the decision margin
+    min |obs_k - crit_step| over the steps and the models still in play
+    (on the comparison scale), so the sets are certified exact like the
+    p-values."""
     m = len(obs)
     reps = len(zc)
     remaining = [True] * m
     superior = []
     steps = []
     crits = []
+    margin = math.inf
     sq = math.sqrt(n)
     while True:
         mx = []
@@ -479,6 +512,9 @@ def stepm_transcribe(zc, obs, n, size):
                     best = zc[b][k]
             mx.append(best)
         crit = percentile_linear(sorted(mx), 1 - size)
+        for k in range(m):
+            if remaining[k]:
+                margin = min(margin, abs(obs[k] - crit))
         better = [k for k in range(m) if remaining[k] and obs[k] > crit]
         crits.append(sq * crit)
         steps.append(better)
@@ -487,7 +523,7 @@ def stepm_transcribe(zc, obs, n, size):
         superior.extend(better)
         if not better or len(superior) == m:
             break
-    return sorted(superior), steps, crits
+    return sorted(superior), steps, crits, margin
 
 
 # --------------------------------------------------------------------------
@@ -592,6 +628,137 @@ def arch_size_study():
 
 
 # --------------------------------------------------------------------------
+# arch's OWN StepM family-wise error rate and power (0.11.0)
+# --------------------------------------------------------------------------
+
+FWER_N = 200
+FWER_REPS = 300
+FWER_BLOCK = 8
+FWER_RHO = 0.5
+FWER_MC = 1000
+FWER_SIZES = [0.05, 0.10]
+FWER_DATA_SEED = 880000
+FWER_ARCH_SEED = 9000
+FWER_ARCH_SEED_B = 123456
+# Scales listed benchmark first. Model k's expected loss differential is
+# (s_0^2 - s_k^2)(1 - rho^(2(t+1))): its sign is the sign of s_0^2 - s_k^2,
+# so the true-null set {k : s_k >= s_0} is exact.
+FWER_DESIGNS = [
+    ("lfc", [1.0] * 6),
+    ("partial_null", [1.0, 1.0, 1.0, 1.3, 1.6, 2.0]),
+    ("mixed", [1.0, 0.6, 0.8, 1.0, 1.0, 1.5]),
+    ("stepdown", [1.0, 0.5, 0.88, 1.0, 1.0, 1.0]),
+]
+
+
+def arch_stepm_sets(bench, models, size, seed):
+    """arch's StepM superior set; arch's raise when every model ends up
+    superior over two or more steps (its loop re-runs on an empty selector)
+    is asserted by message and recorded as "every model superior"."""
+    sm = StepM(bench, models, size=size, block_size=FWER_BLOCK, reps=FWER_REPS,
+               bootstrap="stationary", studentize=False, seed=seed)
+    try:
+        sm.compute()
+    except ValueError as exc:
+        assert "zero-size array" in str(exc), f"unexpected arch StepM error: {exc}"
+        return list(range(models.shape[1])), True
+    return sorted(int(v) for v in sm.superior_models), False
+
+
+def arch_stepm_fwer_study(size_study):
+    """arch.bootstrap.StepM's OWN family-wise error rate and power on four
+    designs (module docstring), plus an arch-versus-arch agreement baseline.
+    The deterministic identities are asserted on arch's sets: at the same
+    seed the size-0.05 set is a subset of the size-0.10 set."""
+    out = {
+        "n": FWER_N, "m": len(FWER_DESIGNS[0][1]) - 1, "reps": FWER_REPS,
+        "block_size": FWER_BLOCK, "bootstrap": "stationary", "rho": FWER_RHO,
+        "common": 0.7, "mc": FWER_MC, "sizes": FWER_SIZES, "studentize": False,
+        "data_seed": f"default_rng({FWER_DATA_SEED} + r)",
+        "arch_seed": f"{FWER_ARCH_SEED} + r (the same at both sizes)",
+        "arch_seed_b": f"{FWER_ARCH_SEED_B} + r (agreement baseline)",
+        "panel_checksum": "sha256 over r of the float64 bytes of the (benchmark, models) panel, "
+                          "benchmark first, C order",
+        "designs": {},
+    }
+    lfc_ref = size_study["rates"]["ar05_b8"]["rates"]
+    for label, scales in FWER_DESIGNS:
+        mu = np.array([scales[0] ** 2 - s ** 2 for s in scales[1:]])
+        true_null = mu <= 0
+        false_null = ~true_null
+        h = hashlib.sha256()
+        cells = {str(a): {"sets": [], "sets_b": [], "raises": 0, "raises_b": 0} for a in FWER_SIZES}
+        for r in range(FWER_MC):
+            rng = np.random.default_rng(FWER_DATA_SEED + r)
+            cols = loss_panel(rng, FWER_N, scales, rho=FWER_RHO)
+            panel = np.column_stack([np.asarray(c) for c in cols])
+            h.update(np.ascontiguousarray(panel, dtype=np.float64).tobytes())
+            bench, models = panel[:, 0], panel[:, 1:]
+            for a in FWER_SIZES:
+                c = cells[str(a)]
+                sup, raised = arch_stepm_sets(bench, models, a, FWER_ARCH_SEED + r)
+                sup_b, raised_b = arch_stepm_sets(bench, models, a, FWER_ARCH_SEED_B + r)
+                c["sets"].append(sup)
+                c["sets_b"].append(sup_b)
+                c["raises"] += raised
+                c["raises_b"] += raised_b
+        design = {"scales": scales, "mean_loss_diff_sign": np.sign(mu).astype(int).tolist(),
+                  "true_nulls": [int(k) for k in np.flatnonzero(true_null)],
+                  "panel_sha256": h.hexdigest(), "rates": {}}
+        for r in range(FWER_MC):
+            assert set(cells["0.05"]["sets"][r]) <= set(cells["0.1"]["sets"][r]), \
+                f"{label} r={r}: arch's size-0.05 set is not inside its size-0.10 set"
+        for a in FWER_SIZES:
+            c = cells[str(a)]
+            ind = np.zeros((FWER_MC, len(mu)), dtype=bool)
+            ind_b = np.zeros((FWER_MC, len(mu)), dtype=bool)
+            for r, (sa, sb) in enumerate(zip(c["sets"], c["sets_b"])):
+                ind[r, sa] = True
+                ind_b[r, sb] = True
+            fw = np.any(ind & true_null, axis=1)
+            fw_b = np.any(ind_b & true_null, axis=1)
+            rates = {
+                "fwer": float(fw.mean()),
+                "mean_n_superior": float(ind.sum(1).mean()),
+                "arch_raises": int(c["raises"]),
+                "fwer_seed_b": float(fw_b.mean()),
+                "arch_agreement": float(np.mean([sa == sb for sa, sb in zip(c["sets"], c["sets_b"])])),
+                "fwer_discordant": [int(np.sum(fw & ~fw_b)), int(np.sum(fw_b & ~fw))],
+            }
+            if false_null.any():
+                rates["any_power"] = float(np.any(ind & false_null, axis=1).mean())
+                rates["all_power"] = float(np.all(ind[:, false_null], axis=1).mean())
+                rates["avg_power"] = float(ind[:, false_null].mean())
+            else:
+                rates["any_power"] = rates["all_power"] = rates["avg_power"] = None
+            rates["superior_sets"] = c["sets"]
+            design["rates"][str(a)] = rates
+            se = math.sqrt(a * (1 - a) / FWER_MC)
+            if label != "lfc":
+                assert rates["fwer"] <= a + 4 * se, f"{label}: arch FWER {rates['fwer']} at size {a} beyond 4 se"
+            else:
+                ref = lfc_ref[SIZE_LEVELS.index(a)]
+                se2 = math.sqrt(ref * (1 - ref) * (1 / FWER_MC + 1 / SIZE_MC))
+                assert abs(rates["fwer"] - ref) <= 4 * se2, \
+                    f"lfc: StepM FWER {rates['fwer']} vs the size study's SPA rate {ref} beyond 4 se"
+                rates["size_study_ar05_b8_rate"] = ref
+            print(f"arch StepM FWER study {label:12s} size={a:.2f}: FWER={rates['fwer']:.4f} "
+                  f"any={rates['any_power']} all={rates['all_power']} avg={rates['avg_power']} "
+                  f"mean|set|={rates['mean_n_superior']:.3f} raises={rates['arch_raises']} "
+                  f"arch-vs-arch agreement={rates['arch_agreement']:.3f} "
+                  f"discordant FWER={rates['fwer_discordant']}", flush=True)
+        out["designs"][label] = design
+    nulls = [d["rates"][str(a)]["arch_raises"] for lab, d in out["designs"].items()
+             for a in FWER_SIZES if lab in ("lfc", "partial_null")]
+    # arch's raise is not a corner case of the alternatives: it happens on
+    # valid samples under a null design too (every model added over two or
+    # more steps), which the "all superior" convention must then cover.
+    assert sum(nulls) > 0, "arch never raised under a null design: the 'all superior' convention is not exercised"
+    out["arch_raises_under_null"] = int(sum(nulls))
+    return out
+
+
+# --------------------------------------------------------------------------
 # Cases
 # --------------------------------------------------------------------------
 
@@ -609,7 +776,21 @@ CASES = [
     # Every model worse than the benchmark (some significantly): the
     # consistent re-centring leaves the bad ones un-centred.
     ("no_model_better", 100, "circular", 5, False, 17, [1.0, 1.4, 1.6, 2.0], [0.0, 0.3, 0.6, 1.0]),
+    # Multi-step paths that arch COMPLETES (no raise): a later step adds a
+    # model once the first one is out of the maximum. Searched for, then
+    # pinned; the expected paths are asserted in EXPECTED_STEPS below.
+    ("stepdown_m5_multistep", 100, "stationary", 5, False, 120, [1.0, 0.55, 0.85, 1.0, 1.0, 1.05], None),
+    ("stepdown_m6_multistep", 120, "stationary", 6, False, 33, [1.0, 0.5, 0.8, 0.9, 1.0, 1.0, 1.2], None),
 ]
+# (case, studentize, size) -> the step path the transcription (and, for the
+# un-studentized rule, arch's set) must follow.
+EXPECTED_STEPS = {
+    ("stepdown_m5_multistep", False, 0.05): [[1], []],
+    ("stepdown_m5_multistep", False, 0.10): [[1], [0], []],
+    ("stepdown_m6_multistep", False, 0.05): [[0, 1, 2], []],
+    ("stepdown_m6_multistep", False, 0.10): [[0, 1, 2], [4], []],
+    ("stepdown_m6_multistep", True, 0.05): [[0, 1, 2], [4], []],
+}
 REPS = 200
 MC_REPS = 4000
 STEPM_SIZES = [0.05, 0.10]
@@ -708,7 +889,10 @@ def run_case(name, n, kind, block_size, nested, seed, scales, bias):
     for size in STEPM_SIZES:
         sm = StepM(bench_arr, models_arr, size=size, block_size=block_size, reps=REPS,
                    bootstrap=ARCH_NAME[kind], studentize=False, nested=nested, seed=seed)
-        sup, steps, crits = stepm_transcribe(tr["_zc"], tr["_obs"], n, size)
+        sup, steps, crits, margin = stepm_transcribe(tr["_zc"], tr["_obs"], n, size)
+        assert margin > 1e-9, f"{name}: a StepM decision sits within 1e-9 of its critical value ({margin})"
+        want = EXPECTED_STEPS.get((name, False, size))
+        assert want is None or steps == want, f"{name}: step path {steps} at size {size}, expected {want}"
         try:
             sm.compute()
             arch_raises = False
@@ -723,16 +907,23 @@ def run_case(name, n, kind, block_size, nested, seed, scales, bias):
         if not arch_raises:
             assert sup == [int(v) for v in sm.superior_models], \
                 f"{name}: StepM superior set differs at size {size}: {sup} vs {list(sm.superior_models)}"
+        # arch completed a run in which a LATER step added a model.
+        multistep = (not arch_raises) and sum(1 for st in steps if st) >= 2
         stepm_block[str(size)] = {"superior_models": sup, "steps": steps, "step_crit_values": crits,
-                                  "arch_raises": arch_raises}
+                                  "arch_raises": arch_raises, "arch_multistep": multistep,
+                                  "stepm_margin": margin}
 
     # --- studentized transcription (Hansen's formulas), same resamples.
     ts = spa_transcribe(bench, models, idx_lists, block_size, studentize=True, nested=nested)
     assert ts["min_gap"] > 1e-9, f"{name}: studentized replicate within 1e-9 of the statistic"
     stud_stepm = {}
     for size in STEPM_SIZES:
-        sup, steps, crits = stepm_transcribe(ts["_zc"], ts["_obs"], n, size)
-        stud_stepm[str(size)] = {"superior_models": sup, "steps": steps, "step_crit_values": crits}
+        sup, steps, crits, margin = stepm_transcribe(ts["_zc"], ts["_obs"], n, size)
+        assert margin > 1e-9, f"{name}: a studentized StepM decision within 1e-9 of its critical value"
+        want = EXPECTED_STEPS.get((name, True, size))
+        assert want is None or steps == want, f"{name}: studentized step path {steps} at {size}, expected {want}"
+        stud_stepm[str(size)] = {"superior_models": sup, "steps": steps, "step_crit_values": crits,
+                                 "stepm_margin": margin}
     stud_block = {k: v for k, v in ts.items() if not k.startswith("_") and k != "boot_mean_scale"}
     stud_block["stepm"] = stud_stepm
 
@@ -788,7 +979,10 @@ def main():
     print("resampling conventions: arch's index arrays replayed exactly by "
           "tsecon-bootstrap's rule for all three schemes")
     cases = [run_case(*c) for c in CASES]
+    assert any(v["arch_multistep"] for c in cases for v in c["stepm"].values()), \
+        "no case pins a StepM run that arch completes with a later step adding a model"
     size_study = arch_size_study()
+    fwer_study = arch_stepm_fwer_study(size_study)
     out = {
         "_meta": {
             "generator": "fixtures/generate_spa_fixtures.py",
@@ -803,11 +997,14 @@ def main():
                 "The `size_study` block is arch's OWN rejection frequency under the least favourable null on the crate property test's design, so that an over-size tsecon shares with its reference is reported as the method's and one it does not share is a bug.",
                 "nested=True: arch clones the bootstrap with a deepcopy of the integer seed, so the nested variance uses the same resamples as the test; the fixture's `loss_diff_var` is asserted bit-identical to that construction.",
                 "Every stored 'arch' number was recomputed from the stored indices with explicit sequential sums and asserted bit-identical; min_gap > 1e-9 certifies the p-values cannot flip under sub-1e-9 arithmetic differences.",
+                "stepm_margin (per StepM block) is min |obs_k - crit_step| over the steps and the models still in play, asserted > 1e-9 for both legs, so the superior sets and steps are exact as well. arch_multistep marks a block where arch completed the run and a later step added a model.",
+                "The `stepm_fwer_study` block is arch's OWN StepM family-wise error and power on four designs (lfc = size_study's ar05_b8 design), with per-replication superior sets for a paired comparison and an arch-vs-arch agreement baseline from a second seed.",
             ],
             "crit_levels": [1 - a for a in CRIT_ALPHAS],
             "mc_tolerance": 0.05,
             "conventions": conventions,
             "size_study": size_study,
+            "stepm_fwer_study": fwer_study,
         },
         "cases": cases,
     }

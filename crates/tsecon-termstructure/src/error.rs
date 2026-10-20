@@ -15,7 +15,9 @@ pub enum TermStructureError {
     EmptyMaturities,
     /// A maturity was non-finite or non-positive. Nelson-Siegel loadings are
     /// defined for `t > 0` (the `t -> 0` limit is handled internally only for
-    /// the loadings themselves, never as a data maturity).
+    /// the loadings themselves, never as a data maturity), and the JSZ / ACM
+    /// recursions start at the one-period maturity. The message names
+    /// `maturities[i]`, the Python keyword.
     InvalidMaturity {
         /// Zero-based index of the offending maturity.
         index: usize,
@@ -173,10 +175,10 @@ pub enum TermStructureError {
         /// The largest supported number of starts.
         max: usize,
     },
-    /// A maturity exceeds the largest supported number of periods. The
-    /// Riccati recursions are tabulated at every integer period up to the
-    /// longest maturity, so an absurd maturity would be an absurd allocation
-    /// rather than a curve.
+    /// A maturity exceeds the largest supported number of periods. The JSZ
+    /// Riccati recursions and the ACM price recursion are tabulated at every
+    /// integer period up to the longest maturity, so an absurd maturity
+    /// would be an absurd allocation rather than a curve.
     MaturityTooLarge {
         /// Zero-based index of the offending maturity.
         index: usize,
@@ -198,8 +200,9 @@ impl fmt::Display for TermStructureError {
             ),
             TermStructureError::InvalidMaturity { index, value } => write!(
                 f,
-                "maturity[{index}] = {value} is invalid: Nelson-Siegel loadings \
-                 require strictly positive, finite maturities"
+                "maturities[{index}] = {value} is invalid: every maturity must be \
+                 strictly positive and finite (the yield-curve loadings and affine \
+                 recursions are defined only at positive maturities)"
             ),
             TermStructureError::InvalidLambda { what, value } => write!(
                 f,
@@ -312,7 +315,7 @@ impl fmt::Display for TermStructureError {
             ),
             TermStructureError::MaturityTooLarge { index, value, max } => write!(
                 f,
-                "maturity[{index}] = {value} periods exceeds the supported maximum \
+                "maturities[{index}] = {value} periods exceeds the supported maximum \
                  of {max}: the affine recursions are tabulated at every integer \
                  period up to the longest maturity, so express maturities in \
                  periods of the data's frequency (months for monthly data: 120 \

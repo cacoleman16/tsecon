@@ -34,9 +34,9 @@ It inspects one dataset — it cannot know your research question.
 |---|---|---|
 | `data` | — | 1D array → univariate battery; 2D `(n, k)`, k ≥ 2 → multivariate (an `(n, 1)` column squeezes to univariate). Plain lists are coerced. |
 | `seasonal_period` | `None` | A *known* period `s` (12 for monthly, 4 for quarterly) unlocks real seasonal evidence: the ACF at lags `s, 2s, 3s` plus the periodogram ordinate at frequency `1/s`. Without it you only get a heuristic `detected_period`. |
-| `lags` | `None` | Ljung-Box horizon; `None` → `min(10, n_analysis // 5)`. |
+| `lags` | `None` | 1D input: the Ljung-Box horizon, an integer `1 <= lags <= n - 3` (the battery may test the `n - 1` first differences); `None` → `min(10, n_analysis // 5)`. 2D input: the cap of the VAR lag search, an integer `>= 1` (`None` → 8; a cap beyond the feasible lags searches all of them). Validated up front and refused by name — it used to be clamped silently (1D) or to drive an unbounded loop (2D). |
 | `alpha` | `0.05` | One significance level for every family. Must lie in `(0.01, 0.10]` — the KPSS p-value is interpolated from a table clamped to `[0.01, 0.10]`, so anything outside that range could never be served honestly (a teaching error explains this if you try). |
-| `max_breaks` | `5` | Passed to `bai_perron` when the break scan escalates. |
+| `max_breaks` | `5` | Passed to `bai_perron` when the break scan escalates; an integer in `[1, 10]`, validated up front whatever the data (it used to be checked only when the sup-F test rejected). |
 | `trim` | `0.15` | Trimming fraction for the sup-F search and Bai-Perron segments. |
 
 ## How to read the report
@@ -68,6 +68,18 @@ statistics that fired it, a `suggestion` naming concrete calls, the
 this), and a `caveat` stating the assumption that could overturn the routing.
 An entry with no caveat would be a verdict; these are deliberately not
 verdicts.
+
+**One conditional citation in `arma_orders`.** When Ljung-Box rejects on the
+first differences *and* ARCH-LM fires there too, the `arma_orders` entry adds
+`variance_ratio` to its `functions` and says why in its `suggestion`: Ljung-Box's
+null is iid increments, so volatility clustering alone can drive the
+rejection, while the variance-ratio test's robust z* asks whether the
+increments are uncorrelated without that assumption (pass it the level series;
+see the [variance-ratio card](unit-root-cointegration-tests.md#variance_ratio-lo-mackinlay-variance-ratio-test-and-the-chow-denning-joint-test)).
+It is cited, not run: the battery's test families and the `n_tests`
+arithmetic are unchanged. The runnable example below does not trigger it — its
+ARCH-LM does not reject — so its `arma_orders` entry lists only `arima_fit`,
+`acf`, `pacf`.
 
 **The multiple-testing footer is a design stance.** Every hypothesis test the
 battery ran lands in `tests_run`, and the report closes with the arithmetic:
@@ -110,6 +122,13 @@ and a clean series gets an explicit `no_red_flags` entry restating it, so a
   recommendation string has **not** caught up — it still describes seasonal
   ARIMA as roadmap and routes you to differencing upstream by hand. Read that
   sentence as stale and call `arima_fit(..., seasonal=…)` directly.
+- **Series diagnostics, not regression diagnostics.** The serial-correlation
+  family tests the analysis object itself (Ljung-Box, ACF/PACF). Serial
+  correlation in the *errors of a regression* you fit afterwards is a
+  different question, with its own tests on `(y, x)`: `breusch_godfrey_test`
+  (any order up to `nlags`, valid with a lagged dependent variable) and
+  `durbin_watson_test` (first order, exact p-value). The battery runs neither,
+  because it has no regressors to condition on.
 - **One dataset, no question.** The battery cannot know whether the series is
   an outcome or a future regressor, what the loss function is, or which
   regimes matter. It screens; it does not decide.

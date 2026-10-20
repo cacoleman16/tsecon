@@ -58,7 +58,7 @@
 
 use tsecon_linalg::faer::MatRef;
 
-use crate::coordinate_descent::{lasso, CoordDescentOptions};
+use crate::coordinate_descent::{check_cd_options, lasso, CoordDescentOptions};
 use crate::error::MlError;
 use crate::path::{regularization_path, PathOptions};
 use crate::util::{check_xy, columns};
@@ -178,6 +178,7 @@ pub fn pds_lasso(
             });
         }
     }
+    check_cd_options(opts)?;
 
     let (alpha_y, support_y) = select(x, p, y, alpha, opts)?;
     let (alpha_d, support_d) = select(x, p, d, alpha, opts)?;

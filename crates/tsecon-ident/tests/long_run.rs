@@ -10,7 +10,9 @@
 //! the identifying restriction holds mechanically.
 
 use serde_json::Value;
-use tsecon_ident::long_run::{long_run_multiplier, long_run_svar};
+use tsecon_ident::long_run::{
+    apply_impact_signs, long_run_multiplier, long_run_svar, validate_impact_signs,
+};
 use tsecon_ident::IdentError;
 use tsecon_linalg::faer::{Mat, MatRef};
 
@@ -378,4 +380,160 @@ fn non_triangularizable_pattern_errors() {
         matches!(err2, IdentError::InvalidArgument { .. }),
         "{err2:?}"
     );
+}
+
+#[test]
+fn non_triangularizable_message_names_restrictions() {
+    let a1 = Mat::from_fn(3, 3, |i, j| if i == j { 0.4 } else { 0.0 });
+    let refs = [a1.as_ref()];
+    let sigma = Mat::<f64>::identity(3, 3);
+    let err = long_run_svar(&refs, sigma.as_ref(), 4, Some(&[(0, 0), (0, 1)]), false).unwrap_err();
+    assert!(err.to_string().contains("restrictions"), "{err}");
+    let err = long_run_svar(&refs, sigma.as_ref(), 4, Some(&[(7, 1)]), false).unwrap_err();
+    assert!(err.to_string().contains("restrictions"), "{err}");
+}
+
+// ---------------------------------------------------------------------------
+// impact_signs: the per-shock sign anchor
+// ---------------------------------------------------------------------------
+
+/// The default identification of a fixture case, plus a copy to anchor.
+fn anchored(
+    case: &Value,
+    anchors: &[(usize, usize)],
+) -> (
+    tsecon_ident::LongRunSvar,
+    tsecon_ident::LongRunSvar,
+    Vec<f64>,
+) {
+    let base = run_case(case, false);
+    let mut res = base.clone();
+    let pre = apply_impact_signs(&mut res, anchors).expect("valid anchors");
+    (base, res, pre)
+}
+
+#[test]
+fn impact_signs_flip_exactly_the_anchored_negative_columns() {
+    let fx = load();
+    let case = &fx["flip_2var"]; // default impact has impact[0,0] < 0
+    let base = run_case(case, false);
+    assert!(base.impact[(0, 0)] < 0.0);
+    let k = base.impact.nrows();
+    for anchors in [
+        vec![(0usize, 0usize)],
+        vec![(0, 0), (1, 1)],
+        vec![(1, 0)],
+        vec![],
+    ] {
+        let (base, res, pre) = anchored(case, &anchors);
+        assert_eq!(pre.len(), anchors.len());
+        for (a, &(v, s)) in anchors.iter().enumerate() {
+            assert_eq!(
+                pre[a].to_bits(),
+                base.impact[(v, s)].to_bits(),
+                "pre-anchor value"
+            );
+            assert!(res.impact[(v, s)] >= 0.0, "anchored cell non-negative");
+        }
+        for j in 0..k {
+            let flipped = anchors
+                .iter()
+                .any(|&(v, s)| s == j && base.impact[(v, s)] < 0.0);
+            let sign = if flipped { -1.0 } else { 1.0 };
+            for i in 0..k {
+                // Exact negation (or identity) of the column, everywhere.
+                assert_eq!(res.impact[(i, j)], sign * base.impact[(i, j)]);
+                assert_eq!(res.long_run[(i, j)], sign * base.long_run[(i, j)]);
+                for (h, th) in res.irf.iter().enumerate() {
+                    assert_eq!(th[(i, j)], sign * base.irf[h][(i, j)], "irf[{h}]");
+                }
+            }
+        }
+        // The flip is a relabelling: B B' = Sigma_u and LR LR' are preserved,
+        // and the long-run zero pattern survives (as -0.0 after a flip).
+        let sigma = mat_from(&case["sigma_u"]);
+        let bbt = res.impact.as_ref() * res.impact.transpose();
+        close_mat(bbt.as_ref(), sigma.as_ref(), "anchored B B'");
+        for i in 0..k {
+            for j in (i + 1)..k {
+                assert_eq!(res.long_run[(i, j)], 0.0, "long-run zero survives");
+            }
+        }
+        assert_eq!(res.long_run_multiplier, base.long_run_multiplier);
+    }
+}
+
+#[test]
+fn impact_signs_leave_an_exact_zero_alone() {
+    // impact[0][1] is exactly +0.0 or -0.0 when Sigma_u is diagonal and the
+    // VAR is diagonal: D and LR are then diagonal, so B is diagonal.
+    let a1 = Mat::from_fn(2, 2, |i, j| if i == j { 0.5 } else { 0.0 });
+    let refs = [a1.as_ref()];
+    let sigma = Mat::from_fn(2, 2, |i, j| if i == j { 1.0 + i as f64 } else { 0.0 });
+    let base = long_run_svar(&refs, sigma.as_ref(), 3, None, false).unwrap();
+    assert_eq!(base.impact[(0, 1)], 0.0);
+    let mut neg = base.clone();
+    for i in 0..2 {
+        neg.impact[(i, 1)] = -neg.impact[(i, 1)];
+    }
+    assert!(neg.impact[(0, 1)].is_sign_negative() && neg.impact[(0, 1)] == 0.0);
+    let snapshot = neg.clone();
+    let pre = apply_impact_signs(&mut neg, &[(0, 1)]).unwrap();
+    assert_eq!(pre[0], 0.0);
+    // -0.0 < 0.0 is false: nothing is flipped.
+    for i in 0..2 {
+        for j in 0..2 {
+            assert_eq!(
+                neg.impact[(i, j)].to_bits(),
+                snapshot.impact[(i, j)].to_bits()
+            );
+        }
+    }
+}
+
+#[test]
+fn impact_signs_compose_with_impact_normalization() {
+    // Applied after normalize: under normalize_impact the diagonal is already
+    // non-negative, so a diagonal anchor is a no-op, while an off-diagonal
+    // anchor can still flip.
+    let fx = load();
+    let case = &fx["flip_2var_impact"];
+    let norm = run_case(case, true);
+    let mut same = norm.clone();
+    apply_impact_signs(&mut same, &[(0, 0), (1, 1)]).unwrap();
+    assert_eq!(same.impact, norm.impact);
+    let mut off = norm.clone();
+    apply_impact_signs(&mut off, &[(1, 0)]).unwrap();
+    assert!(off.impact[(1, 0)] >= 0.0);
+}
+
+#[test]
+fn impact_signs_refusals_name_the_parameter_and_leave_input_untouched() {
+    let fx = load();
+    let case = &fx["algebra_2var"];
+    let base = run_case(case, false);
+    let mut res = base.clone();
+    let err = apply_impact_signs(&mut res, &[(2, 0)]).unwrap_err();
+    assert!(
+        matches!(
+            err,
+            IdentError::RestrictionOutOfRange {
+                index: 2,
+                bound: 2,
+                ..
+            }
+        ),
+        "{err:?}"
+    );
+    assert!(err.to_string().contains("impact_signs"), "{err}");
+    let err = apply_impact_signs(&mut res, &[(0, 5)]).unwrap_err();
+    assert!(err.to_string().contains("impact_signs"), "{err}");
+    // Duplicate shock: refused even with different variables, before any flip.
+    let err = apply_impact_signs(&mut res, &[(0, 1), (1, 1)]).unwrap_err();
+    assert!(matches!(err, IdentError::InvalidArgument { .. }), "{err:?}");
+    assert!(err.to_string().contains("impact_signs"), "{err}");
+    assert_eq!(res.impact, base.impact);
+    assert!(validate_impact_signs(&[(0, 0), (0, 1)], 2).is_ok());
+    assert!(validate_impact_signs(&[(0, 0), (1, 0)], 2).is_err());
+    assert!(validate_impact_signs(&[], 2).is_ok());
 }

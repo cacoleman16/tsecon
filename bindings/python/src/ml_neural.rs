@@ -5,36 +5,116 @@
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1, PyReadonlyArray2};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
-use pyo3::types::{PyDict, PyList};
+use pyo3::types::{PyDict, PyInt, PyList, PyTuple};
 
 use crate::{to_faer, to_py, vec1};
 
-/// `hidden` accepts a tuple or list of positive ints, a bare int (one
-/// layer), or — because the package's coercion layer turns an all-numeric
-/// *list* and any integer ndarray into a float64 array before the call —
-/// a float64 array of integral values. Anything else is a teaching error.
+/// `hidden[i]`: a non-negative Python or NumPy integer, or an integral float
+/// (a float array of widths reads as floats). A width at or beyond 2**48 is
+/// refused here by name, before the core's budget, so a float such as 1e300
+/// is quoted as given rather than as a saturated cast.
+fn one_width(item: &Bound<'_, PyAny>, i: usize) -> PyResult<usize> {
+    let shown = item
+        .repr()
+        .map(|r| r.to_string())
+        .unwrap_or_else(|_| "?".to_string());
+    if let Ok(v) = item.extract::<usize>() {
+        return Ok(v);
+    }
+    if let Ok(v) = item.extract::<f64>() {
+        if v.is_finite() && v >= 0.0 && v.fract() == 0.0 {
+            if v < ABSURD_WIDTH {
+                return Ok(v as usize);
+            }
+            return Err(PyValueError::new_err(format!(
+                "mlp_regression: hidden[{i}] = {shown} is at or beyond 2**48 units, a layer \
+                 no machine can hold; pass widths that fit the data, e.g. hidden=(16,) or \
+                 hidden=[32, 16]"
+            )));
+        }
+    }
+    Err(PyValueError::new_err(format!(
+        "hidden must list positive integer layer widths; hidden[{i}] = {shown} is not a \
+         non-negative integer. Pass e.g. hidden=(16,) or hidden=[32, 16]"
+    )))
+}
+
+/// 2**48: the house bound beyond which a count cannot be allocated at all.
+const ABSURD_WIDTH: f64 = 281_474_976_710_656.0;
+
+/// Longest `hidden` sequence read element by element; the core names the
+/// depth limit for anything from 3 up to here.
+const MAX_LISTED_LAYERS: usize = 64;
+
+/// `hidden` accepts a bare int (one layer) or a tuple, list or 1-D NumPy
+/// array of widths (ints, or integral floats). It is in the coercion
+/// layer's `_EXEMPT` table, so it reaches this parser as given: a list
+/// stays a list of Python ints (the 2**48 pre-flight sees it) and an
+/// integer array keeps its dtype. Each bad element is refused as
+/// `hidden[i]`, and the core then budgets the network the widths imply.
+/// Anything else is a teaching error.
 fn parse_hidden(hidden: Option<&Bound<'_, PyAny>>) -> PyResult<Vec<usize>> {
     let Some(h) = hidden else {
         return Ok(vec![16]);
     };
-    if let Ok(v) = h.extract::<Vec<usize>>() {
-        return Ok(v);
-    }
     if let Ok(v) = h.extract::<usize>() {
         return Ok(vec![v]);
     }
-    if let Ok(arr) = h.extract::<PyReadonlyArray1<'_, f64>>() {
-        let mut out = Vec::new();
-        for v in vec1(&arr) {
-            if !v.is_finite() || v < 0.0 || v.fract() != 0.0 {
-                return Err(PyValueError::new_err(format!(
-                    "hidden must list positive integer layer widths; got a value {v} that is \
-                     not a non-negative integer. Pass e.g. hidden=(16,) or hidden=[32, 16]"
-                )));
-            }
-            out.push(v as usize);
+    let too_deep = |len: usize| {
+        // The core refuses any net deeper than two hidden layers; do not
+        // copy an absurdly long sequence element by element to say so.
+        PyValueError::new_err(format!(
+            "invalid argument: hidden lists {len} layers but this native net is \
+             limited to 2 hidden layers by design; pass one or two widths, e.g. \
+             hidden=(32, 16)"
+        ))
+    };
+    // A NumPy array (or scalar) is read through its Python-scalar list, once
+    // its shape says that list is a short 1-D one.
+    let listed;
+    let h = if h.hasattr("dtype")? && h.hasattr("tolist")? {
+        let ndim = h
+            .getattr("ndim")
+            .and_then(|d| d.extract::<usize>())
+            .unwrap_or(0);
+        if ndim > 1 {
+            return Err(PyValueError::new_err(format!(
+                "hidden must be a positive integer width or a tuple, list or 1-D array of \
+                 them; got a {ndim}-D array. Pass e.g. hidden=(16,) or hidden=[32, 16]"
+            )));
         }
-        return Ok(out);
+        let size = h
+            .getattr("size")
+            .and_then(|d| d.extract::<usize>())
+            .unwrap_or(0);
+        if size > MAX_LISTED_LAYERS {
+            return Err(too_deep(size));
+        }
+        listed = h.call_method0("tolist")?;
+        &listed
+    } else {
+        h
+    };
+    if h.is_instance_of::<PyList>() || h.is_instance_of::<PyTuple>() {
+        let len = h.len()?;
+        if len > MAX_LISTED_LAYERS {
+            return Err(too_deep(len));
+        }
+        return h
+            .try_iter()?
+            .enumerate()
+            .map(|(i, e)| one_width(&e?, i))
+            .collect();
+    }
+    if h.is_instance_of::<PyInt>() {
+        // A bare int that is not a usize: a negative width (2**48 and up is
+        // refused by the coercion layer's pre-flight before this parser).
+        return Err(PyValueError::new_err(format!(
+            "hidden must be a positive integer width or a tuple or list of them; \
+             hidden = {} is not a non-negative integer. Pass e.g. hidden=16, \
+             hidden=(16,) or hidden=[32, 16]",
+            h.repr().map(|r| r.to_string()).unwrap_or_default()
+        )));
     }
     Err(PyValueError::new_err(format!(
         "hidden must be a tuple or list of positive integers (one or two hidden-layer \
@@ -137,6 +217,16 @@ fn mat_to_py<'py>(
 /// activation/solver names, name the hidden-layer limit, and report
 /// `insufficient data: {got} observations, at least {needed} required`
 /// counting the validation split.
+///
+/// `hidden` may also be a 1-D array of widths. A layer width, an `n_seeds`,
+/// or (under Adam) a `max_epochs` or `patience` whose working set exceeds
+/// the 2**28-value (2 GiB) memory budget is refused by name (`hidden[i]`,
+/// `n_seeds`, `max_epochs`, `patience`), with the largest value that fits,
+/// before anything is allocated. The loss paths count the epochs every
+/// member is certain to record: all `max_epochs` with
+/// `validation_fraction=0`, and `min(max_epochs, patience + 1)` with a
+/// validation split, so a large `max_epochs` with the default `patience`
+/// runs until early stopping.
 #[pyfunction]
 #[pyo3(signature = (x, y, hidden = None, activation = "tanh", alpha = 1e-4, solver = "adam",
                     learning_rate = None, batch_size = None, max_epochs = 500,

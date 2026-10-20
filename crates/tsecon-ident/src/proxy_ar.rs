@@ -209,12 +209,15 @@
 //! mathematics as self-verifying (the grid test proves it) and the
 //! attribution as approximate.
 
+use tsecon_bayes::budget::{self, irf_path_values, mat_values, rect_values, Budget, SizeArg};
+use tsecon_bayes::BayesError;
 use tsecon_linalg::faer::{Mat, MatRef};
 use tsecon_linalg::jittered_cholesky;
 use tsecon_rng::Stream;
 use tsecon_stats::special::{inv_beta_inc, inv_norm_cdf};
 
 use crate::error::IdentError;
+use crate::summary::{irf_horizon_values, IRF_HORIZON_WHAT};
 
 /// Relative floor below which the quadratic's leading coefficient `A` counts
 /// as zero (the knife edge where the set degenerates to a half-line).
@@ -914,7 +917,8 @@ pub fn proxy_ar_sets<'a>(
         ArVariance::HacBartlett { lags } => {
             if lags >= n_proxy {
                 return Err(IdentError::InvalidArgument {
-                    what: "HAC bandwidth must be smaller than the proxy overlap count",
+                    what:
+                        "hac_lags (the HAC bandwidth) must be smaller than the proxy overlap count",
                 });
             }
             omega_hac_bartlett(gtil.as_ref(), &overlap, t, lags, no)
@@ -1198,7 +1202,9 @@ fn check_reduced_form(rf: &ArReducedForm<'_>, horizons: usize, n: usize) -> Resu
 ///
 /// [`IdentError::Dimension`] if the shapes disagree, [`IdentError::NonFinite`]
 /// on a NaN or infinity, [`IdentError::InvalidArgument`] if `coefs` is empty
-/// or `n_proxy` is zero.
+/// or `n_proxy` is zero; [`IdentError::Bayes`]
+/// ([`tsecon_bayes::BayesError::TooLarge`]), naming `horizon`, past the
+/// memory budget or [`PROXY_AR_DELTA_WORK`].
 pub fn psi_reduced_form_cov(
     psi: &[Mat<f64>],
     coefs: &[Mat<f64>],
@@ -1253,6 +1259,7 @@ pub fn psi_reduced_form_cov(
             return Err(IdentError::NonFinite { what: "gamma" });
         }
     }
+    check_delta_horizon(n, p, psi.len() - 1)?;
 
     // Companion transpose A', and the first n rows of its powers.
     let mut at = Mat::<f64>::zeros(np, np);
@@ -1328,6 +1335,213 @@ pub fn psi_reduced_form_cov(
         out.push(cov);
     }
     Ok(out)
+}
+
+/// The work cap of the delta-method reduced-form variance
+/// ([`psi_reduced_form_cov`]), in multiply-adds:
+/// `H (H + 1) / 2 * n p * n (n + 1) + H (n d^2 + n^2 d + (n p)^3)` with
+/// `d = n^2 p` (the Jacobians `Gamma_h` re-sum `h` moving-average terms,
+/// so the work is QUADRATIC in the horizon `H`). Measured at 1.6 to 5.6 ns
+/// per unit on a 3-variable VAR(2)/VAR(4) (`horizon = 2000` takes 0.76 s
+/// and 1.67 s; `lab/audit/round16/ident_bayes/cost_proxy_ar_delta.py`), so
+/// the cap is under half a minute; a longer horizon is refused, naming
+/// `horizon`, instead of running for hours.
+pub const PROXY_AR_DELTA_WORK: u128 = 1 << 32;
+
+/// What the delta-method memory count covers, as a refusal states it.
+const DELTA_MEMORY_WHAT: &str = "the delta-method reduced-form variances (per horizon an n x np \
+     block of the companion power and an n x n variance)";
+/// What the delta-method work count covers, as a refusal states it.
+const DELTA_WORK_WHAT: &str =
+    "the delta-method Jacobians Gamma_1..Gamma_horizon (their work is quadratic in horizon)";
+/// How [`PROXY_AR_DELTA_WORK`] is quoted in a refusal.
+const DELTA_WORK_PHRASE: &str = "the 2^32 multiply-add work budget (under half a minute)";
+/// What the second-order simulation's memory count covers.
+const MC_MEMORY_WHAT: &str = "the second-order simulation (rf_draws rows of (horizon + 1) n \
+     simulated responses, plus one draw's moving-average path)";
+
+/// The delta-method working set at `horizon`, in `f64` values: the
+/// `(A')^h` row blocks and the per-horizon variances.
+fn delta_values(n: usize, p: usize, horizon: usize) -> u128 {
+    (horizon as u128)
+        .saturating_add(1)
+        .saturating_mul(rect_values(n, n.saturating_mul(p)).saturating_add(mat_values(n)))
+}
+
+/// The delta-method Jacobian work at `horizon`, in multiply-adds (see
+/// [`PROXY_AR_DELTA_WORK`]).
+fn delta_work(n: usize, p: usize, horizon: usize) -> u128 {
+    let np = n.saturating_mul(p);
+    let dim = np.saturating_mul(n) as u128;
+    let (n128, np128) = (n as u128, np as u128);
+    let per_h = n128
+        .saturating_mul(dim.saturating_mul(dim))
+        .saturating_add(n128.saturating_mul(n128).saturating_mul(dim))
+        .saturating_add(np128.saturating_mul(np128).saturating_mul(np128));
+    let per_pair = np128.saturating_mul(n128.saturating_mul(n128.saturating_add(1)));
+    let h = horizon as u128;
+    h.saturating_mul(h.saturating_add(1))
+        .saturating_div(2)
+        .saturating_mul(per_pair)
+        .saturating_add(h.saturating_mul(per_h))
+}
+
+/// The second-order simulation's working set, in `f64` values: one row of
+/// `(horizon + 1) n` responses per draw, plus one draw's moving-average
+/// path and the per-horizon covariances.
+fn mc_values(n: usize, horizon: usize, draws: usize) -> u128 {
+    let cols = (horizon as u128)
+        .saturating_add(1)
+        .saturating_mul(n as u128);
+    (draws as u128)
+        .saturating_add(8)
+        .saturating_mul(cols)
+        .saturating_add(irf_path_values(n, horizon, mat_values(n)))
+}
+
+/// An `rf_draws` refusal quotes an admissible count: even, and at least 32.
+fn even_rf_draws(e: BayesError) -> BayesError {
+    match e {
+        BayesError::TooLarge {
+            arg: "rf_draws",
+            value,
+            max,
+            what,
+            budget,
+        } => BayesError::TooLarge {
+            arg: "rf_draws",
+            value,
+            max: max.map(|m| m & !1).filter(|&m| m >= 32),
+            what,
+            budget,
+        },
+        other => other,
+    }
+}
+
+/// The memory and work budgets of [`psi_reduced_form_cov`] at `horizon`:
+/// the `(A')^h` row blocks and the per-horizon variances against
+/// [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`], and the Jacobian work
+/// against [`PROXY_AR_DELTA_WORK`]; checked together, naming `horizon`.
+fn check_delta_horizon(n: usize, p: usize, horizon: usize) -> Result<(), IdentError> {
+    let memory = |v: &[usize]| delta_values(n, p, v[0]);
+    let work = |v: &[usize]| delta_work(n, p, v[0]);
+    budget::check_budgets(
+        &[SizeArg::new("horizon", horizon, 0)],
+        &[
+            Budget {
+                what: DELTA_MEMORY_WHAT,
+                limit: budget::MEMORY_BUDGET_VALUES,
+                phrase: budget::MEMORY_BUDGET,
+                cost: &memory,
+            },
+            Budget {
+                what: DELTA_WORK_WHAT,
+                limit: PROXY_AR_DELTA_WORK,
+                phrase: DELTA_WORK_PHRASE,
+                cost: &work,
+            },
+        ],
+    )?;
+    Ok(())
+}
+
+/// Which reduced-form variance [`check_ar_sets_budget`] sizes.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum ArRfBudget {
+    /// No reduced-form variance (`reduced_form_uncertainty = False`).
+    Off,
+    /// The first-order delta method ([`psi_reduced_form_cov`]).
+    Delta,
+    /// The second-order simulation ([`psi_reduced_form_cov_mc`]) with
+    /// `draws` simulated reduced forms.
+    Simulation {
+        /// The simulation's draw count (the Python `rf_draws`).
+        draws: usize,
+    },
+}
+
+/// Sizes a whole `proxy_ar_sets` call at `horizon` before anything is
+/// allocated: the point moving-average path and the nested lists returned
+/// for it (as [`crate::check_irf_horizon`] counts them) plus the
+/// reduced-form variance's own working set, against
+/// [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`], and the delta-method
+/// Jacobian work against [`PROXY_AR_DELTA_WORK`]. They are checked together,
+/// so the largest `horizon` (or `rf_draws`, kept even and at least 32) a
+/// refusal quotes passes all of them; [`psi_reduced_form_cov`] and
+/// [`psi_reduced_form_cov_mc`] check their own share again.
+///
+/// # Errors
+///
+/// [`IdentError::Bayes`] ([`tsecon_bayes::BayesError::TooLarge`]), naming
+/// `horizon` or `rf_draws`.
+pub fn check_ar_sets_budget(
+    n: usize,
+    p: usize,
+    horizon: usize,
+    rf: ArRfBudget,
+) -> Result<(), IdentError> {
+    let point = |h: usize| irf_horizon_values(n, h);
+    match rf {
+        ArRfBudget::Off => {
+            let memory = |v: &[usize]| point(v[0]);
+            budget::check_budgets(
+                &[SizeArg::new("horizon", horizon, 0)],
+                &[Budget {
+                    what: IRF_HORIZON_WHAT,
+                    limit: budget::MEMORY_BUDGET_VALUES,
+                    phrase: budget::MEMORY_BUDGET,
+                    cost: &memory,
+                }],
+            )?;
+        }
+        ArRfBudget::Delta => {
+            // The delta method's Jacobian grows with the lag order as well as the
+            // horizon, so an absurd `lags` is blamed on `lags`, not on a modest
+            // horizon (listed first: the per-draw size before the horizon).
+            let memory = |v: &[usize]| point(v[1]).saturating_add(delta_values(n, v[0], v[1]));
+            let work = |v: &[usize]| delta_work(n, v[0], v[1]);
+            budget::check_budgets(
+                &[
+                    SizeArg::new("lags", p, 1),
+                    SizeArg::new("horizon", horizon, 0),
+                ],
+                &[
+                    Budget {
+                        what: "the moving-average path, its returned lists and the \
+                               delta-method reduced-form variances",
+                        limit: budget::MEMORY_BUDGET_VALUES,
+                        phrase: budget::MEMORY_BUDGET,
+                        cost: &memory,
+                    },
+                    Budget {
+                        what: DELTA_WORK_WHAT,
+                        limit: PROXY_AR_DELTA_WORK,
+                        phrase: DELTA_WORK_PHRASE,
+                        cost: &work,
+                    },
+                ],
+            )?;
+        }
+        ArRfBudget::Simulation { draws } => {
+            let memory = |v: &[usize]| point(v[0]).saturating_add(mc_values(n, v[0], v[1]));
+            budget::check_budgets(
+                &[
+                    SizeArg::new("horizon", horizon, 0),
+                    SizeArg::new("rf_draws", draws, 32),
+                ],
+                &[Budget {
+                    what: "the moving-average path, its returned lists and the second-order \
+                           simulation (rf_draws rows of (horizon + 1) n simulated responses)",
+                    limit: budget::MEMORY_BUDGET_VALUES,
+                    phrase: budget::MEMORY_BUDGET,
+                    cost: &memory,
+                }],
+            )
+            .map_err(even_rf_draws)?;
+        }
+    }
+    Ok(())
 }
 
 /// Pope (1990) closed-form first-order bias correction of least-squares VAR
@@ -1613,6 +1827,9 @@ pub fn pope_bias_corrected_coefs(
 /// [`IdentError::Dimension`] / [`IdentError::NonFinite`] as for
 /// [`psi_reduced_form_cov`]; [`IdentError::InvalidArgument`] if `draws` is
 /// odd or below 32, or `coefs` is empty, or `n_proxy` is zero;
+/// [`IdentError::Bayes`] ([`tsecon_bayes::BayesError::TooLarge`]), naming
+/// `horizon` or `rf_draws`, when the simulated responses exceed
+/// [`tsecon_bayes::budget::MEMORY_BUDGET_VALUES`];
 /// [`IdentError::Linalg`] if `cov_alpha` is too indefinite to factor even
 /// with the jitter ladder (a genuinely indefinite coefficient covariance).
 pub fn psi_reduced_form_cov_mc(
@@ -1638,8 +1855,8 @@ pub fn psi_reduced_form_cov_mc(
     }
     if draws < 32 || draws % 2 != 0 {
         return Err(IdentError::InvalidArgument {
-            what: "draws must be an even number of at least 32 (the sampler works in \
-                   antithetic pairs; 256 is a reasonable default)",
+            what: "rf_draws must be an even number of at least 32 (the second-order \
+                   simulation works in antithetic pairs; 256 is the default)",
         });
     }
     for m in coefs {
@@ -1678,6 +1895,17 @@ pub fn psi_reduced_form_cov_mc(
             return Err(IdentError::NonFinite { what: "gamma" });
         }
     }
+    // One row of (horizon + 1) n responses per draw, plus one draw's
+    // moving-average path and the per-horizon covariances.
+    budget::check_memory(
+        MC_MEMORY_WHAT,
+        &[
+            SizeArg::new("horizon", horizon, 0),
+            SizeArg::new("rf_draws", draws, 32),
+        ],
+        |v| mc_values(n, v[0], v[1]),
+    )
+    .map_err(even_rf_draws)?;
 
     // alpha layout r = (l*n + j)*n + e  <->  A_l[(e, j)], matching cov_alpha.
     let mut alpha_hat = vec![0.0f64; dim];
@@ -1890,8 +2118,8 @@ pub fn ar_cell(n_proxy: usize, critical_value: f64, m: ArMoments) -> Result<ArCe
                    for some lam (v1^2 > v0*v2), so the AR statistic is not a quadratic-set \
                    problem. ArVariance::Hc0 is PSD by construction on any overlap; \
                    ArVariance::HacBartlett is PSD only when the overlap is contiguous, so a \
-                   proxy with interior gaps can reach this — shorten the HAC bandwidth, or \
-                   fall back to Hc0. A supplied Omega or ArReducedForm must be PSD",
+                   proxy with interior gaps can reach this — lower hac_lags (the HAC \
+                   bandwidth), or fall back to Hc0. A supplied Omega or ArReducedForm must be PSD",
         });
     }
 

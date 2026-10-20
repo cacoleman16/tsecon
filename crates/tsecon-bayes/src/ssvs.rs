@@ -103,6 +103,7 @@ use tsecon_linalg::jittered_cholesky;
 use tsecon_rng::Stream;
 use tsecon_stats::special::inv_gamma_p;
 
+use crate::budget::{self, irf_path_values, py_matrix_values, SizeArg, STREAM_VALUES};
 use crate::cholesky_irf;
 use crate::convergence::{ess_bulk, rhat_rank};
 use crate::dense::{
@@ -213,7 +214,7 @@ impl SsvsConfig {
     pub fn validate(&self) -> Result<(), BayesError> {
         if self.lags == 0 {
             return Err(BayesError::InvalidArgument {
-                what: "lag length p must be at least 1",
+                what: "lags = 0: an SSVS BVAR needs at least one lag; pass lags >= 1",
             });
         }
         if self.burn >= self.n_draws {
@@ -878,7 +879,11 @@ fn relabel_internal_overflow(e: BayesError) -> BayesError {
 /// * [`BayesError::InvalidArgument`] with rescaling advice when the
 ///   sampler's own arithmetic overflows on all-finite data of extreme
 ///   magnitude (observed from `max|y| ~ 6e11` upward on explosive series);
-/// * [`BayesError::Linalg`] on a numerically indefinite conditional.
+/// * [`BayesError::Linalg`] on a numerically indefinite conditional;
+/// * [`BayesError::TooLarge`], naming `horizon`, `n_draws` or `n_chains`,
+///   when the retained traces and kept impulse-response draws exceed
+///   [`crate::budget::MEMORY_BUDGET_VALUES`], checked before any chain is
+///   spawned.
 pub fn bvar_ssvs(
     data: MatRef<'_, f64>,
     cfg: &SsvsConfig,
@@ -912,6 +917,7 @@ pub fn bvar_ssvs(
                    has 1 + n*lags regressors)",
         });
     }
+    check_ssvs_budget(cfg, n)?;
     let (x, y) = build_xy(data, p);
     let t_eff = x.nrows();
     let ols = ols_pieces(x.as_ref(), y.as_ref(), n, k, cfg).map_err(relabel_internal_overflow)?;
@@ -993,6 +999,36 @@ pub fn bvar_ssvs(
         rhat,
         ess_bulk: ess,
     })
+}
+
+/// The SSVS working set, checked before any chain is spawned: per chain one
+/// RNG substream and three per-sweep traces of the `n_draws - burn` retained
+/// sweeps (the model size, the log-likelihood and the convergence matrix),
+/// plus every kept draw's `(horizon + 1)` impulse-response matrices of
+/// `n x n` (`ceil((n_draws - burn) / thin)` per chain), each also returned
+/// to Python as a nested list. Names `horizon`, `n_draws` or `n_chains`.
+fn check_ssvs_budget(cfg: &SsvsConfig, n: usize) -> Result<(), BayesError> {
+    let (burn, thin) = (cfg.burn as u128, cfg.thin.max(1) as u128);
+    budget::check_memory(
+        "the SSVS draws (per chain, the retained-sweep traces and \
+         ceil((n_draws - burn) / thin) kept draws of (horizon + 1) n x n \
+         impulse-response matrices, each also returned as a nested list)",
+        &[
+            SizeArg::new("horizon", cfg.horizon, 0),
+            SizeArg::new("n_draws", cfg.n_draws, cfg.burn.saturating_add(1)),
+            SizeArg::new("n_chains", cfg.n_chains, 1),
+        ],
+        |v| {
+            let retained = (v[1] as u128).saturating_sub(burn);
+            let kept = retained.div_ceil(thin);
+            let per_chain = STREAM_VALUES
+                .saturating_add(retained.saturating_mul(3))
+                .saturating_add(kept.saturating_mul(
+                    irf_path_values(n, v[0], py_matrix_values(n)).saturating_add(3),
+                ));
+            (v[2] as u128).saturating_mul(per_chain)
+        },
+    )
 }
 
 /// Median of a slice (sorts in place); `0.0` for an empty slice.

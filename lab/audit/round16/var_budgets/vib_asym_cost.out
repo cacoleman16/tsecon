@@ -1,0 +1,7 @@
+k=2 lags=8 horizon=500: 0.17 s, jacobian work 1.6e+07 = 2^23.9
+k=2 lags=8 horizon=1000: 0.77 s, jacobian work 6.41e+07 = 2^25.9
+k=2 lags=8 horizon=2047: 3.39 s, jacobian work 2.68e+08 = 2^28.0
+k=3 lags=2 horizon=900: 0.83 s, jacobian work 6.57e+07 = 2^26.0
+k=10 lags=4 horizon=60: 1.05 s, jacobian work 7.32e+07 = 2^26.1
+k=20 lags=4 horizon=14: 2.61 s, jacobian work 6.72e+07 = 2^26.0
+k=20 lags=4 horizon=28: 5.39 s, jacobian work 2.6e+08 = 2^28.0

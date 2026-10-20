@@ -322,6 +322,7 @@ impl<'a> GasModel<'a> {
     /// # Errors
     ///
     /// * [`GasError::InvalidHorizon`] — `h == 0`;
+    /// * [`GasError::InvalidParameter`] — `h` past [`MAX_FORECAST_HORIZON`];
     /// * errors from [`filter`](GasModel::filter).
     pub fn forecast(&self, params: &GasParams, h: usize) -> Result<Vec<f64>, GasError> {
         let filtered = self.filter(params)?;
@@ -344,6 +345,35 @@ fn params_from_working(density: Density, z: &[f64]) -> GasParams {
     GasParams { omega, a, b, nu }
 }
 
+/// Largest variance-forecast horizon [`forecast_from`] accepts (1,000,000
+/// steps, the cap `arima_fit` and `ets_fit` put on theirs) — a guard against
+/// absurd allocations, not a modelling limit: the path is materialised step
+/// by step (and has converged to `omega / (1 - b)` long before), so a typo
+/// such as `2**31` used to request 16 GiB and abort the process.
+pub const MAX_FORECAST_HORIZON: usize = 1_000_000;
+
+/// Refuses a forecast horizon past [`MAX_FORECAST_HORIZON`], naming
+/// `horizon` (the `gas_volatility` keyword). Callers that fit before
+/// forecasting run it first, so an absurd horizon costs no estimation.
+///
+/// # Errors
+///
+/// [`GasError::InvalidParameter`] naming `horizon` when
+/// `h > MAX_FORECAST_HORIZON`.
+pub fn check_forecast_horizon(h: usize) -> Result<(), GasError> {
+    if h > MAX_FORECAST_HORIZON {
+        return Err(GasError::InvalidParameter {
+            name: "horizon",
+            value: h as f64,
+            requirement: "horizon <= 1000000: every step of the variance forecast is \
+                          materialised, so a longer horizon cannot mean what it says and would \
+                          exhaust memory (the path converges to omega / (1 - b) long before); \
+                          forecast fewer steps",
+        });
+    }
+    Ok(())
+}
+
 /// Project the `h`-step-ahead variance forecast from the one-step variance
 /// `f_next = f_{N+1}` (already known at time `N`, since the score is
 /// observed).
@@ -355,11 +385,14 @@ fn params_from_working(density: Density, z: &[f64]) -> GasParams {
 ///
 /// # Errors
 ///
-/// * [`GasError::InvalidHorizon`] — `h == 0`.
+/// * [`GasError::InvalidHorizon`] — `h == 0`;
+/// * [`GasError::InvalidParameter`] naming `horizon` — `h` past
+///   [`MAX_FORECAST_HORIZON`], checked before the path is allocated.
 pub fn forecast_from(f_next: f64, omega: f64, b: f64, h: usize) -> Result<Vec<f64>, GasError> {
     if h == 0 {
         return Err(GasError::InvalidHorizon);
     }
+    check_forecast_horizon(h)?;
     let mut out = Vec::with_capacity(h);
     out.push(f_next);
     for k in 1..h {

@@ -78,7 +78,7 @@ callback bridges that surface every Python exception as a Python exception.
 
 | severity | count | fixed in-branch |
 |---|---:|---|
-| severe | 3 | 2 (S1, S2); S3 proposed |
+| severe | 3 | 2 (S1, S2); S3 fixed in audit round 16 |
 | moderate | 5 | 0 (each has a concrete proposal) |
 | low | 6 | 0 (proposals) |
 
@@ -170,7 +170,7 @@ family the pre-allocation sufficiency check `var_fit` already has, and to
 size the faer matrices through `try_*` constructors that return the crate
 error instead of unwrapping.
 
-### S3 — severe, NOT FIXED (policy): a refused allocation aborts the process; an accepted one takes the machine
+### S3 — severe, FIXED in audit round 16: a refused allocation aborted the process; an accepted one took the machine
 
 **Observed.** 66 cells over 51 callables at 2³¹ — every `horizon`,
 `n_draws`, `n_boot`, `n_trees`, `forecast_steps`, `n_steps`, `n_grid`,
@@ -200,6 +200,20 @@ and aborts the process; `kernel_ridge` at 10⁵ needed 80 GB (now a
 request is a policy choice the brief reserves; see *Policy proposal*. The
 abort-versus-`MemoryError` convention is a crate-wide change
 (`try_reserve`/`try_new` at every allocation site).
+
+**Status (audit round 16): fixed by budgets in the engines.** Round 16's
+house-wide sweep ([findings](../31-audit-round-16-findings.md), harness in
+`lab/audit/round16/abort_sweep/`) set every integer- or size-like parameter
+of all 206 callables to 2^31, 2^40, 2^62, −1 and 0: 136 of 2,710 calls
+aborted and 12 hung. The policy adopted follows the proposal below. Every
+size argument is checked, in the shared engine and with checked
+arithmetic, against a 2^28-value (2 GiB) working set counted as real
+storage, plus a work cap where the cost is superlinear. A refusal names the
+Python keyword and the largest admissible value, before anything is
+allocated. The same sweep re-run on the fixed wheel finds no abort and no
+hang. The abort-to-`MemoryError` conversion at every allocation site was
+not done: with the budgets in place no swept call reaches the allocator's
+failure path.
 
 ### M1 — moderate: the GIL is held for the whole of every compiled call
 
@@ -249,6 +263,18 @@ the cause is not an `Exception` subclass.
 max_power=2**31)` were still running at the 15 s deadline (they would run
 for years); every other `max_iter`-style parameter converged early or
 refused. Both remain post-fix (below 2⁴⁸). See *Policy proposal*.
+
+**Status (audit round 16): fixed, and the RESET diagnosis corrected.**
+`reset_test` was not an iteration count without a cap: it built every
+fitted-value power column before running the degrees-of-freedom check it
+already had, so `max_power = 2**31` grew memory one column at a time and
+aborted in the allocator after about 50 s. The augmented design is now sized
+first, against `n > k + max_power - 1` and the Breusch-Godfrey
+auxiliary-regression budgets, and refused naming `max_power`. `mstl`'s
+`iterate`, and `inner_iter` / `outer_iter` of `stl` and `mstl`, are fixed loop
+counts with no early exit; they are now charged against an STL work budget of
+2^32 LOESS evaluation units and refused by name before any smoothing, while
+the default counts are never refused.
 
 ### M5 — moderate: the wheel carries no third-party license notices, contrary to the repository's claim
 
@@ -470,8 +496,9 @@ Proposed policy — **a memory budget, not per-parameter caps**:
 
 ## Open
 
-- **S3 and M4** await the policy decision above; the abort-to-exception
-  change (item 3) is worth doing regardless of where the budget lands.
+- **S3 and M4** were fixed in audit round 16 (see their status notes). The
+  abort-to-exception change (item 3) is still open, as a second line of
+  defence behind the budgets.
 - **The published 0.8.0 wheel** was not inspected (PyPI is unreachable from
   this environment): whether it carries the SBOM with CI paths (L1) and
   whether it lacks the notices (M5) should be confirmed with `pip download
