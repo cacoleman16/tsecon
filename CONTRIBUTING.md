@@ -248,6 +248,31 @@ Tag-triggered; builds the cross-platform wheel matrix + sdist and publishes to
 PyPI via trusted publishing. You do not run this — it fires on a `v*` tag — but be
 aware that a green `main` is what a release is cut from.
 
+**Production PyPI is reachable only by pushing a `v*` tag.** That upload is
+irreversible: a version number, once taken, can never be re-uploaded. So the
+workflow also takes a manual run (*Actions → Release → Run workflow*) with a
+`publish_to` choice:
+
+| `publish_to` | What happens |
+|---|---|
+| `none` (default) | Builds the full wheel matrix and the sdist and smoke-tests each one. Uploads nowhere. This is the cheap check that the release machinery still works. |
+| `testpypi` | The same, then uploads to Test PyPI. |
+
+A manual run cannot publish to production, even if launched against a tag: the
+`publish` job branches on `github.event_name`, not on the ref.
+
+Before the first `testpypi` run, two things must exist or the upload step fails:
+a GitHub environment named `testpypi` in this repository's settings, and a
+trusted publisher on test.pypi.org for this repo + `release.yml` + that
+environment (a *pending* publisher is enough if the project is not registered
+there yet). Then verify in a clean environment:
+
+```bash
+pip install -i https://test.pypi.org/simple/ --extra-index-url https://pypi.org/simple/ tsecon
+```
+
+The extra index is needed because Test PyPI does not mirror NumPy.
+
 ## Commit and pull-request conventions
 
 - **Branch and PR against `main`.** Open a pull request; every workflow above that
@@ -258,6 +283,14 @@ aware that a green `main` is what a release is cut from.
   [`CHANGELOG.md`](CHANGELOG.md), which follows
   [Keep a Changelog](https://keepachangelog.com/). Versioning follows the pre-1.0
   policy documented there (minor = breaking allowed, patch = fixes) until 1.0.
+
+  **If there is no `[Unreleased]` section, add one** directly below the
+  introductory paragraph and above the newest released version. A release
+  converts that heading into its version heading, so right after a release the
+  file has none — and a bullet added against a stale copy of the file can be
+  merged into the *previous* release's section without a conflict, which looks
+  clean and silently misattributes the change. Check where your bullet actually
+  landed after a rebase.
 - **Write clear commit messages.** [Conventional Commits](https://www.conventionalcommits.org/)
   style (`feat:`, `fix:`, `docs:`, …) is encouraged — it makes release notes easy
   to assemble — but is not currently enforced by a hook.
